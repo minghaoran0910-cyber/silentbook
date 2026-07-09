@@ -250,7 +250,8 @@ async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
                 "amount": db_tx.amount,
                 "category": db_tx.category,
                 "type": db_tx.transaction_type,
-                "confidence": db_tx.confidence
+                "confidence": db_tx.confidence,
+                "abnormal_alert": await check_abnormal_and_analyze(db_tx, db)
             }
         except httpx.RequestError:
             return {"status": "error", "reason": "通知解析器不可用"}
@@ -266,6 +267,81 @@ async def webhook_notify_batch(items: List[WebhookRequest], db: Session = Depend
         result = await webhook_notify(item, db)
         results.append(result)
     return {"total": len(items), "results": results}
+
+
+# ===== 事件驱动分析 =====
+
+# 异常消费阈值（可配置）
+ABNORMAL_THRESHOLD = float(os.getenv("ABNORMAL_THRESHOLD", "500"))
+ABNORMAL_CATEGORIES = ["娱乐", "游戏", "彩票", "赌博"]
+
+async def check_abnormal_and_analyze(tx: Transaction, db: Session) -> dict:
+    """检测异常交易并自动触发分析"""
+    is_abnormal = False
+    reasons = []
+    
+    # 规则1: 金额超阈值
+    if tx.transaction_type == "expense" and tx.amount and tx.amount >= ABNORMAL_THRESHOLD:
+        is_abnormal = True
+        reasons.append(f"大额消费 ¥{tx.amount}")
+    
+    # 规则2: 异常分类
+    if tx.category in ABNORMAL_CATEGORIES:
+        is_abnormal = True
+        reasons.append(f"异常分类: {tx.category}")
+    
+    # 规则3: 同日同类重复消费 >=3 次
+    if tx.parsed_at:
+        today_start = tx.parsed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        same_day_same_cat = db.query(Transaction).filter(
+            Transaction.category == tx.category,
+            Transaction.parsed_at >= today_start,
+            Transaction.parsed_at <= tx.parsed_at
+        ).count()
+        if same_day_same_cat >= 3:
+            is_abnormal = True
+            reasons.append(f"同日同类消费 {same_day_same_cat} 次")
+    
+    if not is_abnormal:
+        return {"triggered": False}
+    
+    # 触发分析
+    try:
+        recent_txs = db.query(Transaction).order_by(
+            Transaction.parsed_at.desc()
+        ).limit(50).all()
+        
+        tx_data = [{
+            "amount": t.amount, "category": t.category,
+            "transaction_type": t.transaction_type,
+            "description": t.description, "parsed_at": str(t.parsed_at or "")
+        } for t in recent_txs]
+        
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(
+                f"{AGENT_API_URL}/analyze",
+                json={"transactions": tx_data},
+                timeout=90.0
+            )
+            if resp.status_code == 200:
+                result = resp.json()
+                # 保存分析结果
+                for analysis_type in ["consumption", "investment", "suggestion"]:
+                    analysis = AnalysisResult(
+                        agent_name="event-driven",
+                        analysis_type=analysis_type,
+                        content=result.get(analysis_type, "")
+                    )
+                    db.add(analysis)
+                db.commit()
+                return {
+                    "triggered": True,
+                    "reasons": reasons,
+                    "analysis_saved": True
+                }
+    except Exception as e:
+        logger.error(f"事件驱动分析失败: {e}")
+        return {"triggered": True, "reasons": reasons, "analysis_saved": False, "error": str(e)}
 
 
 # ===== 统计 =====
