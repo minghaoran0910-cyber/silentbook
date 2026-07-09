@@ -18,8 +18,12 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourusername/silentbook.git
+git clone https://github.com/minghaoran0910-cyber/silentbook.git
 cd silentbook
+
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入你的 API Key
 
 # 启动所有服务
 docker-compose up -d
@@ -42,19 +46,6 @@ docker-compose -f docker-compose.server.yml up -d
 ```bash
 docker-compose -f docker-compose.local.yml up -d
 ```
-
-### 配置
-
-复制 `.env.example` 为 `.env`，修改配置：
-
-```bash
-cp .env.example .env
-```
-
-主要配置项：
-- `DATABASE_URL` - 数据库连接
-- `AGENT_API_URL` - Agent 服务地址
-- `MODEL_NAME` - AI 模型名称（默认 aliyun/glm-5.2）
 
 ## 📖 使用指南
 
