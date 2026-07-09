@@ -238,10 +238,10 @@ class TestTransactions:
                 "transaction_type": "expense"
             })
 
-        # 清空
-        response = client.delete("/transactions")
+        # 清空（需要 confirm=true）
+        response = client.delete("/transactions?confirm=true")
         assert response.status_code == 200
-        assert response.json()["message"] == "All transactions deleted"
+        assert "Deleted" in response.json()["message"]
 
         # 验证已清空
         response = client.get("/transactions")

@@ -98,7 +98,7 @@ export async function deleteTransaction(id: number): Promise<void> {
 }
 
 export async function deleteAllTransactions(): Promise<void> {
-  await request('/transactions', { method: 'DELETE' })
+  await request('/transactions?confirm=true', { method: 'DELETE' })
 }
 
 // ===== Stats =====
