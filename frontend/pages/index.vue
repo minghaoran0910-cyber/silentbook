@@ -33,6 +33,82 @@
       </div>
     </div>
 
+    <!-- 资产概览 -->
+    <div class="asset-section" v-if="assets.length > 0 || liabilities.length > 0">
+      <div class="section-header">
+        <h2>🏦 资产概览</h2>
+        <NuxtLink to="/assets" class="view-all">管理资产 →</NuxtLink>
+      </div>
+      <div class="asset-summary">
+        <div class="asset-bar-row">
+          <div class="asset-bar-label">净资产</div>
+          <div class="asset-bar-value" :class="(totalAssetValue - totalLiabilityValue) >= 0 ? 'income' : 'expense'">
+            ¥{{ (totalAssetValue - totalLiabilityValue).toFixed(2) }}
+          </div>
+        </div>
+        <div class="asset-compare-bar">
+          <div class="asset-fill asset-green" :style="{ width: (totalAssetValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }">
+            <span v-if="totalAssetValue > 0">资产 ¥{{ totalAssetValue.toFixed(0) }}</span>
+          </div>
+          <div class="asset-fill asset-red" :style="{ width: (totalLiabilityValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }">
+            <span v-if="totalLiabilityValue > 0">负债 ¥{{ totalLiabilityValue.toFixed(0) }}</span>
+          </div>
+        </div>
+      </div>
+      <!-- 资产分类明细 -->
+      <div class="asset-breakdown" v-if="assetBreakdown.length > 0">
+        <div v-for="item in assetBreakdown" :key="item.type" class="asset-detail-item">
+          <span class="asset-detail-icon">{{ getAssetIcon(item.type).icon }}</span>
+          <span class="asset-detail-name">{{ getAssetIcon(item.type).label }}</span>
+          <div class="asset-detail-bar-bg">
+            <div class="asset-detail-bar-fill" :style="{ width: (item.value / Math.max(totalAssetValue, 1) * 100) + '%', background: getAssetIcon(item.type).color }"></div>
+          </div>
+          <span class="asset-detail-amount">¥{{ item.value.toFixed(0) }}</span>
+          <span class="asset-detail-count">{{ item.count }}项</span>
+        </div>
+      </div>
+      <!-- 负债列表 -->
+      <div class="liability-mini" v-if="liabilities.length > 0">
+        <div class="liability-mini-title">📋 负债进度</div>
+        <div v-for="l in liabilities.slice(0, 3)" :key="l.id" class="liability-mini-item">
+          <span class="liability-mini-icon">{{ getLiabilityIcon(l.liability_type).icon }}</span>
+          <div class="liability-mini-info">
+            <div class="liability-mini-name">{{ l.name }}</div>
+            <div class="liability-mini-bar">
+              <div class="liability-mini-fill" :style="{ width: ((l.total_amount - l.current_amount) / Math.max(l.total_amount, 1) * 100) + '%' }"></div>
+            </div>
+          </div>
+          <span class="liability-mini-amount">¥{{ l.current_amount.toFixed(0) }}<span class="liability-mini-total">/¥{{ l.total_amount.toFixed(0) }}</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 最近交易 -->
+    <div class="recent-section" v-if="recentTransactions.length > 0">
+      <div class="section-header">
+        <h2>💸 最近交易</h2>
+        <NuxtLink to="/transactions" class="view-all">查看全部 →</NuxtLink>
+      </div>
+      <div class="recent-list">
+        <div v-for="tx in recentTransactions" :key="tx.id" class="recent-item">
+          <div class="recent-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
+            <span>{{ getCategoryIcon(tx.category).icon }}</span>
+          </div>
+          <div class="recent-info">
+            <div class="recent-desc">{{ tx.description || tx.category }}</div>
+            <div class="recent-meta">
+              <span>{{ getAccountName(tx.account) }}</span>
+              <span>·</span>
+              <span>{{ formatTime(tx.parsed_at) }}</span>
+            </div>
+          </div>
+          <div class="recent-amount" :class="tx.transaction_type">
+            {{ tx.transaction_type === 'income' ? '+' : '-' }}¥{{ tx.amount.toFixed(2) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 消费趋势图 -->
     <div class="trend-section">
       <div class="section-header">
@@ -175,8 +251,8 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport } from '~/utils/api'
-import { getCategoryIcon } from '~/utils/icons'
+import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities } from '~/utils/api'
+import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const stats = ref({
   net_assets: 0,
@@ -196,6 +272,9 @@ const analysis = ref({
 const analyzing = ref(false)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
+const recentTransactions = ref([])
+const assets = ref([])
+const liabilities = ref([])
 
 const maxExpense = computed(() => Math.max(...trend.value.daily.map(d => d.expense), 1))
 const trendDays = computed(() => trend.value.daily.length)
@@ -225,6 +304,38 @@ const loadMonthly = async () => {
   }
 }
 
+const loadAssets = async () => {
+  try {
+    const [a, l] = await Promise.all([fetchAssets(), fetchLiabilities()])
+    assets.value = a.filter(x => x.status === 'active')
+    liabilities.value = l.filter(x => x.status === 'active')
+  } catch (error) {
+    console.error('加载资产失败:', error)
+  }
+}
+
+const totalAssetValue = computed(() => assets.value.reduce((s, a) => s + a.current_value, 0))
+const totalLiabilityValue = computed(() => liabilities.value.reduce((s, l) => s + l.current_amount, 0))
+
+const assetBreakdown = computed(() => {
+  const groups = {}
+  assets.value.forEach(a => {
+    const t = a.asset_type || 'other'
+    if (!groups[t]) groups[t] = { type: t, value: 0, count: 0 }
+    groups[t].value += a.current_value
+    groups[t].count++
+  })
+  return Object.values(groups).sort((a, b) => b.value - a.value)
+})
+
+const loadRecentTransactions = async () => {
+  try {
+    recentTransactions.value = await fetchTransactions({ limit: 10 })
+  } catch (error) {
+    console.error('加载最近交易失败:', error)
+  }
+}
+
 const loadAnalysis = async () => {
   try {
     analysis.value = await fetchLatestAnalysis()
@@ -249,11 +360,29 @@ const analyze = async () => {
   }
 }
 
+const getAccountName = (account) => {
+  const names = { cmb: '招商银行', icbc: '工商银行', ccb: '建设银行', alipay: '支付宝', wechat_pay: '微信支付', cash: '现金', other: '其他' }
+  return names[account] || account
+}
+
+const formatTime = (time) => {
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now - date
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 onMounted(() => {
   loadStats()
   loadAnalysis()
   loadTrend()
   loadMonthly()
+  loadRecentTransactions()
+  loadAssets()
 })
 </script>
 
@@ -400,6 +529,68 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 2rem;
 }
+
+/* 资产概览 */
+.asset-section { margin-bottom: 3rem; }
+.asset-summary { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+.asset-bar-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.asset-bar-label { color: var(--text-secondary); font-size: 0.9rem; }
+.asset-bar-value { font-size: 1.5rem; font-weight: 700; }
+.asset-bar-value.income { color: var(--success); }
+.asset-bar-value.expense { color: var(--danger); }
+.asset-compare-bar { display: flex; height: 24px; border-radius: 12px; overflow: hidden; gap: 2px; }
+.asset-fill { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: white; font-weight: 500; transition: width 0.5s; min-width: 0; overflow: hidden; white-space: nowrap; }
+.asset-green { background: var(--success); }
+.asset-red { background: var(--danger); }
+.asset-breakdown { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.asset-detail-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; }
+.asset-detail-icon { font-size: 1.1rem; flex-shrink: 0; }
+.asset-detail-name { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
+.asset-detail-bar-bg { flex: 1; height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
+.asset-detail-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.asset-detail-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 70px; text-align: right; }
+.asset-detail-count { color: var(--text-secondary); font-size: 0.75rem; min-width: 30px; }
+.liability-mini { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+.liability-mini-title { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; font-size: 0.9rem; }
+.liability-mini-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; }
+.liability-mini-icon { font-size: 1rem; flex-shrink: 0; }
+.liability-mini-info { flex: 1; min-width: 0; }
+.liability-mini-name { color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.2rem; }
+.liability-mini-bar { height: 4px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 2px; overflow: hidden; }
+.liability-mini-fill { height: 100%; background: var(--success); border-radius: 2px; transition: width 0.3s; }
+.liability-mini-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
+.liability-mini-total { color: var(--text-secondary); font-weight: 400; }
+
+/* 最近交易 */
+.recent-section { margin-bottom: 3rem; }
+.view-all { color: var(--accent); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+.view-all:hover { text-decoration: underline; }
+.recent-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+.recent-item:hover { border-color: var(--accent); }
+.recent-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; flex-shrink: 0;
+}
+.recent-info { flex: 1; min-width: 0; }
+.recent-desc {
+  color: var(--text-primary); font-weight: 500; font-size: 0.95rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.recent-meta { display: flex; gap: 0.4rem; font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem; }
+.recent-amount { font-size: 1.1rem; font-weight: 600; flex-shrink: 0; }
+.recent-amount.income { color: var(--success); }
+.recent-amount.expense { color: var(--danger); }
 
 /* 趋势图 */
 .trend-section { margin-bottom: 3rem; }

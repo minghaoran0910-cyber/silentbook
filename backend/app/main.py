@@ -15,6 +15,8 @@ from .schemas import (
 )
 import httpx
 import os
+import logging
+from .scheduler import create_scheduler
 
 # CORS - 开发环境允许所有，生产环境需要配置
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -22,12 +24,21 @@ AGENT_API_URL = os.getenv("AGENT_API_URL", "http://localhost:5000")
 PARSER_API_URL = os.getenv("PARSER_API_URL", "http://localhost:6000")
 
 
+logger = logging.getLogger("silentbook")
+_scheduler = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _scheduler
     # Startup
     init_db()
+    _scheduler = create_scheduler()
+    _scheduler.start()
+    logger.info("定时任务调度器已启动")
     yield
-    # Shutdown (if needed)
+    # Shutdown
+    _scheduler.shutdown(wait=False)
+    logger.info("定时任务调度器已关闭")
 
 app = FastAPI(title="SilentBook API", version="0.1.0", lifespan=lifespan)
 
@@ -549,6 +560,35 @@ async def get_analysis_history(limit: int = 20, db: Session = Depends(get_db)):
         })
     
     return list(batches.values())[:limit]
+
+
+# ===== 调度器状态 =====
+
+@app.get("/scheduler/status")
+async def scheduler_status():
+    """获取调度器状态"""
+    jobs = []
+    for job in _scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run": str(job.next_run_time) if job.next_run_time else None
+        })
+    return {"running": _scheduler.running, "jobs": jobs}
+
+
+@app.post("/scheduler/trigger/{job_id}")
+async def trigger_job(job_id: str):
+    """手动触发定时任务"""
+    from .scheduler import cleanup_old_notifications, scheduled_daily_analysis
+    job_map = {
+        "cleanup_notifications": cleanup_old_notifications,
+        "daily_analysis": scheduled_daily_analysis
+    }
+    if job_id not in job_map:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+    await job_map[job_id]()
+    return {"message": f"已触发任务 {job_id}"}
 
 
 # ===== 资产管理 =====
