@@ -13,6 +13,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.auth import hash_password
+from app.database import User
 
 
 # ===== 测试数据库（SQLite in-memory）=====
@@ -223,3 +225,127 @@ class TestMe:
             "Authorization": "Bearer invalidtoken"
         })
         assert resp.status_code == 401
+
+
+class TestForgotPassword:
+    """密码找回接口测试"""
+
+    def setup_method(self):
+        client.post("/auth/register", json={
+            "email": "reset@example.com",
+            "phone": "13800138000",
+            "password": "pass1234"
+        })
+
+    def test_forgot_password_with_email(self):
+        """邮箱找回 - 返回重置令牌"""
+        resp = client.post("/auth/forgot-password", json={
+            "account": "reset@example.com"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "reset_token" in data or "message" in data
+
+    def test_forgot_password_with_phone(self):
+        """手机号找回 - 返回重置令牌"""
+        resp = client.post("/auth/forgot-password", json={
+            "account": "13800138000"
+        })
+        assert resp.status_code == 200
+
+    def test_forgot_password_nonexistent_user(self):
+        """不存在的用户 - 安全考虑不报错"""
+        resp = client.post("/auth/forgot-password", json={
+            "account": "nobody@example.com"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "message" in data
+        assert "reset_token" not in data
+
+
+class TestResetPassword:
+    """重置密码接口测试"""
+
+    def setup_method(self):
+        client.post("/auth/register", json={
+            "email": "reset2@example.com",
+            "password": "pass1234"
+        })
+
+    def _get_reset_token(self, account="reset2@example.com"):
+        resp = client.post("/auth/forgot-password", json={"account": account})
+        return resp.json().get("reset_token")
+
+    def test_reset_password_success(self):
+        """成功重置密码"""
+        token = self._get_reset_token()
+        assert token is not None
+
+        resp = client.post("/auth/reset-password", json={
+            "token": token,
+            "new_password": "newpass123"
+        })
+        assert resp.status_code == 200
+        assert "成功" in resp.json()["message"]
+
+    def test_reset_password_then_login(self):
+        """重置后能用新密码登录"""
+        token = self._get_reset_token()
+        client.post("/auth/reset-password", json={
+            "token": token,
+            "new_password": "newpass456"
+        })
+
+        resp = client.post("/auth/login", json={
+            "account": "reset2@example.com",
+            "password": "newpass456"
+        })
+        assert resp.status_code == 200
+
+    def test_reset_password_old_password_fails(self):
+        """重置后旧密码不能登录"""
+        token = self._get_reset_token()
+        client.post("/auth/reset-password", json={
+            "token": token,
+            "new_password": "newpass789"
+        })
+
+        resp = client.post("/auth/login", json={
+            "account": "reset2@example.com",
+            "password": "pass1234"
+        })
+        assert resp.status_code == 401
+
+    def test_reset_password_invalid_token(self):
+        """无效令牌"""
+        resp = client.post("/auth/reset-password", json={
+            "token": "invalid.token.here",
+            "new_password": "newpass123"
+        })
+        assert resp.status_code == 400
+
+    def test_reset_password_short_password(self):
+        """新密码太短"""
+        token = self._get_reset_token()
+        resp = client.post("/auth/reset-password", json={
+            "token": token,
+            "new_password": "123"
+        })
+        assert resp.status_code == 422
+
+    def test_reset_password_wrong_purpose(self):
+        """用普通登录 JWT 令牌重置密码应被拒绝"""
+        # 先登录拿到普通 token
+        login_resp = client.post("/auth/login", json={
+            "account": "reset2@example.com",
+            "password": "pass1234"
+        })
+        login_token = login_resp.json()["access_token"]
+
+        resp = client.post("/auth/reset-password", json={
+            "token": login_token,
+            "new_password": "newpass123"
+        })
+        assert resp.status_code == 400
+        assert "用途" in resp.json()["detail"]

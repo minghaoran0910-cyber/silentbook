@@ -183,3 +183,16 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: 'UserResponse'
+
+
+# ===== 密码找回 =====
+
+class PasswordResetRequest(BaseModel):
+    """请求密码重置：输入邮箱或手机号"""
+    account: str = Field(..., min_length=1, max_length=255)
+
+
+class PasswordResetConfirm(BaseModel):
+    """重置密码：提交令牌 + 新密码"""
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)

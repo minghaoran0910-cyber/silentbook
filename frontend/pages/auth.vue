@@ -135,6 +135,9 @@
           <span v-if="loading" class="spinner" />
           {{ loading ? '登录中...' : '登录' }}
         </button>
+        <div class="forgot-link">
+          <button type="button" class="link-btn" @click="navigateTo('/forgot-password')" :disabled="loading">忘记密码?</button>
+        </div>
       </form>
 
       <div v-if="error" class="error-message">
@@ -478,5 +481,23 @@ onMounted(() => {
     font-size: 0.95rem;
     padding: 0.65rem;
   }
+}
+
+.forgot-link {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
 }
 </style>
