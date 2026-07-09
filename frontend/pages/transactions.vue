@@ -112,8 +112,8 @@
 
     <div v-else class="transaction-list">
       <div v-for="tx in transactions" :key="tx.id" class="transaction-item">
-        <div class="tx-icon" :class="tx.transaction_type">
-          {{ tx.transaction_type === 'income' ? '↓' : '↑' }}
+        <div class="tx-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
+          <span class="icon-emoji">{{ getCategoryIcon(tx.category).icon }}</span>
         </div>
         <div class="tx-info">
           <div class="tx-description">{{ tx.description || tx.category }}</div>
@@ -135,6 +135,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { fetchTransactions, createTransaction, deleteTransaction } from '~/utils/api'
+import { getCategoryIcon } from '~/utils/icons'
 
 const transactions = ref([])
 const loading = ref(true)
@@ -398,24 +399,15 @@ onMounted(() => {
 .tx-icon {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.2rem;
-  font-weight: bold;
   flex-shrink: 0;
 }
 
-.tx-icon.income {
-  background: rgba(34, 197, 94, 0.2);
-  color: var(--success);
-}
-
-.tx-icon.expense {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--danger);
-}
+.icon-emoji { font-size: 1.3rem; }
 
 .tx-info {
   flex: 1;

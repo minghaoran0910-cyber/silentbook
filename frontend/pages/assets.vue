@@ -82,12 +82,15 @@
       <div v-if="assets.length === 0" class="empty">暂无资产，点击右上角添加</div>
       <div v-else class="asset-list">
         <div v-for="asset in assets" :key="asset.id" class="asset-card">
+          <div class="asset-icon" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
+            <span class="icon-emoji">{{ getAssetIcon(asset.asset_type).icon }}</span>
+          </div>
           <div class="asset-info">
             <div class="asset-name">{{ asset.name }}</div>
             <div class="asset-meta">
-              <span class="tag">{{ typeLabels[asset.asset_type] || asset.asset_type }}</span>
+              <span class="tag">{{ getAssetIcon(asset.asset_type).label }}</span>
               <span v-if="asset.account" class="tag">{{ asset.account }}</span>
-              <span class="tag" :class="`tag-${asset.liquidity}`">流动性: {{ liquidityLabels[asset.liquidity] || asset.liquidity }}</span>
+              <span class="tag" :class="`tag-${asset.liquidity}`">{{ liquidityLabels[asset.liquidity] || asset.liquidity }}</span>
             </div>
           </div>
           <div class="asset-value">
@@ -156,10 +159,13 @@
       <div v-if="liabilities.length === 0" class="empty">暂无负债</div>
       <div v-else class="liability-list">
         <div v-for="liab in liabilities" :key="liab.id" class="liability-card">
+          <div class="asset-icon" :style="{ background: getLiabilityIcon(liab.liability_type).color + '20' }">
+            <span class="icon-emoji">{{ getLiabilityIcon(liab.liability_type).icon }}</span>
+          </div>
           <div class="asset-info">
             <div class="asset-name">{{ liab.name }}</div>
             <div class="asset-meta">
-              <span class="tag">{{ liabilityTypeLabels[liab.liability_type] || liab.liability_type }}</span>
+              <span class="tag">{{ getLiabilityIcon(liab.liability_type).label }}</span>
               <span v-if="liab.interest_rate > 0" class="tag">利率: {{ liab.interest_rate }}%</span>
               <span v-if="liab.due_date" class="tag">到期: {{ liab.due_date }}</span>
             </div>
@@ -180,6 +186,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, deleteLiability } from '~/utils/api'
+import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const assets = ref([])
 const liabilities = ref([])
@@ -195,12 +202,18 @@ const liabilityForm = ref({
   name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: ''
 })
 
-const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', property: '房产', other: '其他' }
-const liquidityLabels = { high: '高', medium: '中', low: '低' }
-const liabilityTypeLabels = { credit_card: '信用卡', loan: '贷款', mortgage: '房贷', other: '其他' }
-
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
+
+// 按类型分组的资产
+const assetsByType = computed(() => {
+  const groups = {}
+  assets.value.filter(a => a.status === 'active').forEach(a => {
+    if (!groups[a.asset_type]) groups[a.asset_type] = []
+    groups[a.asset_type].push(a)
+  })
+  return groups
+})
 
 const loadData = async () => {
   try {
@@ -282,8 +295,10 @@ onMounted(loadData)
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .empty { color: var(--text-secondary); text-align: center; padding: 2rem; }
 .asset-list, .liability-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.asset-card, .liability-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
+.asset-card, .liability-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; justify-content: space-between; }
 .asset-card:hover, .liability-card:hover { border-color: var(--accent); }
+.asset-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.icon-emoji { font-size: 1.5rem; }
 .asset-info { flex: 1; }
 .asset-name { color: var(--text-primary); font-weight: 600; }
 .asset-meta { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
