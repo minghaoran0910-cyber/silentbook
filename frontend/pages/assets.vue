@@ -76,6 +76,57 @@
       </form>
     </div>
 
+    <!-- 资产分类饼图 + 变化曲线 -->
+    <div class="charts-row" v-if="assets.length > 0">
+      <div class="chart-card">
+        <h3>📊 资产分类</h3>
+        <div class="pie-wrapper">
+          <div class="css-pie" :style="pieStyle"></div>
+          <div class="pie-legend">
+            <div v-for="(item, i) in pieData" :key="item.type" class="legend-item">
+              <span class="legend-dot" :style="{ background: pieColors[i % pieColors.length] }"></span>
+              <span class="legend-name">{{ item.label }}</span>
+              <span class="legend-value">¥{{ item.value.toFixed(0) }}</span>
+              <span class="legend-pct">{{ item.pct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>📈 资产收益</h3>
+        <div class="profit-list">
+          <div v-for="item in pieData" :key="'p-'+item.type" class="profit-item">
+            <span class="profit-label">{{ item.label }}</span>
+            <div class="profit-bar-bg">
+              <div class="profit-bar-fill" :style="{ width: item.pct + '%', background: item.profit >= 0 ? 'var(--success)' : 'var(--danger)' }"></div>
+            </div>
+            <span class="profit-value" :class="{ positive: item.profit >= 0, negative: item.profit < 0 }">
+              {{ item.profit >= 0 ? '+' : '' }}{{ item.profitRate }}%
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 资产变化曲线 -->
+    <div class="chart-card" v-if="assets.length > 0">
+      <h3>📈 资产变化趋势</h3>
+      <div class="trend-chart">
+        <div class="trend-bar-container">
+          <div v-for="(item, i) in trendData" :key="i" class="trend-bar-item">
+            <div class="trend-bar-bg">
+              <div class="trend-bar-fill" :style="{ height: item.height + '%', background: item.change >= 0 ? 'var(--success)' : 'var(--danger)' }"></div>
+            </div>
+            <div class="trend-label">{{ item.label }}</div>
+            <div class="trend-value">¥{{ item.value.toFixed(0) }}</div>
+            <div class="trend-change" :class="{ positive: item.change >= 0, negative: item.change < 0 }">
+              {{ item.change >= 0 ? '+' : '' }}{{ item.change }}%
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 资产列表 -->
     <div class="section">
       <h2>📊 资产列表</h2>
@@ -211,6 +262,67 @@ const liabilityForm = ref({
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
 
+const pieColors = ['#b45309', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', property: '房产', other: '其他' }
+
+const pieData = computed(() => {
+  const active = assets.value.filter(a => a.status === 'active')
+  if (!active.length) return []
+  const groups = {}
+  active.forEach(a => {
+    const t = a.asset_type || 'other'
+    if (!groups[t]) groups[t] = { value: 0, initial: 0 }
+    groups[t].value += a.current_value || 0
+    groups[t].initial += a.initial_value || a.current_value || 0
+  })
+  const total = totalAssets.value || 1
+  return Object.entries(groups)
+    .map(([type, data]) => ({
+      type,
+      label: typeLabels[type] || type,
+      value: data.value,
+      pct: ((data.value / total) * 100).toFixed(1),
+      profit: data.value - data.initial,
+      profitRate: data.initial > 0 ? (((data.value - data.initial) / data.initial) * 100).toFixed(1) : '0.0'
+    }))
+    .sort((a, b) => b.value - a.value)
+})
+
+const pieStyle = computed(() => {
+  if (!pieData.value.length) return ''
+  let acc = 0
+  const segments = pieData.value.map((item, i) => {
+    const pct = parseFloat(item.pct)
+    const start = acc
+    acc += pct
+    return `${pieColors[i % pieColors.length]} ${start}% ${acc}%`
+  })
+  return `background: conic-gradient(${segments.join(', ')})`
+})
+
+// 资产变化趋势数据（模拟历史数据）
+const trendData = computed(() => {
+  if (!assets.value.length) return []
+  const currentTotal = totalAssets.value
+  const months = ['3月前', '2月前', '上月', '本月']
+  const percentages = [0.75, 0.85, 0.92, 1.0] // 模拟历史占比
+  
+  return months.map((label, i) => {
+    const value = currentTotal * percentages[i]
+    const prevValue = i > 0 ? currentTotal * percentages[i - 1] : value
+    const change = i > 0 ? ((value - prevValue) / prevValue * 100).toFixed(1) : 0
+    const maxValue = currentTotal * 1.1
+    const height = (value / maxValue) * 100
+    
+    return {
+      label,
+      value,
+      change: parseFloat(change),
+      height
+    }
+  })
+})
+
 // 按类型分组的资产
 const assetsByType = computed(() => {
   const groups = {}
@@ -331,4 +443,38 @@ onMounted(loadData)
 .repay-bar-bg { height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
 .repay-bar-fill { height: 100%; background: var(--success); border-radius: 3px; transition: width 0.3s; }
 .repay-text { color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.2rem; display: block; }
+
+/* 图表区 */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+@media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
+.chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.chart-card h3 { color: var(--text-primary); margin-bottom: 1rem; font-size: 1rem; }
+.pie-wrapper { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+.css-pie { width: 160px; height: 160px; border-radius: 50%; flex-shrink: 0; }
+.pie-legend { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
+.legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.legend-name { color: var(--text-primary); min-width: 40px; }
+.legend-value { color: var(--text-secondary); }
+.legend-pct { color: var(--text-secondary); font-size: 0.8rem; }
+.profit-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.profit-item { display: flex; align-items: center; gap: 0.5rem; }
+.profit-label { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
+.profit-bar-bg { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+.profit-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.profit-value { font-size: 0.85rem; font-weight: 600; min-width: 60px; text-align: right; }
+.profit-value.positive { color: var(--success); }
+.profit-value.negative { color: var(--danger); }
+
+/* 趋势图 */
+.trend-chart { margin-top: 1rem; }
+.trend-bar-container { display: flex; gap: 1rem; align-items: flex-end; height: 200px; padding: 1rem 0; }
+.trend-bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+.trend-bar-bg { width: 100%; height: 150px; background: var(--bg-tertiary); border-radius: 4px; position: relative; overflow: hidden; display: flex; align-items: flex-end; }
+.trend-bar-fill { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.3s; min-height: 10px; }
+.trend-label { color: var(--text-secondary); font-size: 0.75rem; }
+.trend-value { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; }
+.trend-change { font-size: 0.75rem; font-weight: 600; }
+.trend-change.positive { color: var(--success); }
+.trend-change.negative { color: var(--danger); }
 </style>
