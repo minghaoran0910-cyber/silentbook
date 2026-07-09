@@ -50,6 +50,7 @@ class AnalysisResponse(BaseModel):
     consumption: str
     investment: str
     suggestion: str
+    mode: str = "local"
 
 
 class DashboardStats(BaseModel):

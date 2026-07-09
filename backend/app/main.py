@@ -254,6 +254,9 @@ async def analyze(db: Session = Depends(get_db)):
     """调用 Agent 进行分析"""
     # 获取交易数据
     transactions = db.query(Transaction).order_by(Transaction.parsed_at.desc()).limit(100).all()
+    # 获取资产和负债数据
+    assets = db.query(Asset).filter(Asset.status == "active").all()
+    liabilities = db.query(Liability).filter(Liability.status == "active").all()
 
     # 调用 Agent API
     async with httpx.AsyncClient() as client:
@@ -271,9 +274,27 @@ async def analyze(db: Session = Depends(get_db)):
                             "parsed_at": t.parsed_at.isoformat()
                         }
                         for t in transactions
+                    ],
+                    "assets": [
+                        {
+                            "name": a.name,
+                            "asset_type": a.asset_type,
+                            "current_value": a.current_value,
+                            "initial_value": a.initial_value,
+                        }
+                        for a in assets
+                    ],
+                    "liabilities": [
+                        {
+                            "name": l.name,
+                            "liability_type": l.liability_type,
+                            "current_amount": l.current_amount,
+                            "total_amount": l.total_amount,
+                        }
+                        for l in liabilities
                     ]
                 },
-                timeout=30.0
+                timeout=90.0
             )
             result = response.json()
         except Exception as e:
@@ -284,9 +305,10 @@ async def analyze(db: Session = Depends(get_db)):
             }
 
     # 保存分析结果
+    agent_name = result.get("mode", "default")
     for analysis_type in ["consumption", "investment", "suggestion"]:
         analysis = AnalysisResult(
-            agent_name="default",
+            agent_name=agent_name,
             analysis_type=analysis_type,
             content=result.get(analysis_type, "")
         )

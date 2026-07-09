@@ -21,6 +21,7 @@ export interface AnalysisResult {
   consumption: string
   investment: string
   suggestion: string
+  mode?: string
 }
 
 export interface ParseRequest {
