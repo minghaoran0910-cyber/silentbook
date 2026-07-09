@@ -514,6 +514,201 @@ async def get_monthly_report(year: int = None, month: int = None, db: Session = 
     }
 
 
+# ===== 报表 API =====
+
+@app.get("/stats/daily")
+async def get_daily_report(date: str = None, db: Session = Depends(get_db)):
+    """日报：每日消费汇总"""
+    if date:
+        target = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        target = datetime.utcnow()
+    
+    day_start = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= day_start,
+        Transaction.parsed_at < day_end
+    ).all()
+    
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    
+    cats = {}
+    for t in transactions:
+        cat = t.category or "其他"
+        if t.transaction_type == "expense":
+            cats[cat] = cats.get(cat, 0) + t.amount
+    
+    return {
+        "date": day_start.strftime("%Y-%m-%d"),
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "net": total_income - total_expense,
+        "transaction_count": len(transactions),
+        "categories": sorted([{"name": k, "amount": v} for k, v in cats.items()], key=lambda x: -x["amount"]),
+        "transactions": [{"amount": t.amount, "category": t.category, "description": t.description, "type": t.transaction_type} for t in transactions]
+    }
+
+
+@app.get("/stats/weekly")
+async def get_weekly_report(week_offset: int = 0, db: Session = Depends(get_db)):
+    """周报：趋势分析"""
+    now = datetime.utcnow()
+    # 本周一
+    monday = now - timedelta(days=now.weekday())
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = monday - timedelta(weeks=week_offset)
+    week_end = week_start + timedelta(days=7)
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= week_start,
+        Transaction.parsed_at < week_end
+    ).all()
+    
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    
+    # 按天分组
+    daily = []
+    for d in range(7):
+        d_start = week_start + timedelta(days=d)
+        d_end = d_start + timedelta(days=1)
+        d_txs = [t for t in transactions if d_start <= t.parsed_at < d_end]
+        daily.append({
+            "date": d_start.strftime("%Y-%m-%d"),
+            "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][d],
+            "income": sum(t.amount for t in d_txs if t.transaction_type == "income"),
+            "expense": sum(t.amount for t in d_txs if t.transaction_type == "expense"),
+            "count": len(d_txs)
+        })
+    
+    cats = {}
+    for t in transactions:
+        cat = t.category or "其他"
+        if t.transaction_type == "expense":
+            cats[cat] = cats.get(cat, 0) + t.amount
+    
+    return {
+        "week_start": week_start.strftime("%Y-%m-%d"),
+        "week_end": week_end.strftime("%Y-%m-%d"),
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "net": total_income - total_expense,
+        "daily_avg_expense": round(total_expense / 7, 2) if total_expense else 0,
+        "transaction_count": len(transactions),
+        "daily": daily,
+        "categories": sorted([{"name": k, "amount": v} for k, v in cats.items()], key=lambda x: -x["amount"]),
+    }
+
+
+@app.get("/stats/yearly")
+async def get_yearly_report(year: int = None, db: Session = Depends(get_db)):
+    """年报：年度总结"""
+    now = datetime.utcnow()
+    y = year or now.year
+    
+    year_start = datetime(y, 1, 1)
+    year_end = datetime(y + 1, 1, 1)
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= year_start,
+        Transaction.parsed_at < year_end
+    ).all()
+    
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    
+    # 按月分组
+    monthly = []
+    for m in range(1, 13):
+        m_start = datetime(y, m, 1)
+        m_end = datetime(y, m + 1, 1) if m < 12 else datetime(y + 1, 1, 1)
+        m_txs = [t for t in transactions if m_start <= t.parsed_at < m_end]
+        monthly.append({
+            "month": m,
+            "income": sum(t.amount for t in m_txs if t.transaction_type == "income"),
+            "expense": sum(t.amount for t in m_txs if t.transaction_type == "expense"),
+            "count": len(m_txs)
+        })
+    
+    cats = {}
+    for t in transactions:
+        cat = t.category or "其他"
+        if t.transaction_type == "expense":
+            cats[cat] = cats.get(cat, 0) + t.amount
+    
+    return {
+        "year": y,
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "net": total_income - total_expense,
+        "savings_rate": round((total_income - total_expense) / total_income * 100, 1) if total_income > 0 else 0,
+        "monthly_avg_expense": round(total_expense / 12, 2) if total_expense else 0,
+        "transaction_count": len(transactions),
+        "monthly": monthly,
+        "categories": sorted([{"name": k, "amount": v} for k, v in cats.items()], key=lambda x: -x["amount"])[:10],
+    }
+
+
+@app.get("/stats/asset-curve")
+async def get_asset_curve(months: int = 12, db: Session = Depends(get_db)):
+    """资产变化曲线数据"""
+    now = datetime.utcnow()
+    start = now - timedelta(days=months * 30)
+    
+    # 当前总资产
+    current_assets = db.query(func.coalesce(func.sum(Asset.current_value), 0)).scalar() or 0.0
+    current_liabilities = db.query(func.coalesce(func.sum(Liability.current_amount), 0)).scalar() or 0.0
+    current_net = current_assets - current_liabilities
+    
+    # 历史净资产（按月推算）
+    curve = []
+    for i in range(months, -1, -1):
+        m_end = now - timedelta(days=i * 30)
+        m_start = m_end - timedelta(days=30)
+        
+        # 收入支出累计
+        period_income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            Transaction.transaction_type == "income",
+            Transaction.parsed_at < m_end
+        ).scalar() or 0.0
+        
+        period_expense = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            Transaction.transaction_type == "expense",
+            Transaction.parsed_at < m_end
+        ).scalar() or 0.0
+        
+        estimated_net = current_net - (period_income - period_expense) * 0  # 简化：用当前值
+        curve.append({
+            "month": m_end.strftime("%Y-%m"),
+            "estimated_net": round(current_net - (total_expense_so_far(db, m_end) - total_income_so_far(db, m_end)), 2),
+            "cumulative_income": round(float(period_income), 2),
+            "cumulative_expense": round(float(period_expense), 2),
+        })
+    
+    return {
+        "current_net_worth": round(current_net, 2),
+        "current_assets": round(float(current_assets), 2),
+        "current_liabilities": round(float(current_liabilities), 2),
+        "months": months,
+        "curve": curve
+    }
+
+def total_expense_so_far(db, end_date):
+    return float(db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.transaction_type == "expense",
+        Transaction.parsed_at < end_date
+    ).scalar() or 0)
+
+def total_income_so_far(db, end_date):
+    return float(db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.transaction_type == "income",
+        Transaction.parsed_at < end_date
+    ).scalar() or 0)
+
+
 # ===== Agent 分析 =====
 
 @app.post("/analyze", response_model=AnalysisResponse)
