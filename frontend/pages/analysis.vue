@@ -235,3 +235,21 @@ onMounted(async () => {
 .legend-value { color: var(--text-primary); font-size: 0.85rem; font-weight: 500; }
 .legend-pct { color: var(--text-secondary); font-size: 0.8rem; }
 </style>
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -28,7 +28,7 @@ AGENT_MODE = os.getenv("SILENTBOOK_MODE", "auto")
 OPENCLAW_GATEWAY_URL = os.getenv("OPENCLAW_GATEWAY_URL", "http://localhost:18789")
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "aliyun/glm-5.2")
+MODEL_NAME = os.getenv("MODEL_NAME", "qwen3.7-plus")
 
 # OpenClaw agent ID 映射
 AGENT_MAP = {

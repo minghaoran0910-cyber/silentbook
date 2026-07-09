@@ -703,3 +703,18 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 </style>
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

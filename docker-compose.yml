@@ -34,7 +34,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - MODEL_NAME=${MODEL_NAME:-aliyun/glm-5.2}
+      - MODEL_NAME=${MODEL_NAME:-qwen3.7-plus}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - SILENTBOOK_MODE=${SILENTBOOK_MODE:-auto}
       - OPENCLAW_GATEWAY_URL=${OPENCLAW_GATEWAY_URL:-http://host.docker.internal:18789}
