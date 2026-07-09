@@ -125,6 +125,28 @@ export async function fetchTrend(days: number = 30): Promise<TrendData> {
   return request<TrendData>(`/stats/trend?days=${days}`)
 }
 
+export interface MonthlyReport {
+  year: number
+  month: number
+  total_income: number
+  total_expense: number
+  net: number
+  savings_rate: number
+  daily_avg_expense: number
+  transaction_count: number
+  income_categories: { name: string; amount: number }[]
+  expense_categories: { name: string; amount: number }[]
+  weekly: { week: number; income: number; expense: number; count: number }[]
+}
+
+export async function fetchMonthlyReport(year?: number, month?: number): Promise<MonthlyReport> {
+  const params = new URLSearchParams()
+  if (year) params.append('year', String(year))
+  if (month) params.append('month', String(month))
+  const q = params.toString() ? `?${params.toString()}` : ''
+  return request<MonthlyReport>(`/stats/monthly${q}`)
+}
+
 // ===== Analysis =====
 
 export async function runAnalysis(): Promise<AnalysisResult> {

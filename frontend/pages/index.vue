@@ -72,6 +72,53 @@
       </div>
     </div>
 
+    <!-- 月度报表 -->
+    <div class="monthly-section" v-if="monthly">
+      <div class="section-header">
+        <h2>📋 {{ monthly.year }}年{{ monthly.month }}月报表</h2>
+      </div>
+      <div class="monthly-grid">
+        <div class="monthly-card">
+          <div class="monthly-label">总收入</div>
+          <div class="monthly-value income">¥{{ monthly.total_income.toFixed(2) }}</div>
+        </div>
+        <div class="monthly-card">
+          <div class="monthly-label">总支出</div>
+          <div class="monthly-value expense">¥{{ monthly.total_expense.toFixed(2) }}</div>
+        </div>
+        <div class="monthly-card">
+          <div class="monthly-label">净收支</div>
+          <div class="monthly-value" :class="monthly.net >= 0 ? 'income' : 'expense'">¥{{ monthly.net.toFixed(2) }}</div>
+        </div>
+        <div class="monthly-card">
+          <div class="monthly-label">储蓄率</div>
+          <div class="monthly-value">{{ monthly.savings_rate }}%</div>
+        </div>
+        <div class="monthly-card">
+          <div class="monthly-label">日均支出</div>
+          <div class="monthly-value">¥{{ monthly.daily_avg_expense.toFixed(2) }}</div>
+        </div>
+        <div class="monthly-card">
+          <div class="monthly-label">交易笔数</div>
+          <div class="monthly-value">{{ monthly.transaction_count }}</div>
+        </div>
+      </div>
+      <!-- 周对比 -->
+      <div class="weekly-comparison" v-if="monthly.weekly">
+        <div class="weekly-header">📅 周对比</div>
+        <div class="weekly-bars">
+          <div v-for="w in monthly.weekly" :key="w.week" class="weekly-item">
+            <span class="weekly-label">第{{ w.week }}周</span>
+            <div class="weekly-bar-group">
+              <div class="weekly-bar income" :style="{ width: Math.min(w.income / Math.max(...monthly.weekly.map(x => x.income), 1) * 100, 100) + '%' }"></div>
+              <div class="weekly-bar expense" :style="{ width: Math.min(w.expense / Math.max(...monthly.weekly.map(x => x.expense), 1) * 100, 100) + '%' }"></div>
+            </div>
+            <span class="weekly-text">入¥{{ w.income.toFixed(0) }} 出¥{{ w.expense.toFixed(0) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- AI 分析区域 -->
     <div class="ai-section">
       <div class="section-header">
@@ -128,7 +175,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend } from '~/utils/api'
+import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
 
 const stats = ref({
@@ -148,6 +195,7 @@ const analysis = ref({
 
 const analyzing = ref(false)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
+const monthly = ref(null)
 
 const maxExpense = computed(() => Math.max(...trend.value.daily.map(d => d.expense), 1))
 const trendDays = computed(() => trend.value.daily.length)
@@ -166,6 +214,14 @@ const loadTrend = async () => {
     trend.value = await fetchTrend(30)
   } catch (error) {
     console.error('加载趋势失败:', error)
+  }
+}
+
+const loadMonthly = async () => {
+  try {
+    monthly.value = await fetchMonthlyReport()
+  } catch (error) {
+    console.error('加载月报失败:', error)
   }
 }
 
@@ -197,6 +253,7 @@ onMounted(() => {
   loadStats()
   loadAnalysis()
   loadTrend()
+  loadMonthly()
 })
 </script>
 
@@ -413,6 +470,25 @@ onMounted(() => {
 .cat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
 .cat-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
 .cat-percent { color: var(--text-secondary); font-size: 0.8rem; min-width: 50px; text-align: right; }
+
+/* 月报 */
+.monthly-section { margin-bottom: 3rem; }
+.monthly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.monthly-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; text-align: center; }
+.monthly-label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.3rem; }
+.monthly-value { color: var(--text-primary); font-size: 1.4rem; font-weight: 600; }
+.monthly-value.income { color: var(--success); }
+.monthly-value.expense { color: var(--danger); }
+.weekly-comparison { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; }
+.weekly-header { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; }
+.weekly-bars { display: flex; flex-direction: column; gap: 0.5rem; }
+.weekly-item { display: flex; align-items: center; gap: 0.75rem; }
+.weekly-label { color: var(--text-secondary); font-size: 0.85rem; min-width: 50px; }
+.weekly-bar-group { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.weekly-bar { height: 6px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+.weekly-bar.income { background: var(--success); }
+.weekly-bar.expense { background: var(--danger); }
+.weekly-text { color: var(--text-secondary); font-size: 0.8rem; min-width: 120px; text-align: right; }
 
 .feature-card {
   background: var(--bg-secondary);

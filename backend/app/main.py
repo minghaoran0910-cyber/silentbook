@@ -364,6 +364,69 @@ async def get_trend(days: int = 30, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/stats/monthly")
+async def get_monthly_report(year: int = None, month: int = None, db: Session = Depends(get_db)):
+    """月度收支汇总报表"""
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+    
+    start = datetime(y, m, 1)
+    if m == 12:
+        end = datetime(y + 1, 1, 1)
+    else:
+        end = datetime(y, m + 1, 1)
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end
+    ).all()
+    
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    
+    # 分类统计
+    income_cats = {}
+    expense_cats = {}
+    for t in transactions:
+        cat = t.category or "其他"
+        if t.transaction_type == "income":
+            income_cats[cat] = income_cats.get(cat, 0) + t.amount
+        else:
+            expense_cats[cat] = expense_cats.get(cat, 0) + t.amount
+    
+    # 日均
+    days_in_month = (end - start).days
+    daily_avg_expense = total_expense / days_in_month if days_in_month > 0 else 0
+    
+    # 周对比
+    weeks = []
+    for w in range(4):
+        w_start = start + timedelta(days=w * 7)
+        w_end = min(w_start + timedelta(days=7), end)
+        w_txs = [t for t in transactions if w_start <= t.parsed_at < w_end]
+        weeks.append({
+            "week": w + 1,
+            "income": sum(t.amount for t in w_txs if t.transaction_type == "income"),
+            "expense": sum(t.amount for t in w_txs if t.transaction_type == "expense"),
+            "count": len(w_txs)
+        })
+    
+    return {
+        "year": y,
+        "month": m,
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "net": total_income - total_expense,
+        "savings_rate": round((total_income - total_expense) / total_income * 100, 1) if total_income > 0 else 0,
+        "daily_avg_expense": round(daily_avg_expense, 2),
+        "transaction_count": len(transactions),
+        "income_categories": sorted([{"name": k, "amount": v} for k, v in income_cats.items()], key=lambda x: -x["amount"]),
+        "expense_categories": sorted([{"name": k, "amount": v} for k, v in expense_cats.items()], key=lambda x: -x["amount"]),
+        "weekly": weeks
+    }
+
+
 # ===== Agent 分析 =====
 
 @app.post("/analyze", response_model=AnalysisResponse)
