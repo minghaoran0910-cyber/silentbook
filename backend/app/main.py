@@ -20,6 +20,7 @@ import logging
 import time
 import collections
 from .scheduler import create_scheduler
+from .notification_push import pusher
 
 # CORS - 开发环境允许所有，生产环境需要配置
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -274,6 +275,16 @@ async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(db_tx)
             
+            # 实时推送到微信/飞书
+            push_result = await pusher.push_transaction({
+                "amount": db_tx.amount,
+                "category": db_tx.category,
+                "account": db_tx.account,
+                "transaction_type": db_tx.transaction_type,
+                "description": db_tx.description,
+                "parsed_at": db_tx.parsed_at
+            })
+            
             return {
                 "status": "created",
                 "id": db_tx.id,
@@ -281,6 +292,7 @@ async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
                 "category": db_tx.category,
                 "type": db_tx.transaction_type,
                 "confidence": db_tx.confidence,
+                "push_result": push_result,
                 "abnormal_alert": await check_abnormal_and_analyze(db_tx, db)
             }
         except httpx.RequestError:
