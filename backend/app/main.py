@@ -709,6 +709,242 @@ def total_income_so_far(db, end_date):
     ).scalar() or 0)
 
 
+# ===== 数据导入导出 =====
+
+@app.get("/export/csv")
+async def export_csv(db: Session = Depends(get_db)):
+    """导出交易记录为 CSV"""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    
+    transactions = db.query(Transaction).order_by(Transaction.parsed_at.desc()).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["日期", "类型", "金额", "分类", "账户", "描述", "置信度"])
+    for t in transactions:
+        writer.writerow([
+            t.parsed_at.strftime("%Y-%m-%d %H:%M") if t.parsed_at else "",
+            t.transaction_type,
+            t.amount,
+            t.category,
+            t.account,
+            t.description or "",
+            t.confidence
+        ])
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=silentbook_transactions.csv"}
+    )
+
+
+@app.post("/import/csv")
+async def import_csv(file: dict, db: Session = Depends(get_db)):
+    """导入 CSV 交易记录"""
+    import csv
+    import io
+    
+    content = file.get("content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    
+    reader = csv.DictReader(io.StringIO(content))
+    imported = 0
+    skipped = 0
+    for row in reader:
+        try:
+            amount = float(row.get("金额", 0))
+            if amount <= 0:
+                skipped += 1
+                continue
+            
+            tx = Transaction(
+                amount=amount,
+                category=row.get("分类", "其他"),
+                account=row.get("账户", ""),
+                description=row.get("描述", ""),
+                transaction_type=row.get("类型", "expense"),
+                confidence=float(row.get("置信度", 1.0)),
+                parsed_at=datetime.utcnow()
+            )
+            db.add(tx)
+            imported += 1
+        except Exception:
+            skipped += 1
+    
+    db.commit()
+    return {"imported": imported, "skipped": skipped}
+
+
+# ===== 预算管理 =====
+
+class BudgetCreate(BaseModel):
+    category: str
+    monthly_limit: float
+    alert_threshold: float = 0.8
+
+class BudgetResponse(BaseModel):
+    id: int
+    category: str
+    monthly_limit: float
+    alert_threshold: float
+    current_spent: float
+    usage_rate: float
+    class Config:
+        from_attributes = True
+
+# 预算存储在 Setting 表中（JSON 格式）
+@app.get("/budgets", response_model=List[dict])
+async def get_budgets(db: Session = Depends(get_db)):
+    """获取所有预算"""
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if not raw or not raw.value:
+        return []
+    
+    import json
+    budgets = json.loads(raw.value)
+    
+    # 计算当月已花
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    result = []
+    for b in budgets:
+        spent = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            Transaction.category == b["category"],
+            Transaction.transaction_type == "expense",
+            Transaction.parsed_at >= month_start
+        ).scalar() or 0.0
+        
+        usage = float(spent) / b["monthly_limit"] if b["monthly_limit"] > 0 else 0
+        result.append({
+            **b,
+            "current_spent": round(float(spent), 2),
+            "usage_rate": round(usage * 100, 1),
+            "alert": usage >= b.get("alert_threshold", 0.8)
+        })
+    return result
+
+
+@app.post("/budgets")
+async def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
+    """创建/更新预算"""
+    import json
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if raw:
+        budgets = json.loads(raw.value)
+    else:
+        budgets = []
+    
+    # 检查是否已存在该分类的预算
+    existing = next((b for b in budgets if b["category"] == budget.category), None)
+    if existing:
+        existing["monthly_limit"] = budget.monthly_limit
+        existing["alert_threshold"] = budget.alert_threshold
+    else:
+        budgets.append(budget.model_dump())
+    
+    if raw:
+        raw.value = json.dumps(budgets)
+    else:
+        db.add(Setting(key="budgets", value=json.dumps(budgets)))
+    db.commit()
+    return {"status": "ok", "budgets": budgets}
+
+
+@app.delete("/budgets/{category}")
+async def delete_budget(category: str, db: Session = Depends(get_db)):
+    """删除预算"""
+    import json
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if not raw:
+        raise HTTPException(status_code=404, detail="无预算数据")
+    
+    budgets = json.loads(raw.value)
+    budgets = [b for b in budgets if b["category"] != category]
+    raw.value = json.dumps(budgets)
+    db.commit()
+    return {"status": "ok", "remaining": len(budgets)}
+
+
+# ===== 首次使用引导 =====
+
+@app.get("/onboarding/status")
+async def get_onboarding_status(db: Session = Depends(get_db)):
+    """检查是否需要引导"""
+    tx_count = db.query(Transaction).count()
+    asset_count = db.query(Asset).count()
+    
+    return {
+        "needs_onboarding": tx_count == 0 and asset_count == 0,
+        "has_transactions": tx_count > 0,
+        "has_assets": asset_count > 0,
+        "transaction_count": tx_count,
+        "asset_count": asset_count
+    }
+
+
+@app.post("/onboarding/init")
+async def init_first_data(data: dict, db: Session = Depends(get_db)):
+    """首次使用：录入初始资产"""
+    assets = data.get("assets", [])
+    for a in assets:
+        asset = Asset(
+            name=a.get("name", ""),
+            asset_type=a.get("asset_type", "cash"),
+            current_value=a.get("current_value", 0),
+            initial_value=a.get("initial_value", a.get("current_value", 0)),
+            status="active"
+        )
+        db.add(asset)
+    
+    db.commit()
+    return {"status": "ok", "assets_created": len(assets)}
+
+
+# ===== 用户认证（基础 JWT） =====
+
+@app.post("/auth/setup")
+async def setup_auth(data: dict, db: Session = Depends(get_db)):
+    """设置访问密码"""
+    import hashlib
+    password = data.get("password", "")
+    if not password or len(password) < 4:
+        raise HTTPException(status_code=400, detail="密码至少4位")
+    
+    hashed = hashlib.sha256(password.encode()).hexdigest()
+    existing = db.query(Setting).filter(Setting.key == "auth_password").first()
+    if existing:
+        existing.value = hashed
+    else:
+        db.add(Setting(key="auth_password", value=hashed))
+    db.commit()
+    return {"status": "ok"}
+
+
+@app.post("/auth/verify")
+async def verify_auth(data: dict, db: Session = Depends(get_db)):
+    """验证密码，返回 token"""
+    import hashlib
+    import time
+    password = data.get("password", "")
+    hashed = hashlib.sha256(password.encode()).hexdigest()
+    
+    stored = db.query(Setting).filter(Setting.key == "auth_password").first()
+    if not stored:
+        return {"auth_enabled": False}
+    
+    if hashed != stored.value:
+        raise HTTPException(status_code=401, detail="密码错误")
+    
+    token = hashlib.md5(f"{password}{time.time()}".encode()).hexdigest()
+    return {"auth_enabled": True, "token": token}
+
+
 # ===== Agent 分析 =====
 
 @app.post("/analyze", response_model=AnalysisResponse)
