@@ -48,7 +48,7 @@
             <span class="insight-icon">💸</span>
             <span class="insight-title">消费分析</span>
           </div>
-          <div class="insight-content" v-html="marked(analysis.consumption)"></div>
+          <div class="insight-content" v-html="renderedAnalysis.consumption"></div>
         </div>
         
         <div class="insight-card">
@@ -56,7 +56,7 @@
             <span class="insight-icon">📈</span>
             <span class="insight-title">投资分析</span>
           </div>
-          <div class="insight-content" v-html="marked(analysis.investment)"></div>
+          <div class="insight-content" v-html="renderedAnalysis.investment"></div>
         </div>
         
         <div class="insight-card">
@@ -64,7 +64,7 @@
             <span class="insight-icon">💡</span>
             <span class="insight-title">建议</span>
           </div>
-          <div class="insight-content" v-html="marked(analysis.suggestion)"></div>
+          <div class="insight-content" v-html="renderedAnalysis.suggestion"></div>
         </div>
       </div>
     </div>
@@ -269,6 +269,12 @@ const analysis = ref({
   investment: '点击"立即分析"获取 AI 建议',
   suggestion: '点击"立即分析"获取 AI 建议'
 })
+
+const renderedAnalysis = computed(() => ({
+  consumption: marked(analysis.value.consumption || ''),
+  investment: marked(analysis.value.investment || ''),
+  suggestion: marked(analysis.value.suggestion || '')
+}))
 
 const analyzing = ref(false)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
