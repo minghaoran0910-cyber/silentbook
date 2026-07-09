@@ -956,6 +956,13 @@ async def setup_auth(data: dict, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+@app.get("/auth/status")
+async def get_auth_status(db: Session = Depends(get_db)):
+    """获取认证状态"""
+    stored = db.query(Setting).filter(Setting.key == "auth_password").first()
+    return {"auth_enabled": bool(stored)}
+
+
 @app.post("/auth/verify")
 async def verify_auth(data: dict, db: Session = Depends(get_db)):
     """验证密码，返回 token"""
