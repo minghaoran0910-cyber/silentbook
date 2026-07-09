@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -16,12 +17,42 @@ from .schemas import (
 import httpx
 import os
 import logging
+import time
+import collections
 from .scheduler import create_scheduler
 
 # CORS - 开发环境允许所有，生产环境需要配置
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 AGENT_API_URL = os.getenv("AGENT_API_URL", "http://localhost:5000")
 PARSER_API_URL = os.getenv("PARSER_API_URL", "http://localhost:6000")
+
+# ===== API 限流 =====
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
+_request_log = collections.defaultdict(collections.deque)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    
+    # 跳过健康检查
+    if request.url.path in ["/health", "/"]:
+        return await call_next(request)
+    
+    # 清理过期记录
+    log = _request_log[client_ip]
+    while log and log[0] < now - RATE_LIMIT_WINDOW:
+        log.popleft()
+    
+    if len(log) >= RATE_LIMIT_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"请求过于频繁，每{RATE_LIMIT_WINDOW}秒限{RATE_LIMIT_REQUESTS}次"}
+        )
+    
+    log.append(now)
+    return await call_next(request)
 
 
 logger = logging.getLogger("silentbook")
