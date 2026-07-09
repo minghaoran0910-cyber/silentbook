@@ -412,8 +412,8 @@ onMounted(() => {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
   margin-bottom: 3rem;
 }
 
@@ -706,7 +706,7 @@ onMounted(() => {
 
 /* 响应式适配 */
 @media (max-width: 768px) {
-  .stats-grid {
+  .stats {
     grid-template-columns: repeat(2, 1fr);
   }
   .charts-row {
@@ -714,7 +714,7 @@ onMounted(() => {
   }
 }
 @media (max-width: 480px) {
-  .stats-grid {
+  .stats {
     grid-template-columns: 1fr;
   }
 }
