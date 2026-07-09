@@ -11,10 +11,12 @@
         <button
           :class="{ active: mode === 'login' }"
           @click="switchMode('login')"
+          type="button"
         >登录</button>
         <button
           :class="{ active: mode === 'register' }"
           @click="switchMode('register')"
+          type="button"
         >注册</button>
       </div>
 
@@ -26,6 +28,7 @@
             v-model="regForm.email"
             type="email"
             placeholder="user@example.com"
+            :disabled="loading"
           >
           <span class="field-hint">或填手机号，至少填一个</span>
         </div>
@@ -35,6 +38,7 @@
             v-model="regForm.phone"
             type="tel"
             placeholder="13800138000"
+            :disabled="loading"
           >
         </div>
         <div class="form-group">
@@ -44,29 +48,53 @@
             type="text"
             placeholder="怎么称呼你"
             maxlength="50"
+            :disabled="loading"
           >
         </div>
         <div class="form-group">
           <label>密码</label>
-          <input
-            v-model="regForm.password"
-            type="password"
-            required
-            minlength="6"
-            placeholder="至少6位"
-          >
+          <div class="password-wrapper">
+            <input
+              v-model="regForm.password"
+              :type="showRegPassword ? 'text' : 'password'"
+              required
+              minlength="6"
+              placeholder="至少6位"
+              :disabled="loading"
+              @input="clearError"
+            >
+            <button
+              type="button"
+              class="toggle-pwd"
+              @click="showRegPassword = !showRegPassword"
+              tabindex="-1"
+            >{{ showRegPassword ? '🙈' : '👁️' }}</button>
+          </div>
+          <span v-if="regForm.password && regForm.password.length < 6" class="field-hint field-warn">密码至少6位</span>
         </div>
         <div class="form-group">
           <label>确认密码</label>
-          <input
-            v-model="regForm.confirmPassword"
-            type="password"
-            required
-            placeholder="再次输入"
-          >
+          <div class="password-wrapper">
+            <input
+              v-model="regForm.confirmPassword"
+              :type="showRegConfirm ? 'text' : 'password'"
+              required
+              placeholder="再次输入"
+              :disabled="loading"
+              @input="clearError"
+            >
+            <button
+              type="button"
+              class="toggle-pwd"
+              @click="showRegConfirm = !showRegConfirm"
+              tabindex="-1"
+            >{{ showRegConfirm ? '🙈' : '👁️' }}</button>
+          </div>
+          <span v-if="regForm.confirmPassword && regForm.password !== regForm.confirmPassword" class="field-hint field-warn">两次密码不一致</span>
         </div>
-        <button type="submit" class="btn-primary" :disabled="!canRegister">
-          注册
+        <button type="submit" class="btn-primary" :disabled="!canRegister || loading">
+          <span v-if="loading" class="spinner" />
+          {{ loading ? '注册中...' : '注册' }}
         </button>
       </form>
 
@@ -79,36 +107,59 @@
             type="text"
             required
             placeholder="user@example.com / 13800138000"
+            :disabled="loading"
+            @input="clearError"
           >
         </div>
         <div class="form-group">
           <label>密码</label>
-          <input
-            v-model="loginForm.password"
-            type="password"
-            required
-            placeholder="输入密码"
-          >
+          <div class="password-wrapper">
+            <input
+              v-model="loginForm.password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              placeholder="输入密码"
+              :disabled="loading"
+              @input="clearError"
+              @keydown.enter="handleLogin"
+            >
+            <button
+              type="button"
+              class="toggle-pwd"
+              @click="showPassword = !showPassword"
+              tabindex="-1"
+            >{{ showPassword ? '🙈' : '👁️' }}</button>
+          </div>
         </div>
-        <button type="submit" class="btn-primary" :disabled="!canLogin">
-          登录
+        <button type="submit" class="btn-primary" :disabled="!canLogin || loading">
+          <span v-if="loading" class="spinner" />
+          {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
 
-      <div v-if="error" class="error-message">{{ error }}</div>
+      <div v-if="error" class="error-message">
+        <span>⚠️ {{ error }}</span>
+      </div>
       <div v-if="success" class="success-message">{{ success }}</div>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
 
-const router = useRouter()
-const mode = ref('login')
+definePageMeta({ layout: 'blank' })
+
+const { isAuthenticated, setAuth } = useAuth()
+const mode = ref<'login' | 'register'>('login')
+const loading = ref(false)
 const error = ref('')
 const success = ref('')
+
+// Password visibility toggles
+const showPassword = ref(false)
+const showRegPassword = ref(false)
+const showRegConfirm = ref(false)
 
 const regForm = reactive({
   email: '',
@@ -125,17 +176,22 @@ const loginForm = reactive({
 
 const canRegister = computed(() => {
   const hasContact = regForm.email || regForm.phone
-  return hasContact && regForm.password.length >= 6 && regForm.password === regForm.confirmPassword
+  const passwordsMatch = regForm.password === regForm.confirmPassword
+  return hasContact && regForm.password.length >= 6 && passwordsMatch
 })
 
 const canLogin = computed(() => {
-  return loginForm.account && loginForm.password
+  return loginForm.account.length > 0 && loginForm.password.length > 0
 })
 
-const switchMode = (m) => {
+const switchMode = (m: 'login' | 'register') => {
   mode.value = m
   error.value = ''
   success.value = ''
+}
+
+const clearError = () => {
+  if (error.value) error.value = ''
 }
 
 const apiBase = () => {
@@ -146,12 +202,12 @@ const apiBase = () => {
 const handleRegister = async () => {
   error.value = ''
   success.value = ''
-
   if (regForm.password !== regForm.confirmPassword) {
     error.value = '两次密码不一致'
     return
   }
 
+  loading.value = true
   try {
     const resp = await fetch(`${apiBase()}/auth/register`, {
       method: 'POST',
@@ -166,16 +222,17 @@ const handleRegister = async () => {
 
     const data = await resp.json()
 
-    if (resp.ok) {
-      localStorage.setItem('auth_token', data.access_token)
-      localStorage.setItem('user_info', JSON.stringify(data.user))
+    if (resp.ok && data.access_token) {
+      setAuth(data.access_token, data.user)
       success.value = '注册成功！正在跳转...'
-      setTimeout(() => router.push('/'), 800)
+      setTimeout(() => navigateTo('/'), 800)
     } else {
       error.value = data.detail || '注册失败'
     }
-  } catch (e) {
-    error.value = '注册失败: ' + e.message
+  } catch (e: any) {
+    error.value = '注册失败: ' + (e.message || '网络错误')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -183,6 +240,7 @@ const handleLogin = async () => {
   error.value = ''
   success.value = ''
 
+  loading.value = true
   try {
     const resp = await fetch(`${apiBase()}/auth/login`, {
       method: 'POST',
@@ -196,17 +254,25 @@ const handleLogin = async () => {
     const data = await resp.json()
 
     if (resp.ok && data.access_token) {
-      localStorage.setItem('auth_token', data.access_token)
-      localStorage.setItem('user_info', JSON.stringify(data.user))
+      setAuth(data.access_token, data.user)
       success.value = '登录成功！'
-      setTimeout(() => router.push('/'), 500)
+      setTimeout(() => navigateTo('/'), 500)
     } else {
       error.value = data.detail || '登录失败'
     }
-  } catch (e) {
-    error.value = '登录失败: ' + e.message
+  } catch (e: any) {
+    error.value = '登录失败: ' + (e.message || '网络错误')
+  } finally {
+    loading.value = false
   }
 }
+
+// Auto-redirect if already logged in
+onMounted(() => {
+  if (isAuthenticated()) {
+    navigateTo('/')
+  }
+})
 </script>
 
 <style scoped>
@@ -290,6 +356,7 @@ const handleLogin = async () => {
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 1rem;
+  transition: border-color 0.2s, opacity 0.2s;
 }
 
 .form-group input:focus {
@@ -297,11 +364,45 @@ const handleLogin = async () => {
   border-color: var(--accent);
 }
 
+.form-group input:disabled {
+  opacity: 0.6;
+}
+
 .field-hint {
   display: block;
   font-size: 0.75rem;
   color: var(--text-tertiary, #888);
   margin-top: 0.25rem;
+}
+
+.field-warn {
+  color: #f59e0b;
+}
+
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  padding-right: 2.5rem;
+}
+
+.toggle-pwd {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.25rem;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.toggle-pwd:hover {
+  opacity: 1;
 }
 
 .btn-primary {
@@ -314,7 +415,11 @@ const handleLogin = async () => {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -326,12 +431,25 @@ const handleLogin = async () => {
   cursor: not-allowed;
 }
 
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .error-message {
   margin-top: 1rem;
   padding: 0.75rem;
   background: rgba(239, 68, 68, 0.1);
-  color: var(--danger);
-  border: 1px solid var(--danger);
+  color: var(--danger, #ef4444);
+  border: 1px solid var(--danger, #ef4444);
   border-radius: 8px;
   font-size: 0.9rem;
 }
@@ -340,9 +458,25 @@ const handleLogin = async () => {
   margin-top: 1rem;
   padding: 0.75rem;
   background: rgba(34, 197, 94, 0.1);
-  color: var(--success);
-  border: 1px solid var(--success);
+  color: var(--success, #22c55e);
+  border: 1px solid var(--success, #22c55e);
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 2rem 1.5rem;
+    border-radius: 12px;
+  }
+
+  .auth-header h1 {
+    font-size: 1.6rem;
+  }
+
+  .form-group input {
+    font-size: 0.95rem;
+    padding: 0.65rem;
+  }
 }
 </style>
