@@ -1,0 +1,23 @@
+version: '3.8'
+
+# 服务器模式：前端 + 后端
+# 用于混合部署，数据库和 Agent 在本地
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NUXT_PUBLIC_API_BASE=${API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - AGENT_API_URL=${AGENT_API_URL}
+      - PARSER_API_URL=${PARSER_API_URL:-http://notification-parser:6000}

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NUXT_PUBLIC_API_BASE=http://backend:8000
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://silentbook:silentbook@db:5432/silentbook
+      - AGENT_API_URL=http://agent:5000
+      - PARSER_API_URL=http://notification-parser:6000
+    depends_on:
+      - db
+      - agent
+      - notification-parser
+
+  notification-parser:
+    build: ./notification-parser
+    ports:
+      - "6000:6000"
+
+  agent:
+    build: ./agent
+    ports:
+      - "5000:5000"
+    environment:
+      - MODEL_NAME=${MODEL_NAME:-aliyun/glm-5.2}
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=silentbook
+      - POSTGRES_PASSWORD=silentbook
+      - POSTGRES_DB=silentbook
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
