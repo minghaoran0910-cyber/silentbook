@@ -41,15 +41,17 @@ class Asset(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 class Liability(Base):
-    """负债：信用卡、贷款、房贷等"""
+    """负债：房贷/车贷/信用卡/花呗/白条等"""
     __tablename__ = "liabilities"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    liability_type = Column(String(30), nullable=False)  # credit_card/loan/mortgage/other
+    liability_type = Column(String(30), nullable=False)  # mortgage/car_loan/credit_card/credit_card_installment/huabei/baitiao/loan/other
     total_amount = Column(Float, nullable=False, default=0)  # 总额
     current_amount = Column(Float, nullable=False, default=0)  # 当前待还
     interest_rate = Column(Float, default=0)  # 年利率
+    monthly_payment = Column(Float, default=0)  # 月还款额
+    remaining_periods = Column(Integer, default=0)  # 剩余期数（月）
     due_date = Column(Date)  # 到期日
     status = Column(String(20), default="active")  # active/paid/overdue
     notes = Column(Text)

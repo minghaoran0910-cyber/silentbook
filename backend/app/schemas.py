@@ -100,10 +100,12 @@ class AssetResponse(AssetBase):
 
 class LiabilityBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    liability_type: str = Field(..., pattern="^(credit_card|loan|mortgage|other)$")
+    liability_type: str = Field(..., pattern="^(mortgage|car_loan|credit_card|credit_card_installment|huabei|baitiao|loan|other)$")
     total_amount: float = Field(0, ge=0)
     current_amount: float = Field(0, ge=0)
     interest_rate: float = Field(0, ge=0)
+    monthly_payment: float = Field(0, ge=0)  # 月还款额
+    remaining_periods: int = Field(0, ge=0)  # 剩余期数（月）
     due_date: Optional[str] = None
     status: str = Field("active", pattern="^(active|paid|overdue)$")
     notes: Optional[str] = Field(None, max_length=500)
@@ -117,6 +119,8 @@ class LiabilityUpdate(BaseModel):
     total_amount: Optional[float] = Field(None, ge=0)
     current_amount: Optional[float] = Field(None, ge=0)
     interest_rate: Optional[float] = Field(None, ge=0)
+    monthly_payment: Optional[float] = Field(None, ge=0)
+    remaining_periods: Optional[int] = Field(None, ge=0)
     due_date: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)

@@ -1806,6 +1806,156 @@ async def delete_liability(liability_id: int, db: Session = Depends(get_db)):
     return {"message": "已删除"}
 
 
+# ===== 负债清单增强（V2-011）=====
+
+# 负债类型中文标签
+LIABILITY_TYPE_LABELS = {
+    "mortgage": "房贷",
+    "car_loan": "车贷",
+    "credit_card": "信用卡",
+    "credit_card_installment": "信用卡分期",
+    "huabei": "花呗",
+    "baitiao": "白条",
+    "loan": "其他贷款",
+    "other": "其他",
+}
+
+# 负债类型默认优先级排序
+LIABILITY_TYPE_ORDER = [
+    "mortgage", "car_loan", "credit_card", "credit_card_installment",
+    "huabei", "baitiao", "loan", "other"
+]
+
+
+@app.get("/liabilities/summary")
+async def get_liabilities_summary(db: Session = Depends(get_db)):
+    """负债清单汇总：按类型分组统计 + 总体概览"""
+    liabilities = db.query(Liability).all()
+    
+    # 按类型分组
+    by_type = {}
+    for lt in LIABILITY_TYPE_ORDER:
+        by_type[lt] = {
+            "label": LIABILITY_TYPE_LABELS[lt],
+            "items": [],
+            "total_amount": 0,
+            "current_amount": 0,
+            "monthly_payment": 0,
+            "count": 0,
+            "active_count": 0,
+        }
+    
+    total_current = 0
+    total_monthly_payment = 0
+    total_interest_estimate = 0
+    status_counts = {"active": 0, "paid": 0, "overdue": 0}
+    
+    for liab in liabilities:
+        lt = liab.liability_type if liab.liability_type in by_type else "other"
+        entry = by_type[lt]
+        entry["items"].append({
+            "id": liab.id,
+            "name": liab.name,
+            "total_amount": liab.total_amount,
+            "current_amount": liab.current_amount,
+            "interest_rate": liab.interest_rate,
+            "monthly_payment": liab.monthly_payment,
+            "remaining_periods": liab.remaining_periods,
+            "due_date": str(liab.due_date) if liab.due_date else None,
+            "status": liab.status,
+            "notes": liab.notes,
+        })
+        entry["total_amount"] += liab.total_amount
+        entry["current_amount"] += liab.current_amount
+        entry["monthly_payment"] += liab.monthly_payment or 0
+        entry["count"] += 1
+        if liab.status == "active":
+            entry["active_count"] += 1
+        
+        total_current += liab.current_amount
+        total_monthly_payment += liab.monthly_payment or 0
+        # 估算总利息 = 月供 × 剩余期数 - 当前待还
+        if liab.monthly_payment and liab.remaining_periods:
+            total_interest_estimate += liab.monthly_payment * liab.remaining_periods - liab.current_amount
+        
+        if liab.status in status_counts:
+            status_counts[liab.status] += 1
+    
+    # 清除空类型
+    by_type = {k: v for k, v in by_type.items() if v["count"] > 0}
+    
+    return {
+        "total_current_amount": round(total_current, 2),
+        "total_monthly_payment": round(total_monthly_payment, 2),
+        "total_interest_estimate": round(max(total_interest_estimate, 0), 2),
+        "status_counts": status_counts,
+        "total_count": len(liabilities),
+        "by_type": by_type,
+    }
+
+
+@app.get("/liabilities/debt-ratio")
+async def get_debt_ratio(db: Session = Depends(get_db)):
+    """负债率监控：月还款额 / 月收入，超过 40% 预警"""
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # 本月收入
+    monthly_income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.transaction_type == "income",
+        Transaction.parsed_at >= month_start
+    ).scalar() or 0.0
+    
+    # 活跃负债的月供总额
+    active_liabilities = db.query(Liability).filter(Liability.status == "active").all()
+    total_monthly_payment = sum(l.monthly_payment or 0 for l in active_liabilities)
+    total_current_amount = sum(l.current_amount for l in active_liabilities)
+    
+    # 计算负债率
+    debt_ratio = (total_monthly_payment / monthly_income * 100) if monthly_income > 0 else 0
+    
+    # 预警级别
+    DEBT_RATIO_THRESHOLD = 40  # 40% 预警线
+    if monthly_income == 0:
+        alert_level = "unknown"
+        alert_message = "本月无收入数据，无法计算负债率"
+    elif debt_ratio < 30:
+        alert_level = "safe"
+        alert_message = "负债率健康"
+    elif debt_ratio < DEBT_RATIO_THRESHOLD:
+        alert_level = "notice"
+        alert_message = "负债率偏高，建议关注"
+    elif debt_ratio < 60:
+        alert_level = "warning"
+        alert_message = "负债率超过 40% 预警线，建议优化债务结构"
+    else:
+        alert_level = "critical"
+        alert_message = "负债率严重过高，存在财务风险"
+    
+    # 按类型分组的月供
+    by_type = {}
+    for l in active_liabilities:
+        lt = LIABILITY_TYPE_LABELS.get(l.liability_type, l.liability_type)
+        if lt not in by_type:
+            by_type[lt] = {"monthly_payment": 0, "current_amount": 0, "count": 0}
+        by_type[lt]["monthly_payment"] += l.monthly_payment or 0
+        by_type[lt]["current_amount"] += l.current_amount
+        by_type[lt]["count"] += 1
+    
+    return {
+        "monthly_income": round(monthly_income, 2),
+        "total_monthly_payment": round(total_monthly_payment, 2),
+        "total_current_debt": round(total_current_amount, 2),
+        "debt_ratio": round(debt_ratio, 1),
+        "threshold": DEBT_RATIO_THRESHOLD,
+        "alert_level": alert_level,
+        "alert_message": alert_message,
+        "is_over_threshold": debt_ratio >= DEBT_RATIO_THRESHOLD,
+        "by_type": {k: {**v, "monthly_payment": round(v["monthly_payment"], 2), "current_amount": round(v["current_amount"], 2)} for k, v in by_type.items()},
+        "active_liability_count": len(active_liabilities),
+    }
+
+
 # ===== 设置 =====
 
 @app.get("/settings")
@@ -1878,3 +2028,276 @@ async def update_agent_config(agent_id: int, data: dict, db: Session = Depends(g
         agent.system_prompt = data["system_prompt"]
     db.commit()
     return {"status": "ok"}
+
+
+# ===== 现金流日历（V2-009）=====
+
+@app.get("/cashflow/calendar")
+async def get_cashflow_calendar(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    account: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """现金流日历：按日展示某月的收入/支出/净现金流
+    
+    参数：
+    - year: 年份（默认当前年）
+    - month: 月份（默认当前月）
+    - account: 可选，按账户筛选
+    
+    返回：
+    - days: 每天的现金流数据（含无交易的天，金额为0）
+    - summary: 月度汇总（总收入/总支出/净额/日均支出/交易笔数）
+    """
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+    
+    # 月初/月末
+    month_start = datetime(y, m, 1)
+    if m == 12:
+        month_end = datetime(y + 1, 1, 1)
+    else:
+        month_end = datetime(y, m + 1, 1)
+    
+    days_in_month = (month_end - month_start).days
+    
+    # 查询该月所有交易
+    query = db.query(Transaction).filter(
+        Transaction.parsed_at >= month_start,
+        Transaction.parsed_at < month_end
+    )
+    if account:
+        query = query.filter(Transaction.account == account)
+    transactions = query.all()
+    
+    # 按日聚合
+    daily_map = {}
+    for tx in transactions:
+        day_key = tx.parsed_at.strftime("%Y-%m-%d")
+        if day_key not in daily_map:
+            daily_map[day_key] = {"income": 0.0, "expense": 0.0, "count": 0}
+        if tx.transaction_type == "income":
+            daily_map[day_key]["income"] += tx.amount
+        else:
+            daily_map[day_key]["expense"] += tx.amount
+        daily_map[day_key]["count"] += 1
+    
+    # 构建完整日历（含无交易日）
+    days = []
+    total_income = 0.0
+    total_expense = 0.0
+    total_count = 0
+    for d in range(days_in_month):
+        date = month_start + timedelta(days=d)
+        date_key = date.strftime("%Y-%m-%d")
+        day_data = daily_map.get(date_key, {"income": 0.0, "expense": 0.0, "count": 0})
+        income = round(day_data["income"], 2)
+        expense = round(day_data["expense"], 2)
+        net = round(income - expense, 2)
+        days.append({
+            "date": date_key,
+            "day": d + 1,
+            "weekday": date.weekday(),  # 0=周一, 6=周日
+            "income": income,
+            "expense": expense,
+            "net": net,
+            "transaction_count": day_data["count"],
+        })
+        total_income += day_data["income"]
+        total_expense += day_data["expense"]
+        total_count += day_data["count"]
+    
+    return {
+        "year": y,
+        "month": m,
+        "days_in_month": days_in_month,
+        "account": account,
+        "days": days,
+        "summary": {
+            "total_income": round(total_income, 2),
+            "total_expense": round(total_expense, 2),
+            "total_net": round(total_income - total_expense, 2),
+            "avg_daily_expense": round(total_expense / days_in_month, 2) if days_in_month > 0 else 0,
+            "transaction_count": total_count,
+            "active_days": len([d for d in days if d["transaction_count"] > 0]),
+        },
+    }
+
+
+# ===== 现金流预测（V2-010）=====
+
+@app.get("/cashflow/forecast")
+async def get_cashflow_forecast(
+    days: int = 30,
+    history_days: int = 90,
+    account: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """现金流预测：基于历史数据预测未来 N 天收支
+    
+    算法：
+    1. 从历史数据中检测固定收支（同分类 + 相似金额 + 跨月出现）
+    2. 非固定部分按日均摊到每天
+    3. 固定收支放在典型出现日，非固定按日均叠加
+    
+    参数：
+    - days: 预测天数（默认30）
+    - history_days: 回溯天数（默认90）
+    - account: 可选，按账户筛选
+    """
+    now = datetime.utcnow()
+    history_start = now - timedelta(days=history_days)
+    
+    query = db.query(Transaction).filter(Transaction.parsed_at >= history_start)
+    if account:
+        query = query.filter(Transaction.account == account)
+    transactions = query.all()
+    
+    if not transactions:
+        return {
+            "forecast_days": days,
+            "history_days": history_days,
+            "account": account,
+            "daily_forecast": [],
+            "summary": {
+                "predicted_total_income": 0,
+                "predicted_total_expense": 0,
+                "predicted_net": 0,
+                "avg_daily_income": 0,
+                "avg_daily_expense": 0,
+                "recurring_count": 0,
+                "confidence": "low",
+                "history_transaction_count": 0,
+            },
+            "recurring_items": [],
+        }
+    
+    # 检测固定收支：同分类 + 相似金额(5%容差) + 跨月出现
+    recurring_items = []
+    non_recurring_txs = []
+    
+    by_category = {}
+    for tx in transactions:
+        cat = tx.category or "其他"
+        by_category.setdefault(cat, []).append(tx)
+    
+    for cat, cat_txs in by_category.items():
+        # 按相似金额分组
+        amount_clusters = []
+        for tx in cat_txs:
+            matched = False
+            for cluster in amount_clusters:
+                if cluster and abs(tx.amount - cluster[0].amount) / max(cluster[0].amount, 0.01) < 0.05:
+                    cluster.append(tx)
+                    matched = True
+                    break
+            if not matched:
+                amount_clusters.append([tx])
+        
+        for cluster in amount_clusters:
+            if len(cluster) < 2:
+                non_recurring_txs.extend(cluster)
+                continue
+            
+            # 检查是否跨月
+            months = set()
+            for tx in cluster:
+                if tx.parsed_at:
+                    months.add((tx.parsed_at.year, tx.parsed_at.month))
+            
+            if len(months) >= 2:
+                doms = [tx.parsed_at.day for tx in cluster if tx.parsed_at]
+                avg_dom_val = sum(doms) / len(doms)
+                max_dev = max(abs(d - avg_dom_val) for d in doms)
+                # 日方差>3天 → 不是月度固定收支
+                if max_dev > 3:
+                    non_recurring_txs.extend(cluster)
+                    continue
+                avg_amount = sum(tx.amount for tx in cluster) / len(cluster)
+                avg_dom = round(avg_dom_val)
+                recurring_items.append({
+                    "category": cat,
+                    "amount": round(avg_amount, 2),
+                    "day_of_month": min(avg_dom, 28),
+                    "transaction_type": cluster[0].transaction_type,
+                    "occurrence_count": len(cluster),
+                    "months_spanned": len(months),
+                })
+            else:
+                non_recurring_txs.extend(cluster)
+    
+    # 非固定部分按日均计算
+    actual_history_days = max((now - history_start).days, 1)
+    nr_income = sum(tx.amount for tx in non_recurring_txs if tx.transaction_type == "income")
+    nr_expense = sum(tx.amount for tx in non_recurring_txs if tx.transaction_type == "expense")
+    daily_avg_income = nr_income / actual_history_days
+    daily_avg_expense = nr_expense / actual_history_days
+    
+    # 构建预测：从明天起 N 天
+    daily_forecast = []
+    total_pred_income = 0.0
+    total_pred_expense = 0.0
+    
+    for d in range(days):
+        forecast_date = now + timedelta(days=d + 1)
+        date_key = forecast_date.strftime("%Y-%m-%d")
+        dom = forecast_date.day
+        
+        pred_income = daily_avg_income
+        pred_expense = daily_avg_expense
+        rec_income = 0.0
+        rec_expense = 0.0
+        
+        for item in recurring_items:
+            if item["day_of_month"] == dom:
+                if item["transaction_type"] == "income":
+                    pred_income += item["amount"]
+                    rec_income += item["amount"]
+                else:
+                    pred_expense += item["amount"]
+                    rec_expense += item["amount"]
+        
+        pred_income = round(pred_income, 2)
+        pred_expense = round(pred_expense, 2)
+        
+        daily_forecast.append({
+            "date": date_key,
+            "day": dom,
+            "weekday": forecast_date.weekday(),
+            "predicted_income": pred_income,
+            "predicted_expense": pred_expense,
+            "predicted_net": round(pred_income - pred_expense, 2),
+            "recurring_income": round(rec_income, 2),
+            "recurring_expense": round(rec_expense, 2),
+        })
+        total_pred_income += pred_income
+        total_pred_expense += pred_expense
+    
+    # 置信度：基于数据量
+    tx_count = len(transactions)
+    if tx_count >= 50 and history_days >= 60:
+        confidence = "high"
+    elif tx_count >= 20 and history_days >= 30:
+        confidence = "medium"
+    else:
+        confidence = "low"
+    
+    return {
+        "forecast_days": days,
+        "history_days": history_days,
+        "account": account,
+        "daily_forecast": daily_forecast,
+        "summary": {
+            "predicted_total_income": round(total_pred_income, 2),
+            "predicted_total_expense": round(total_pred_expense, 2),
+            "predicted_net": round(total_pred_income - total_pred_expense, 2),
+            "avg_daily_income": round(daily_avg_income, 2),
+            "avg_daily_expense": round(daily_avg_expense, 2),
+            "recurring_count": len(recurring_items),
+            "confidence": confidence,
+            "history_transaction_count": tx_count,
+        },
+        "recurring_items": recurring_items,
+    }
