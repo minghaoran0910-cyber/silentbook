@@ -75,9 +75,23 @@ class Setting(Base):
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class User(Base):
+    """用户表：支持邮箱或手机号注册"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=True)
+    phone = Column(String(20), unique=True, index=True, nullable=True)
+    password_hash = Column(String(255), nullable=False)
+    nickname = Column(String(50), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AnalysisResult(Base):
     __tablename__ = "analysis_results"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String(100), nullable=False)
     analysis_type = Column(String(50), nullable=False)  # consumption/investment/suggestion

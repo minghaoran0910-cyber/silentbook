@@ -7,13 +7,14 @@ from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, init_db
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats,
     AssetCreate, AssetUpdate, AssetResponse,
     LiabilityCreate, LiabilityUpdate, LiabilityResponse
 )
+from .auth import router as auth_router
 import httpx
 import os
 import logging
@@ -58,6 +59,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# 注册认证路由
+app.include_router(auth_router)
 
 # ===== API 限流中间件 =====
 @app.middleware("http")

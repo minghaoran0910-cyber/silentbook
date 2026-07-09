@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
 from typing import Optional
 from datetime import datetime
+import re
 
 
 class TransactionBase(BaseModel):
@@ -125,3 +126,60 @@ class LiabilityResponse(LiabilityBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+# ===== 用户认证 =====
+
+class UserRegister(BaseModel):
+    """注册：邮箱或手机号至少填一个"""
+    email: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+    password: str = Field(..., min_length=6, max_length=128)
+    nickname: Optional[str] = Field(None, max_length=50)
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if v is None:
+            return None
+        if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', v):
+            raise ValueError('邮箱格式不正确')
+        return v.lower().strip()
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v):
+        if v is None:
+            return None
+        if not re.match(r'^1[3-9]\d{9}$', v):
+            raise ValueError('手机号格式不正确')
+        return v.strip()
+
+    @model_validator(mode='after')
+    def at_least_one_contact(self):
+        if not self.email and not self.phone:
+            raise ValueError('邮箱和手机号至少填写一个')
+        return self
+
+
+class UserLogin(BaseModel):
+    """登录：邮箱或手机号 + 密码"""
+    account: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1)
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    nickname: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: 'UserResponse'

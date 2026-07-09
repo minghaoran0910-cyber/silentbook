@@ -285,3 +285,65 @@ export async function getAgentConfigs(): Promise<any[]> {
 export async function updateAgentConfig(agentId: number, data: Record<string, any>): Promise<any> {
   return request(`/settings/agents/${agentId}`, { method: 'PUT', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } })
 }
+
+// ===== 用户认证 =====
+
+export interface UserInfo {
+  id: number
+  email: string | null
+  phone: string | null
+  nickname: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface TokenData {
+  access_token: string
+  token_type: string
+  expires_in: number
+  user: UserInfo
+}
+
+export async function register(data: {
+  email?: string
+  phone?: string
+  password: string
+  nickname?: string
+}): Promise<TokenData> {
+  return request<TokenData>('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function login(account: string, password: string): Promise<TokenData> {
+  return request<TokenData>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account, password })
+  })
+}
+
+export async function getCurrentUser(token: string): Promise<UserInfo> {
+  return request<UserInfo>('/auth/me', {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+}
+
+export function getStoredToken(): string | null {
+  if (import.meta.server) return null
+  return localStorage.getItem('auth_token')
+}
+
+export function getStoredUser(): UserInfo | null {
+  if (import.meta.server) return null
+  const raw = localStorage.getItem('user_info')
+  return raw ? JSON.parse(raw) : null
+}
+
+export function clearAuth() {
+  if (import.meta.server) return
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('user_info')
+}

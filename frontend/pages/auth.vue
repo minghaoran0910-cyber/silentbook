@@ -6,52 +6,94 @@
         <p>财务自由，不是终点，是每一步的选择</p>
       </div>
 
-      <div v-if="!authEnabled" class="setup-mode">
-        <h2>首次设置</h2>
-        <p>请设置访问密码</p>
-        <form @submit.prevent="setupPassword">
-          <div class="form-group">
-            <label>密码</label>
-            <input 
-              v-model="password" 
-              type="password" 
-              required 
-              minlength="4"
-              placeholder="至少4位"
-            >
-          </div>
-          <div class="form-group">
-            <label>确认密码</label>
-            <input 
-              v-model="confirmPassword" 
-              type="password" 
-              required 
-              placeholder="再次输入"
-            >
-          </div>
-          <button type="submit" class="btn-primary" :disabled="!canSetup">
-            设置密码
-          </button>
-        </form>
+      <!-- Tab 切换 -->
+      <div class="tab-switch">
+        <button
+          :class="{ active: mode === 'login' }"
+          @click="switchMode('login')"
+        >登录</button>
+        <button
+          :class="{ active: mode === 'register' }"
+          @click="switchMode('register')"
+        >注册</button>
       </div>
 
-      <div v-else class="login-mode">
-        <h2>登录</h2>
-        <form @submit.prevent="login">
-          <div class="form-group">
-            <label>密码</label>
-            <input 
-              v-model="password" 
-              type="password" 
-              required 
-              placeholder="输入密码"
-            >
-          </div>
-          <button type="submit" class="btn-primary" :disabled="!password">
-            登录
-          </button>
-        </form>
-      </div>
+      <!-- 注册模式 -->
+      <form v-if="mode === 'register'" @submit.prevent="handleRegister">
+        <div class="form-group">
+          <label>邮箱</label>
+          <input
+            v-model="regForm.email"
+            type="email"
+            placeholder="user@example.com"
+          >
+          <span class="field-hint">或填手机号，至少填一个</span>
+        </div>
+        <div class="form-group">
+          <label>手机号</label>
+          <input
+            v-model="regForm.phone"
+            type="tel"
+            placeholder="13800138000"
+          >
+        </div>
+        <div class="form-group">
+          <label>昵称（可选）</label>
+          <input
+            v-model="regForm.nickname"
+            type="text"
+            placeholder="怎么称呼你"
+            maxlength="50"
+          >
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input
+            v-model="regForm.password"
+            type="password"
+            required
+            minlength="6"
+            placeholder="至少6位"
+          >
+        </div>
+        <div class="form-group">
+          <label>确认密码</label>
+          <input
+            v-model="regForm.confirmPassword"
+            type="password"
+            required
+            placeholder="再次输入"
+          >
+        </div>
+        <button type="submit" class="btn-primary" :disabled="!canRegister">
+          注册
+        </button>
+      </form>
+
+      <!-- 登录模式 -->
+      <form v-else @submit.prevent="handleLogin">
+        <div class="form-group">
+          <label>邮箱或手机号</label>
+          <input
+            v-model="loginForm.account"
+            type="text"
+            required
+            placeholder="user@example.com / 13800138000"
+          >
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input
+            v-model="loginForm.password"
+            type="password"
+            required
+            placeholder="输入密码"
+          >
+        </div>
+        <button type="submit" class="btn-primary" :disabled="!canLogin">
+          登录
+        </button>
+      </form>
 
       <div v-if="error" class="error-message">{{ error }}</div>
       <div v-if="success" class="success-message">{{ success }}</div>
@@ -60,90 +102,111 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const password = ref('')
-const confirmPassword = ref('')
-const authEnabled = ref(false)
+const mode = ref('login')
 const error = ref('')
 const success = ref('')
 
-const canSetup = computed(() => {
-  return password.value.length >= 4 && password.value === confirmPassword.value
+const regForm = reactive({
+  email: '',
+  phone: '',
+  nickname: '',
+  password: '',
+  confirmPassword: ''
 })
 
-const checkAuthStatus = async () => {
-  try {
-    const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || 'http://localhost:8000'
-    const resp = await fetch(`${apiBase}/auth/status`)
-    const data = await resp.json()
-    authEnabled.value = data.auth_enabled
-  } catch (e) {
-    console.error('检查认证状态失败:', e)
-  }
-}
+const loginForm = reactive({
+  account: '',
+  password: ''
+})
 
-const setupPassword = async () => {
+const canRegister = computed(() => {
+  const hasContact = regForm.email || regForm.phone
+  return hasContact && regForm.password.length >= 6 && regForm.password === regForm.confirmPassword
+})
+
+const canLogin = computed(() => {
+  return loginForm.account && loginForm.password
+})
+
+const switchMode = (m) => {
+  mode.value = m
   error.value = ''
   success.value = ''
-  
-  if (password.value !== confirmPassword.value) {
+}
+
+const apiBase = () => {
+  const config = useRuntimeConfig()
+  return config.public?.apiBase || 'http://localhost:8000'
+}
+
+const handleRegister = async () => {
+  error.value = ''
+  success.value = ''
+
+  if (regForm.password !== regForm.confirmPassword) {
     error.value = '两次密码不一致'
     return
   }
-  
+
   try {
-    const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || 'http://localhost:8000'
-    const resp = await fetch(`${apiBase}/auth/setup`, {
+    const resp = await fetch(`${apiBase()}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: password.value })
+      body: JSON.stringify({
+        email: regForm.email || undefined,
+        phone: regForm.phone || undefined,
+        password: regForm.password,
+        nickname: regForm.nickname || undefined
+      })
     })
-    
+
+    const data = await resp.json()
+
     if (resp.ok) {
-      success.value = '密码设置成功！请登录'
-      authEnabled.value = true
-      password.value = ''
-      confirmPassword.value = ''
+      localStorage.setItem('auth_token', data.access_token)
+      localStorage.setItem('user_info', JSON.stringify(data.user))
+      success.value = '注册成功！正在跳转...'
+      setTimeout(() => router.push('/'), 800)
     } else {
-      error.value = '设置失败'
+      error.value = data.detail || '注册失败'
     }
   } catch (e) {
-    error.value = '设置失败: ' + e.message
+    error.value = '注册失败: ' + e.message
   }
 }
 
-const login = async () => {
+const handleLogin = async () => {
   error.value = ''
-  
+  success.value = ''
+
   try {
-    const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || 'http://localhost:8000'
-    const resp = await fetch(`${apiBase}/auth/verify`, {
+    const resp = await fetch(`${apiBase()}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: password.value })
+      body: JSON.stringify({
+        account: loginForm.account,
+        password: loginForm.password
+      })
     })
-    
+
     const data = await resp.json()
-    
-    if (resp.ok && data.token) {
-      localStorage.setItem('auth_token', data.token)
+
+    if (resp.ok && data.access_token) {
+      localStorage.setItem('auth_token', data.access_token)
+      localStorage.setItem('user_info', JSON.stringify(data.user))
       success.value = '登录成功！'
       setTimeout(() => router.push('/'), 500)
     } else {
-      error.value = '密码错误'
+      error.value = data.detail || '登录失败'
     }
   } catch (e) {
     error.value = '登录失败: ' + e.message
   }
 }
-
-onMounted(checkAuthStatus)
 </script>
 
 <style scoped>
@@ -161,7 +224,7 @@ onMounted(checkAuthStatus)
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 3rem;
-  max-width: 400px;
+  max-width: 420px;
   width: 100%;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
@@ -182,19 +245,40 @@ onMounted(checkAuthStatus)
   font-size: 0.9rem;
 }
 
-h2 {
-  color: var(--text-primary);
-  margin-bottom: 1rem;
+.tab-switch {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.tab-switch button {
+  flex: 1;
+  padding: 0.6rem;
+  background: var(--bg-primary);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-switch button.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.2rem;
 }
 
 .form-group label {
   display: block;
   color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
   font-size: 0.9rem;
 }
 
@@ -211,6 +295,13 @@ h2 {
 .form-group input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #888);
+  margin-top: 0.25rem;
 }
 
 .btn-primary {
