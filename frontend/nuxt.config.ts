@@ -3,6 +3,7 @@ export default defineNuxtConfig({
   
   runtimeConfig: {
     public: {
+      // 浏览器端用 localhost，SSR 端用 Docker 内部网络
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000'
     }
   },

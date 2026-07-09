@@ -4,7 +4,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NUXT_PUBLIC_API_BASE=http://backend:8000
+      - NUXT_PUBLIC_API_BASE=http://localhost:8000
+      - NUXT_SSR_API_BASE=http://backend:8000
     depends_on:
       - backend
 
@@ -32,6 +33,7 @@ services:
       - "5000:5000"
     environment:
       - MODEL_NAME=${MODEL_NAME:-aliyun/glm-5.2}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
 
   db:
     image: docker.io/library/postgres:15-alpine
