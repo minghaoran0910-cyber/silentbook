@@ -114,6 +114,17 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   return request<DashboardStats>('/stats/dashboard')
 }
 
+export interface TrendData {
+  daily: { date: string; income: number; expense: number; count: number }[]
+  categories: { name: string; amount: number }[]
+  total_expense: number
+  total_income: number
+}
+
+export async function fetchTrend(days: number = 30): Promise<TrendData> {
+  return request<TrendData>(`/stats/trend?days=${days}`)
+}
+
 // ===== Analysis =====
 
 export async function runAnalysis(): Promise<AnalysisResult> {

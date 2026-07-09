@@ -247,6 +247,58 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     )
 
 
+@app.get("/stats/trend")
+async def get_trend(days: int = 30, db: Session = Depends(get_db)):
+    """获取最近 N 天的消费趋势"""
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= start_date
+    ).order_by(Transaction.parsed_at.asc()).all()
+    
+    # 按日期聚合
+    daily_data = {}
+    for tx in transactions:
+        date_key = tx.parsed_at.strftime("%Y-%m-%d")
+        if date_key not in daily_data:
+            daily_data[date_key] = {"date": date_key, "income": 0, "expense": 0, "count": 0}
+        if tx.transaction_type == "income":
+            daily_data[date_key]["income"] += tx.amount
+        else:
+            daily_data[date_key]["expense"] += tx.amount
+        daily_data[date_key]["count"] += 1
+    
+    # 补充没有交易的日期
+    result = []
+    current = start_date
+    while current <= datetime.utcnow():
+        date_key = current.strftime("%Y-%m-%d")
+        if date_key in daily_data:
+            result.append(daily_data[date_key])
+        else:
+            result.append({"date": date_key, "income": 0, "expense": 0, "count": 0})
+        current += timedelta(days=1)
+    
+    # 分类统计
+    category_stats = {}
+    for tx in transactions:
+        if tx.transaction_type == "expense":
+            cat = tx.category or "其他"
+            if cat not in category_stats:
+                category_stats[cat] = 0
+            category_stats[cat] += tx.amount
+    
+    # 排序取前 8 类
+    categories = sorted(category_stats.items(), key=lambda x: x[1], reverse=True)[:8]
+    
+    return {
+        "daily": result,
+        "categories": [{"name": k, "amount": v} for k, v in categories],
+        "total_expense": sum(d["expense"] for d in result),
+        "total_income": sum(d["income"] for d in result),
+    }
+
+
 # ===== Agent 分析 =====
 
 @app.post("/analyze", response_model=AnalysisResponse)
