@@ -6,7 +6,7 @@ from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, init_db
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats,
@@ -602,3 +602,77 @@ async def delete_liability(liability_id: int, db: Session = Depends(get_db)):
     db.delete(db_liability)
     db.commit()
     return {"message": "已删除"}
+
+
+# ===== 设置 =====
+
+@app.get("/settings")
+async def get_settings(db: Session = Depends(get_db)):
+    """获取所有设置"""
+    settings = db.query(Setting).all()
+    return {s.key: s.value for s in settings}
+
+
+@app.put("/settings")
+async def update_settings(items: dict, db: Session = Depends(get_db)):
+    """批量更新设置"""
+    for key, value in items.items():
+        existing = db.query(Setting).filter(Setting.key == key).first()
+        if existing:
+            existing.value = str(value)
+        else:
+            db.add(Setting(key=key, value=str(value)))
+    db.commit()
+    return {"status": "ok", "updated": len(items)}
+
+
+@app.get("/settings/sources")
+async def get_sources(db: Session = Depends(get_db)):
+    """获取通知源配置"""
+    raw = db.query(Setting).filter(Setting.key == "notification_sources").first()
+    if not raw or not raw.value:
+        # 默认全部开启
+        return {"cmb": True, "icbc": True, "ccb": True, "alipay": True, "wechat_pay": True}
+    import json
+    return json.loads(raw.value)
+
+
+@app.put("/settings/sources")
+async def update_sources(sources: dict, db: Session = Depends(get_db)):
+    """更新通知源配置"""
+    import json
+    existing = db.query(Setting).filter(Setting.key == "notification_sources").first()
+    if existing:
+        existing.value = json.dumps(sources)
+    else:
+        db.add(Setting(key="notification_sources", value=json.dumps(sources)))
+    db.commit()
+    return {"status": "ok"}
+
+
+@app.get("/settings/agents")
+async def get_agent_configs(db: Session = Depends(get_db)):
+    """获取 Agent 配置"""
+    agents = db.query(AgentConfig).all()
+    return [{
+        "id": a.id, "name": a.name, "api_endpoint": a.api_endpoint,
+        "is_active": a.is_active, "system_prompt": a.system_prompt or ""
+    } for a in agents]
+
+
+@app.put("/settings/agents/{agent_id}")
+async def update_agent_config(agent_id: int, data: dict, db: Session = Depends(get_db)):
+    """更新 Agent 配置"""
+    agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    if "is_active" in data:
+        agent.is_active = data["is_active"]
+    if "name" in data:
+        agent.name = data["name"]
+    if "api_endpoint" in data:
+        agent.api_endpoint = data["api_endpoint"]
+    if "system_prompt" in data:
+        agent.system_prompt = data["system_prompt"]
+    db.commit()
+    return {"status": "ok"}

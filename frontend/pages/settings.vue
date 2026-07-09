@@ -59,6 +59,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { getSources, updateSources, getAgentConfigs, updateAgentConfig } from '~/utils/api'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: '🏦', enabled: true },
@@ -69,25 +70,38 @@ const sources = ref([
 ])
 
 const agents = ref([
-  { id: 'moyan', name: '墨砚', description: '财务总监 - 消费分析', enabled: true },
-  { id: 'yuanzhan', name: '远瞻', description: '投资总监 - 投资分析', enabled: true }
+  { id: 1, name: '墨砚', description: '财务总监 - 消费分析', enabled: true },
+  { id: 2, name: '远瞻', description: '投资总监 - 投资分析', enabled: true }
 ])
 
 const apiBase = ref('')
 const autoAnalyze = ref(false)
 
 const saveSource = async (source) => {
-  console.log('保存通知源:', source.id, source.enabled)
-  // TODO: API call
+  const map = {}
+  sources.value.forEach(s => { map[s.id] = s.enabled })
+  await updateSources(map)
 }
 
 const saveAgent = async (agent) => {
-  console.log('保存 Agent:', agent.id, agent.enabled)
-  // TODO: API call
+  await updateAgentConfig(agent.id, { is_active: agent.enabled })
 }
 
-onMounted(() => {
-  // 加载配置
+onMounted(async () => {
+  try {
+    const srcMap = await getSources()
+    sources.value.forEach(s => { s.enabled = srcMap[s.id] !== false })
+    
+    const agentList = await getAgentConfigs()
+    if (agentList.length > 0) {
+      agents.value = agentList.map(a => ({
+        id: a.id, name: a.name, description: a.system_prompt || 'AI Agent', enabled: a.is_active
+      }))
+    }
+  } catch (e) {
+    console.error('加载设置失败:', e)
+  }
+  
   try {
     const config = useRuntimeConfig()
     apiBase.value = config.public?.apiBase || ''

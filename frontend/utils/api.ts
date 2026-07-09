@@ -238,3 +238,28 @@ export async function updateLiability(id: number, data: Partial<Liability>): Pro
 export async function deleteLiability(id: number): Promise<void> {
   await request(`/liabilities/${id}`, { method: 'DELETE' })
 }
+
+// ===== 设置 =====
+export async function getSettings(): Promise<Record<string, string>> {
+  return request('/settings')
+}
+
+export async function updateSettings(items: Record<string, any>): Promise<any> {
+  return request('/settings', { method: 'PUT', body: JSON.stringify(items), headers: { 'Content-Type': 'application/json' } })
+}
+
+export async function getSources(): Promise<Record<string, boolean>> {
+  return request('/settings/sources')
+}
+
+export async function updateSources(sources: Record<string, boolean>): Promise<any> {
+  return request('/settings/sources', { method: 'PUT', body: JSON.stringify(sources), headers: { 'Content-Type': 'application/json' } })
+}
+
+export async function getAgentConfigs(): Promise<any[]> {
+  return request('/settings/agents')
+}
+
+export async function updateAgentConfig(agentId: number, data: Record<string, any>): Promise<any> {
+  return request(`/settings/agents/${agentId}`, { method: 'PUT', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } })
+}
