@@ -169,6 +169,12 @@
               <span v-if="liab.interest_rate > 0" class="tag">利率: {{ liab.interest_rate }}%</span>
               <span v-if="liab.due_date" class="tag">到期: {{ liab.due_date }}</span>
             </div>
+            <div class="repay-progress" v-if="liab.total_amount > 0">
+              <div class="repay-bar-bg">
+                <div class="repay-bar-fill" :style="{ width: ((liab.total_amount - liab.current_amount) / liab.total_amount * 100) + '%' }"></div>
+              </div>
+              <span class="repay-text">已还 ¥{{ (liab.total_amount - liab.current_amount).toFixed(2) }} / ¥{{ liab.total_amount.toFixed(2) }} ({{ ((liab.total_amount - liab.current_amount) / liab.total_amount * 100).toFixed(1) }}%)</span>
+            </div>
           </div>
           <div class="asset-value">
             <div class="amount expense">¥{{ liab.current_amount.toFixed(2) }}</div>
@@ -319,4 +325,10 @@ onMounted(loadData)
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
 .btn-small { padding: 0.3rem 0.8rem; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+
+/* 还款进度 */
+.repay-progress { margin-top: 0.5rem; }
+.repay-bar-bg { height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
+.repay-bar-fill { height: 100%; background: var(--success); border-radius: 3px; transition: width 0.3s; }
+.repay-text { color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.2rem; display: block; }
 </style>
