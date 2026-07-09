@@ -24,11 +24,25 @@
       <h2>AI Agent</h2>
       <p class="section-desc">配置分析用的 AI Agent</p>
       
+      <div class="mode-selector">
+        <div class="setting-row">
+          <span>分析模式</span>
+          <select v-model="agentMode" class="select" @change="saveAgentMode">
+            <option value="auto">自动（优先 OpenClaw）</option>
+            <option value="openclaw">OpenClaw（三 Agent）</option>
+            <option value="local">本地 LLM</option>
+          </select>
+        </div>
+      </div>
+      
       <div class="agent-list">
         <div v-for="agent in agents" :key="agent.id" class="agent-item">
           <div class="agent-info">
-            <span class="agent-name">{{ agent.name }}</span>
-            <span class="agent-desc">{{ agent.description }}</span>
+            <span class="agent-icon">{{ agent.icon }}</span>
+            <div>
+              <span class="agent-name">{{ agent.name }}</span>
+              <span class="agent-desc">{{ agent.description }}</span>
+            </div>
           </div>
           <label class="toggle">
             <input type="checkbox" v-model="agent.enabled" @change="saveAgent(agent)">
@@ -70,12 +84,25 @@ const sources = ref([
 ])
 
 const agents = ref([
-  { id: 1, name: '墨砚', description: '财务总监 - 消费分析', enabled: true },
-  { id: 2, name: '远瞻', description: '投资总监 - 投资分析', enabled: true }
+  { id: 1, name: '墨砚', icon: '📊', description: '财务总监 - 消费分析', enabled: true },
+  { id: 2, name: '远瞻', icon: '📈', description: '投资总监 - 投资分析', enabled: true },
+  { id: 3, name: '老油条', icon: '🍵', description: '综合建议 - 财务规划', enabled: true }
 ])
 
-const apiBase = ref('')
+const agentMode = ref('auto')
+const apiBase = ref('http://localhost:8000')
 const autoAnalyze = ref(false)
+
+const saveAgentMode = async () => {
+  try {
+    await $fetch(`${apiBase.value}/settings`, {
+      method: 'PUT',
+      body: { agent_mode: agentMode.value }
+    })
+  } catch (e) {
+    console.error('保存分析模式失败:', e)
+  }
+}
 
 const saveSource = async (source) => {
   const map = {}
@@ -252,5 +279,29 @@ h1 {
 .input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.select {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.agent-icon {
+  font-size: 1.3rem;
+}
+
+.mode-selector {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
 }
 </style>

@@ -34,6 +34,14 @@ MODEL_NAME = os.getenv("MODEL_NAME", "aliyun/glm-5.2")
 AGENT_MAP = {
     "consumption": "financial_director",  # 墨砚
     "investment": "investment_director",   # 远瞻
+    "suggestion": "main",                 # 老油条
+}
+
+# Agent 显示名
+AGENT_NAMES = {
+    "consumption": "墨砚（财务总监）",
+    "investment": "远瞻（投资总监）",
+    "suggestion": "老油条（综合建议）",
 }
 
 # ===== 数据模型 =====
@@ -293,7 +301,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
                 "你是 SilentBook 的投资分析 Agent。"
             )
     
-    # 综合建议 — 本地生成（基于前两项分析结果）
+    # 综合建议 — 老油条 agent 或本地 fallback
     suggestion_prompt = f"""基于以下分析结果，给出综合财务建议：
 
 消费分析：{consumption}
@@ -307,7 +315,16 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
 
 用简洁中文回答，不超过200字。"""
     
-    suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。")
+    if use_openclaw and mode_used in ("openclaw", "openclaw"):
+        # 尝试调用老油条 agent
+        suggestion = await call_openclaw_agent(
+            AGENT_MAP["suggestion"], suggestion_prompt, timeout=60
+        )
+        # 如果失败，fallback 到本地
+        if "无法连接" in suggestion or "失败" in suggestion or "超时" in suggestion:
+            suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。")
+    else:
+        suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。")
     
     return AnalysisResponse(
         consumption=consumption,
@@ -338,12 +355,17 @@ async def list_agents():
         "agents": {
             "consumption": {
                 "id": AGENT_MAP["consumption"],
-                "name": "墨砚（财务总监）",
+                "name": AGENT_NAMES["consumption"],
                 "enabled": AGENT_MODE in ("openclaw", "auto"),
             },
             "investment": {
                 "id": AGENT_MAP["investment"],
-                "name": "远瞻（投资总监）",
+                "name": AGENT_NAMES["investment"],
+                "enabled": AGENT_MODE in ("openclaw", "auto"),
+            },
+            "suggestion": {
+                "id": AGENT_MAP["suggestion"],
+                "name": AGENT_NAMES["suggestion"],
                 "enabled": AGENT_MODE in ("openclaw", "auto"),
             }
         },
