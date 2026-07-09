@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
@@ -190,6 +191,70 @@ async def parse_notification(notification: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
+
+
+# ===== Webhook 接入 =====
+
+class WebhookRequest(BaseModel):
+    title: str = ""
+    body: str
+    source: str = "webhook"
+    timestamp: Optional[str] = None
+
+@app.post("/webhook/notify")
+async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
+    """接收通知 webhook，自动解析并存入交易记录"""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{PARSER_API_URL}/parse",
+                json={"title": req.title, "body": req.body, "source": req.source, "timestamp": req.timestamp},
+                timeout=10.0
+            )
+            response.raise_for_status()
+            parsed = response.json()
+            
+            required = ["amount", "category", "account", "transaction_type"]
+            for field in required:
+                if field not in parsed:
+                    return {"status": "skipped", "reason": f"缺少字段: {field}", "raw": parsed}
+            
+            db_tx = Transaction(
+                amount=parsed["amount"],
+                category=parsed["category"],
+                account=parsed["account"],
+                description=parsed.get("description", ""),
+                transaction_type=parsed["transaction_type"],
+                raw_text=parsed.get("raw_text", ""),
+                confidence=parsed.get("confidence", 0.5),
+                parsed_at=datetime.utcnow()
+            )
+            db.add(db_tx)
+            db.commit()
+            db.refresh(db_tx)
+            
+            return {
+                "status": "created",
+                "id": db_tx.id,
+                "amount": db_tx.amount,
+                "category": db_tx.category,
+                "type": db_tx.transaction_type,
+                "confidence": db_tx.confidence
+            }
+        except httpx.RequestError:
+            return {"status": "error", "reason": "通知解析器不可用"}
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+
+
+@app.post("/webhook/notify/batch")
+async def webhook_notify_batch(items: List[WebhookRequest], db: Session = Depends(get_db)):
+    """批量接收通知"""
+    results = []
+    for item in items:
+        result = await webhook_notify(item, db)
+        results.append(result)
+    return {"total": len(items), "results": results}
 
 
 # ===== 统计 =====
