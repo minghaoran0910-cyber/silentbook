@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, init_db
+from pydantic import BaseModel, Field
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, Account, Transfer, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats,
     AssetCreate, AssetUpdate, AssetResponse,
-    LiabilityCreate, LiabilityUpdate, LiabilityResponse
+    LiabilityCreate, LiabilityUpdate, LiabilityResponse,
+    AccountCreate, AccountUpdate, AccountResponse, AccountTransfer, TransferResponse
 )
 from .auth import router as auth_router
 import httpx
@@ -828,16 +829,69 @@ async def import_csv(file: dict, db: Session = Depends(get_db)):
 
 # ===== 预算管理 =====
 
+# ===== 预算三级分类 =====
+# L1 必要支出（房租/水电/餐饮/交通）— <10% 可压缩
+# L2 改善支出（健身/学习/社交）— 30-50% 可压缩
+# L3 非必要支出（娱乐/奢侈品）— 80-100% 可砍
+
+BUDGET_LEVELS = {"L1", "L2", "L3"}
+
+LEVEL_LABELS = {
+    "L1": "必要支出",
+    "L2": "改善支出",
+    "L3": "非必要支出",
+}
+
+LEVEL_COMPRESSIBILITY = {
+    "L1": "<10%",
+    "L2": "30-50%",
+    "L3": "80-100%",
+}
+
+# 默认分类→级别映射（用户可覆盖）
+DEFAULT_CATEGORY_LEVELS = {
+    # L1 必要
+    "房租": "L1", "水电": "L1", "燃气": "L1", "物业": "L1",
+    "餐饮": "L1", "主食": "L1", "买菜": "L1", "外卖": "L1",
+    "交通": "L1", "地铁": "L1", "公交": "L1", "打车": "L1", "停车": "L1",
+    "话费": "L1", "网费": "L1", "保险": "L1", "医疗": "L1",
+    "日用": "L1", "母婴": "L1",
+    # L2 改善
+    "健身": "L2", "学习": "L2", "课程": "L2", "书籍": "L2",
+    "社交": "L2", "聚餐": "L2", "礼物": "L2", "理发": "L2",
+    "咖啡": "L2", "水果": "L2", "零食": "L2",
+    "订阅": "L2", "会员": "L2", "软件": "L2",
+    # L3 非必要
+    "娱乐": "L3", "游戏": "L3", "电影": "L3", "演出": "L3",
+    "购物": "L3", "服饰": "L3", "电子": "L3", "数码": "L3",
+    "旅游": "L3", "酒店": "L3", "机票": "L3",
+    "彩票": "L3", "赌博": "L3",
+}
+
+def get_category_level(category: str, db) -> str:
+    """获取分类对应的预算级别：优先查预算配置，其次用默认映射，默认L2"""
+    import json
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if raw and raw.value:
+        budgets = json.loads(raw.value)
+        for b in budgets:
+            if b.get("category") == category and "level" in b:
+                return b["level"]
+    return DEFAULT_CATEGORY_LEVELS.get(category, "L2")
+
+
 class BudgetCreate(BaseModel):
     category: str
     monthly_limit: float
     alert_threshold: float = 0.8
+    level: str = Field("L2", pattern="^(L1|L2|L3)$")
 
 class BudgetResponse(BaseModel):
     id: int
     category: str
     monthly_limit: float
     alert_threshold: float
+    level: str
     current_spent: float
     usage_rate: float
     class Config:
@@ -874,6 +928,82 @@ async def get_budgets(db: Session = Depends(get_db)):
             "alert": usage >= b.get("alert_threshold", 0.8)
         })
     return result
+
+
+@app.get("/budgets/levels")
+async def get_budgets_by_level(db: Session = Depends(get_db)):
+    """三级分类预算汇总：L1必要/L2改善/L3非必要"""
+    import json
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    budgets = json.loads(raw.value) if raw and raw.value else []
+    
+    # 补全 level 字段（兼容旧数据）
+    for b in budgets:
+        if "level" not in b:
+            b["level"] = DEFAULT_CATEGORY_LEVELS.get(b.get("category", ""), "L2")
+    
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # 查本月所有支出
+    month_txs = db.query(Transaction).filter(
+        Transaction.transaction_type == "expense",
+        Transaction.parsed_at >= month_start
+    ).all()
+    
+    # 按分类汇总实际支出
+    actual_by_category = {}
+    for tx in month_txs:
+        cat = tx.category or "其他"
+        actual_by_category[cat] = actual_by_category.get(cat, 0) + tx.amount
+    
+    levels_data = {}
+    for level in ["L1", "L2", "L3"]:
+        level_budgets = [b for b in budgets if b.get("level") == level]
+        budget_total = sum(b["monthly_limit"] for b in level_budgets)
+        
+        # 已设预算分类的支出
+        budgeted_spent = 0
+        items = []
+        for b in level_budgets:
+            spent = actual_by_category.get(b["category"], 0)
+            budgeted_spent += spent
+            usage = spent / b["monthly_limit"] if b["monthly_limit"] > 0 else 0
+            items.append({
+                "category": b["category"],
+                "monthly_limit": b["monthly_limit"],
+                "current_spent": round(spent, 2),
+                "usage_rate": round(usage * 100, 1),
+                "alert_threshold": b.get("alert_threshold", 0.8),
+                "alert": usage >= b.get("alert_threshold", 0.8),
+            })
+        
+        # 未设预算但属于该级别的分类支出
+        budgeted_cats = {b["category"] for b in level_budgets}
+        unbudgeted_spent = 0
+        for cat, amt in actual_by_category.items():
+            if cat not in budgeted_cats:
+                cat_level = DEFAULT_CATEGORY_LEVELS.get(cat, "L2")
+                if cat_level == level:
+                    unbudgeted_spent += amt
+        
+        total_spent = budgeted_spent + unbudgeted_spent
+        levels_data[level] = {
+            "label": LEVEL_LABELS[level],
+            "compressibility": LEVEL_COMPRESSIBILITY[level],
+            "budget_total": round(budget_total, 2),
+            "spent_total": round(total_spent, 2),
+            "budgeted_spent": round(budgeted_spent, 2),
+            "unbudgeted_spent": round(unbudgeted_spent, 2),
+            "usage_rate": round(total_spent / budget_total * 100, 1) if budget_total > 0 else 0,
+            "items": items,
+        }
+    
+    return {
+        "total_budget": round(sum(b["monthly_limit"] for b in budgets), 2),
+        "total_spent": round(sum(v["spent_total"] for v in levels_data.values()), 2),
+        "levels": levels_data,
+    }
 
 
 @app.post("/budgets")
@@ -1150,6 +1280,194 @@ async def trigger_job(job_id: str):
     await job_map[job_id]()
     return {"message": f"已触发任务 {job_id}"}
 
+
+# ===== 多账户管理（四账户体系） =====
+
+@app.get("/accounts", response_model=List[AccountResponse])
+async def list_accounts(
+    purpose: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """获取账户列表"""
+    query = db.query(Account)
+    if purpose:
+        query = query.filter(Account.purpose == purpose)
+    if status:
+        query = query.filter(Account.status == status)
+    return query.order_by(Account.updated_at.desc()).all()
+
+
+@app.post("/accounts", response_model=AccountResponse)
+async def create_account(account: AccountCreate, db: Session = Depends(get_db)):
+    """创建账户"""
+    db_account = Account(**account.model_dump())
+    db.add(db_account)
+    db.commit()
+    db.refresh(db_account)
+    return db_account
+
+
+@app.get("/accounts/summary")
+async def get_accounts_summary(db: Session = Depends(get_db)):
+    """四账户体系汇总：按 purpose 分组统计"""
+    accounts = db.query(Account).filter(Account.status == "active").all()
+    
+    purpose_labels = {
+        "consumption": "日常消费",
+        "emergency": "应急储备",
+        "investment": "投资增值",
+        "goal": "目标储蓄",
+    }
+    
+    summary = {}
+    total_balance = 0
+    for purpose, label in purpose_labels.items():
+        purpose_accounts = [a for a in accounts if a.purpose == purpose]
+        balance_sum = sum(a.balance for a in purpose_accounts)
+        target_sum = sum(a.target_balance for a in purpose_accounts)
+        summary[purpose] = {
+            "label": label,
+            "account_count": len(purpose_accounts),
+            "total_balance": round(balance_sum, 2),
+            "total_target": round(target_sum, 2),
+            "achievement_rate": round(balance_sum / target_sum * 100, 1) if target_sum > 0 else 0,
+            "accounts": [
+                {"id": a.id, "name": a.name, "balance": a.balance, "target_balance": a.target_balance}
+                for a in purpose_accounts
+            ]
+        }
+        total_balance += balance_sum
+    
+    return {
+        "total_balance": round(total_balance, 2),
+        "purposes": summary
+    }
+
+
+@app.get("/accounts/transfers", response_model=List[TransferResponse])
+async def list_transfers(
+    account_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = Query(default=50, le=200),
+    db: Session = Depends(get_db)
+):
+    """获取转账历史列表"""
+    query = db.query(Transfer)
+    if account_id:
+        query = query.filter(
+            (Transfer.from_account_id == account_id) | (Transfer.to_account_id == account_id)
+        )
+    return query.order_by(Transfer.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@app.get("/accounts/transfers/{transfer_id}", response_model=TransferResponse)
+async def get_transfer(transfer_id: int, db: Session = Depends(get_db)):
+    """获取单条转账记录"""
+    transfer = db.query(Transfer).filter(Transfer.id == transfer_id).first()
+    if not transfer:
+        raise HTTPException(status_code=404, detail="转账记录不存在")
+    return transfer
+
+
+@app.get("/accounts/{account_id}", response_model=AccountResponse)
+async def get_account(account_id: int, db: Session = Depends(get_db)):
+    """获取单个账户"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="账户不存在")
+    return account
+
+
+@app.put("/accounts/{account_id}", response_model=AccountResponse)
+async def update_account(
+    account_id: int,
+    account_update: AccountUpdate,
+    db: Session = Depends(get_db)
+):
+    """更新账户"""
+    db_account = db.query(Account).filter(Account.id == account_id).first()
+    if not db_account:
+        raise HTTPException(status_code=404, detail="账户不存在")
+    
+    update_data = account_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_account, key, value)
+    db_account.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_account)
+    return db_account
+
+
+@app.delete("/accounts/{account_id}")
+async def delete_account(account_id: int, db: Session = Depends(get_db)):
+    """删除账户"""
+    db_account = db.query(Account).filter(Account.id == account_id).first()
+    if not db_account:
+        raise HTTPException(status_code=404, detail="账户不存在")
+    db.delete(db_account)
+    db.commit()
+    return {"message": "已删除"}
+
+
+@app.post("/accounts/transfer")
+async def transfer_between_accounts(transfer: AccountTransfer, db: Session = Depends(get_db)):
+    """账户间转账：扣减余额 + 增加余额 + 记录转账历史"""
+    from_acc = db.query(Account).filter(Account.id == transfer.from_account_id).first()
+    to_acc = db.query(Account).filter(Account.id == transfer.to_account_id).first()
+    
+    if not from_acc:
+        raise HTTPException(status_code=404, detail="转出账户不存在")
+    if not to_acc:
+        raise HTTPException(status_code=404, detail="转入账户不存在")
+    if from_acc.balance < transfer.amount:
+        raise HTTPException(status_code=400, detail=f"余额不足：当前余额 {from_acc.balance}")
+    
+    from_acc.balance -= transfer.amount
+    to_acc.balance += transfer.amount
+    from_acc.updated_at = datetime.utcnow()
+    to_acc.updated_at = datetime.utcnow()
+    
+    # 保存转账记录
+    transfer_record = Transfer(
+        from_account_id=transfer.from_account_id,
+        to_account_id=transfer.to_account_id,
+        amount=transfer.amount,
+        description=transfer.description,
+    )
+    db.add(transfer_record)
+    
+    # 记录转账交易
+    tx_out = Transaction(
+        amount=transfer.amount,
+        category="转账",
+        account=from_acc.name,
+        description=f"转出至 {to_acc.name}" + (f": {transfer.description}" if transfer.description else ""),
+        transaction_type="expense",
+        confidence=1.0,
+        parsed_at=datetime.utcnow()
+    )
+    tx_in = Transaction(
+        amount=transfer.amount,
+        category="转账",
+        account=to_acc.name,
+        description=f"从 {from_acc.name} 转入" + (f": {transfer.description}" if transfer.description else ""),
+        transaction_type="income",
+        confidence=1.0,
+        parsed_at=datetime.utcnow()
+    )
+    db.add(tx_out)
+    db.add(tx_in)
+    db.commit()
+    db.refresh(transfer_record)
+    
+    return {
+        "status": "ok",
+        "transfer_id": transfer_record.id,
+        "from_account": {"id": from_acc.id, "name": from_acc.name, "balance": from_acc.balance},
+        "to_account": {"id": to_acc.id, "name": to_acc.name, "balance": to_acc.balance},
+        "amount": transfer.amount
+    }
 
 # ===== 资产管理 =====
 

@@ -75,6 +75,23 @@ class Setting(Base):
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class Account(Base):
+    """四账户体系：消费/应急/投资/目标"""
+    __tablename__ = "accounts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # 账户名称（微信/招商银行卡等）
+    account_type = Column(String(30), nullable=False)  # bank/alipay/wechat/cash/fund/stock/other
+    purpose = Column(String(20), nullable=False)  # consumption/emergency/investment/goal
+    balance = Column(Float, nullable=False, default=0)  # 当前余额
+    target_balance = Column(Float, default=0)  # 目标余额
+    currency = Column(String(10), default="CNY")
+    status = Column(String(20), default="active")  # active/frozen/closed
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class User(Base):
     """用户表：支持邮箱或手机号注册"""
     __tablename__ = "users"
@@ -87,6 +104,18 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Transfer(Base):
+    """账户间转账记录"""
+    __tablename__ = "transfers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    from_account_id = Column(Integer, nullable=False, index=True)
+    to_account_id = Column(Integer, nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class AnalysisResult(Base):

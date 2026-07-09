@@ -196,3 +196,60 @@ class PasswordResetConfirm(BaseModel):
     """重置密码：提交令牌 + 新密码"""
     token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=6, max_length=128)
+
+
+# ===== 多账户管理（四账户体系） =====
+
+ACCOUNT_TYPES = {"bank", "alipay", "wechat", "cash", "fund", "stock", "other"}
+ACCOUNT_PURPOSES = {"consumption", "emergency", "investment", "goal"}
+
+
+class AccountBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    account_type: str = Field(..., pattern="^(bank|alipay|wechat|cash|fund|stock|other)$")
+    purpose: str = Field(..., pattern="^(consumption|emergency|investment|goal)$")
+    balance: float = Field(0)
+    target_balance: float = Field(0)
+    currency: str = Field("CNY", max_length=10)
+    status: str = Field("active", pattern="^(active|frozen|closed)$")
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class AccountCreate(AccountBase):
+    pass
+
+
+class AccountUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    account_type: Optional[str] = None
+    purpose: Optional[str] = None
+    balance: Optional[float] = Field(None)
+    target_balance: Optional[float] = Field(None)
+    status: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class AccountResponse(AccountBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AccountTransfer(BaseModel):
+    """账户间转账"""
+    from_account_id: int
+    to_account_id: int
+    amount: float = Field(..., gt=0)
+    description: Optional[str] = Field(None, max_length=500)
+
+
+class TransferResponse(BaseModel):
+    """转账记录响应"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    from_account_id: int
+    to_account_id: int
+    amount: float
+    description: Optional[str] = None
+    created_at: datetime
