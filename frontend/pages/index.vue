@@ -48,7 +48,7 @@
             <span class="insight-icon">💸</span>
             <span class="insight-title">消费分析</span>
           </div>
-          <p class="insight-content">{{ analysis.consumption }}</p>
+          <div class="insight-content" v-html="marked(analysis.consumption)"></div>
         </div>
         
         <div class="insight-card">
@@ -56,7 +56,7 @@
             <span class="insight-icon">📈</span>
             <span class="insight-title">投资分析</span>
           </div>
-          <p class="insight-content">{{ analysis.investment }}</p>
+          <div class="insight-content" v-html="marked(analysis.investment)"></div>
         </div>
         
         <div class="insight-card">
@@ -64,7 +64,7 @@
             <span class="insight-icon">💡</span>
             <span class="insight-title">建议</span>
           </div>
-          <p class="insight-content">{{ analysis.suggestion }}</p>
+          <div class="insight-content" v-html="marked(analysis.suggestion)"></div>
         </div>
       </div>
     </div>
@@ -251,6 +251,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { marked } from 'marked'
 import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
@@ -522,6 +523,39 @@ onMounted(() => {
 .insight-content {
   color: var(--text-secondary);
   line-height: 1.6;
+}
+
+.insight-content :deep(p) {
+  margin: 0.5rem 0;
+}
+
+.insight-content :deep(ul),
+.insight-content :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.insight-content :deep(li) {
+  margin: 0.25rem 0;
+}
+
+.insight-content :deep(strong) {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.insight-content :deep(code) {
+  background: var(--bg-tertiary);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.insight-content :deep(h1),
+.insight-content :deep(h2),
+.insight-content :deep(h3) {
+  color: var(--text-primary);
+  margin: 1rem 0 0.5rem;
 }
 
 .features {

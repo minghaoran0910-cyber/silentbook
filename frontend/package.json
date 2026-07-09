@@ -9,6 +9,7 @@
     "preview": "nuxt preview"
   },
   "dependencies": {
+    "marked": "^18.0.5",
     "nuxt": "^3.9.0",
     "vue": "^3.4.0"
   },
