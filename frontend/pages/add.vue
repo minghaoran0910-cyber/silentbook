@@ -4,7 +4,40 @@
       <h1>手动记账</h1>
     </div>
 
-    <form @submit.prevent="submitTransaction" class="form">
+    <!-- Tab 切换 -->
+    <div class="tab-bar">
+      <button :class="{ active: tab === 'manual' }" @click="tab = 'manual'" class="tab-btn">手动输入</button>
+      <button :class="{ active: tab === 'paste' }" @click="tab = 'paste'" class="tab-btn">粘贴通知</button>
+    </div>
+
+    <!-- 粘贴通知解析 -->
+    <div v-if="tab === 'paste'" class="paste-section">
+      <div class="form-group">
+        <label>粘贴通知文本</label>
+        <textarea
+          v-model="notificationText"
+          class="textarea"
+          placeholder="在此粘贴银行或支付平台的通知短信...&#10;例如：&#10;招商银行&#10;您尾号1234的储蓄卡于12月25日在星巴克消费人民币38.50元"
+          rows="6"
+        ></textarea>
+      </div>
+      <button type="button" @click="parseAndCreate" class="btn-primary" :disabled="parsing || !notificationText.trim()">
+        {{ parsing ? '解析中...' : '🔍 解析并创建' }}
+      </button>
+      <div v-if="parseResult" class="parse-result">
+        <div v-if="parseResult.status === 'created'" class="parse-success">
+          ✅ 解析成功！
+          <span class="parse-detail">{{ parseResult.category }} | ¥{{ parseResult.amount }} | {{ parseResult.type === 'income' ? '收入' : '支出' }}</span>
+          <span v-if="parseResult.abnormal_alert?.triggered" class="abnormal-badge">⚠️ 异常消费已触发分析</span>
+        </div>
+        <div v-else class="parse-fail">
+          ❌ {{ parseResult.reason || parseResult.status }}
+        </div>
+      </div>
+    </div>
+
+    <!-- 手动输入表单 -->
+    <form v-if="tab === 'manual'" @submit.prevent="submitTransaction" class="form">
       <div class="form-group">
         <label>类型</label>
         <div class="type-toggle">
@@ -96,6 +129,11 @@ import { createTransaction } from '~/utils/api'
 
 const router = useRouter()
 
+const tab = ref('manual')
+const notificationText = ref('')
+const parsing = ref(false)
+const parseResult = ref(null)
+
 const form = ref({
   amount: null,
   category: '',
@@ -148,6 +186,30 @@ const submitTransaction = async () => {
     submitting.value = false
   }
 }
+
+const parseAndCreate = async () => {
+  parsing.value = true
+  parseResult.value = null
+  try {
+    const config = useRuntimeConfig()
+    const apiBase = config.public?.apiBase || 'http://localhost:8000'
+    const result = await $fetch(`${apiBase}/webhook/notify`, {
+      method: 'POST',
+      body: {
+        body: notificationText.value,
+        source: 'manual_paste'
+      }
+    })
+    parseResult.value = result
+    if (result.status === 'created') {
+      notificationText.value = ''
+    }
+  } catch (error) {
+    parseResult.value = { status: 'error', reason: error.data?.detail || error.message }
+  } finally {
+    parsing.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -157,7 +219,79 @@ const submitTransaction = async () => {
 }
 
 .header {
+  margin-bottom: 1rem;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.5rem;
   margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  padding: 0.6rem 1.2rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.paste-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.parse-result {
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.parse-success {
+  color: var(--success);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.parse-detail {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.abnormal-badge {
+  color: var(--warning, #f59e0b);
+  font-size: 0.85rem;
+}
+
+.parse-fail {
+  color: var(--danger);
 }
 
 .header h1 {
