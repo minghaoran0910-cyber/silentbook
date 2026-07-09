@@ -68,6 +68,25 @@
         </label>
       </div>
     </div>
+
+    <div class="settings-section">
+      <h2>数据管理</h2>
+      <p class="section-desc">导入导出数据</p>
+      
+      <div class="data-actions">
+        <button @click="exportData" class="btn-action">
+          <span>📥</span> 导出 CSV
+        </button>
+        <label class="btn-action import-btn">
+          <span>📤</span> 导入 CSV
+          <input type="file" accept=".csv" @change="importData" style="display: none">
+        </label>
+      </div>
+      
+      <div v-if="importResult" class="import-result" :class="importResult.success ? 'success' : 'error'">
+        {{ importResult.message }}
+      </div>
+    </div>
   </div>
 </template>
 
@@ -92,6 +111,45 @@ const agents = ref([
 const agentMode = ref('auto')
 const apiBase = ref('http://localhost:8000')
 const autoAnalyze = ref(false)
+const importResult = ref(null)
+
+const exportData = async () => {
+  try {
+    const response = await fetch(`${apiBase.value}/export/csv`)
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `silentbook_export_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    window.URL.revokeObjectURL(url)
+    importResult.value = { success: true, message: '导出成功' }
+  } catch (e) {
+    importResult.value = { success: false, message: '导出失败: ' + e.message }
+  }
+}
+
+const importData = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    const content = e.target.result
+    try {
+      const response = await fetch(`${apiBase.value}/import/csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      })
+      const result = await response.json()
+      importResult.value = { success: true, message: `导入成功: ${result.imported} 条记录` }
+    } catch (err) {
+      importResult.value = { success: false, message: '导入失败: ' + err.message }
+    }
+  }
+  reader.readAsText(file)
+}
 
 const saveAgentMode = async () => {
   try {
@@ -303,5 +361,53 @@ h1 {
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+/* 数据管理 */
+.data-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.import-btn {
+  position: relative;
+}
+
+.import-result {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.import-result.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.import-result.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid var(--danger);
 }
 </style>
