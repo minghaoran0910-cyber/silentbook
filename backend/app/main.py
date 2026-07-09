@@ -1,10 +1,11 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
-from .database import get_db, SessionLocal, Transaction, AnalysisResult
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats
@@ -12,10 +13,21 @@ from .schemas import (
 import httpx
 import os
 
-app = FastAPI(title="SilentBook API", version="0.1.0")
-
 # CORS - 开发环境允许所有，生产环境需要配置
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+AGENT_API_URL = os.getenv("AGENT_API_URL", "http://localhost:5000")
+PARSER_API_URL = os.getenv("PARSER_API_URL", "http://localhost:6000")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(title="SilentBook API", version="0.1.0", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -23,16 +35,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
-
-AGENT_API_URL = os.getenv("AGENT_API_URL", "http://localhost:5000")
-PARSER_API_URL = os.getenv("PARSER_API_URL", "http://localhost:6000")
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup"""
-    from .database import init_db
-    init_db()
 
 
 @app.get("/")

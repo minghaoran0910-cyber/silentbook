@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -12,7 +12,8 @@ class TransactionBase(BaseModel):
     raw_text: Optional[str] = Field(None, max_length=2000)
     confidence: float = Field(0.5, ge=0, le=1)
 
-    @validator('transaction_type')
+    @field_validator('transaction_type')
+    @classmethod
     def validate_transaction_type(cls, v):
         if v not in ['income', 'expense']:
             raise ValueError('transaction_type must be income or expense')
@@ -25,21 +26,20 @@ class TransactionCreate(TransactionBase):
 
 class TransactionUpdate(BaseModel):
     """Partial update - all fields optional"""
-    amount: Optional[float] = None
-    category: Optional[str] = None
-    account: Optional[str] = None
-    description: Optional[str] = None
+    amount: Optional[float] = Field(None, gt=0)
+    category: Optional[str] = Field(None, min_length=1, max_length=50)
+    account: Optional[str] = Field(None, min_length=1, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
     transaction_type: Optional[str] = None
-    raw_text: Optional[str] = None
-    confidence: Optional[float] = None
+    raw_text: Optional[str] = Field(None, max_length=2000)
+    confidence: Optional[float] = Field(None, ge=0, le=1)
 
 
 class TransactionResponse(TransactionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     parsed_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class AnalysisRequest(BaseModel):

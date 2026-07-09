@@ -92,6 +92,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { createTransaction } from '~/utils/api'
 
 const router = useRouter()
 
@@ -118,33 +119,28 @@ const submitTransaction = async () => {
   message.value = ''
 
   try {
-    const response = await fetch('/api/transactions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form.value,
-        confidence: 1.0
-      })
+    await createTransaction({
+      amount: form.value.amount,
+      category: form.value.category,
+      account: form.value.account,
+      description: form.value.description || undefined,
+      transaction_type: form.value.transaction_type,
+      confidence: 1.0
     })
-
-    if (response.ok) {
-      message.value = '记账成功！'
-      messageType.value = 'success'
-      // 重置表单
-      form.value = {
-        amount: null,
-        category: '',
-        account: '',
-        description: '',
-        transaction_type: 'expense'
-      }
-      // 2秒后跳转到交易列表
-      setTimeout(() => {
-        router.push('/transactions')
-      }, 2000)
-    } else {
-      throw new Error('保存失败')
+    message.value = '记账成功！'
+    messageType.value = 'success'
+    // 重置表单
+    form.value = {
+      amount: null,
+      category: '',
+      account: '',
+      description: '',
+      transaction_type: 'expense'
     }
+    // 2秒后跳转到交易列表
+    setTimeout(() => {
+      router.push('/transactions')
+    }, 2000)
   } catch (error) {
     message.value = '保存失败，请重试'
     messageType.value = 'error'
