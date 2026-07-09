@@ -33,6 +33,42 @@
       </div>
     </div>
 
+    <!-- AI 洞察 -->
+    <div class="ai-section">
+      <div class="section-header">
+        <h2>🤖 AI 洞察</h2>
+        <button @click="analyze" class="btn btn-primary" :disabled="analyzing">
+          {{ analyzing ? '分析中...' : '立即分析' }}
+        </button>
+      </div>
+      
+      <div class="insights">
+        <div class="insight-card">
+          <div class="insight-header">
+            <span class="insight-icon">💸</span>
+            <span class="insight-title">消费分析</span>
+          </div>
+          <p class="insight-content">{{ analysis.consumption }}</p>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-header">
+            <span class="insight-icon">📈</span>
+            <span class="insight-title">投资分析</span>
+          </div>
+          <p class="insight-content">{{ analysis.investment }}</p>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-header">
+            <span class="insight-icon">💡</span>
+            <span class="insight-title">建议</span>
+          </div>
+          <p class="insight-content">{{ analysis.suggestion }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- 资产概览 -->
     <div class="asset-section" v-if="assets.length > 0 || liabilities.length > 0">
       <div class="section-header">
@@ -191,42 +227,6 @@
             </div>
             <span class="weekly-text">入¥{{ w.income.toFixed(0) }} 出¥{{ w.expense.toFixed(0) }}</span>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- AI 分析区域 -->
-    <div class="ai-section">
-      <div class="section-header">
-        <h2>🤖 AI 洞察</h2>
-        <button @click="analyze" class="btn btn-primary" :disabled="analyzing">
-          {{ analyzing ? '分析中...' : '立即分析' }}
-        </button>
-      </div>
-      
-      <div class="insights">
-        <div class="insight-card">
-          <div class="insight-header">
-            <span class="insight-icon">💸</span>
-            <span class="insight-title">消费分析</span>
-          </div>
-          <p class="insight-content">{{ analysis.consumption }}</p>
-        </div>
-        
-        <div class="insight-card">
-          <div class="insight-header">
-            <span class="insight-icon">📈</span>
-            <span class="insight-title">投资分析</span>
-          </div>
-          <p class="insight-content">{{ analysis.investment }}</p>
-        </div>
-        
-        <div class="insight-card">
-          <div class="insight-header">
-            <span class="insight-icon">💡</span>
-            <span class="insight-title">建议</span>
-          </div>
-          <p class="insight-content">{{ analysis.suggestion }}</p>
         </div>
       </div>
     </div>
