@@ -1,6 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date
 from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
+from datetime import datetime, date
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://silentbook:silentbook@localhost:5432/silentbook")
@@ -22,6 +22,39 @@ class Transaction(Base):
     confidence = Column(Float, default=0.5)
     parsed_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Asset(Base):
+    """资产：现金、存款、基金、股票、理财、房产等"""
+    __tablename__ = "assets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    asset_type = Column(String(30), nullable=False)  # cash/savings/fund/stock/bond/property/other
+    account = Column(String(100))  # 所属机构
+    current_value = Column(Float, nullable=False, default=0)  # 当前价值
+    initial_value = Column(Float, default=0)  # 初始投入
+    currency = Column(String(10), default="CNY")
+    liquidity = Column(String(10), default="medium")  # high/medium/low
+    status = Column(String(20), default="active")  # active/frozen/closed
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class Liability(Base):
+    """负债：信用卡、贷款、房贷等"""
+    __tablename__ = "liabilities"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    liability_type = Column(String(30), nullable=False)  # credit_card/loan/mortgage/other
+    total_amount = Column(Float, nullable=False, default=0)  # 总额
+    current_amount = Column(Float, nullable=False, default=0)  # 当前待还
+    interest_rate = Column(Float, default=0)  # 年利率
+    due_date = Column(Date)  # 到期日
+    status = Column(String(20), default="active")  # active/paid/overdue
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
     
 class AgentConfig(Base):
     __tablename__ = "agent_configs"

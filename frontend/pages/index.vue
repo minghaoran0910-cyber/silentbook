@@ -12,6 +12,14 @@
         <div class="stat-value">¥{{ stats.net_assets.toFixed(2) }}</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">总资产</div>
+        <div class="stat-value income">¥{{ (stats.total_assets || 0).toFixed(2) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">总负债</div>
+        <div class="stat-value expense">¥{{ (stats.total_liabilities || 0).toFixed(2) }}</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">本月支出</div>
         <div class="stat-value expense">¥{{ stats.monthly_expenses.toFixed(2) }}</div>
       </div>

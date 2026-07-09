@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, init_db
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, init_db
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
-    AnalysisResponse, DashboardStats
+    AnalysisResponse, DashboardStats,
+    AssetCreate, AssetUpdate, AssetResponse,
+    LiabilityCreate, LiabilityUpdate, LiabilityResponse
 )
 import httpx
 import os
@@ -219,13 +221,26 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         Transaction.transaction_type == "expense"
     ).scalar() or 0.0
     
-    net_assets = total_income - total_expenses
+    # 资产总值
+    total_assets = db.query(func.coalesce(func.sum(Asset.current_value), 0)).filter(
+        Asset.status == "active"
+    ).scalar() or 0.0
+
+    # 负债总值
+    total_liabilities = db.query(func.coalesce(func.sum(Liability.current_amount), 0)).filter(
+        Liability.status == "active"
+    ).scalar() or 0.0
+
+    # 净资产 = 交易净额 + 资产 - 负债
+    net_assets = (total_income - total_expenses) + total_assets - total_liabilities
 
     # 交易笔数
     transaction_count = db.query(Transaction).count()
 
     return DashboardStats(
         net_assets=net_assets,
+        total_assets=total_assets,
+        total_liabilities=total_liabilities,
         monthly_income=monthly_income,
         monthly_expenses=monthly_expenses,
         transaction_count=transaction_count
@@ -306,3 +321,119 @@ async def get_latest_analysis(db: Session = Depends(get_db)):
         investment=result.get("investment", "暂无分析"),
         suggestion=result.get("suggestion", "暂无建议")
     )
+
+
+# ===== 资产管理 =====
+
+@app.get("/assets", response_model=List[AssetResponse])
+async def list_assets(
+    asset_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """获取资产列表"""
+    query = db.query(Asset)
+    if asset_type:
+        query = query.filter(Asset.asset_type == asset_type)
+    if status:
+        query = query.filter(Asset.status == status)
+    return query.order_by(Asset.updated_at.desc()).all()
+
+
+@app.post("/assets", response_model=AssetResponse)
+async def create_asset(asset: AssetCreate, db: Session = Depends(get_db)):
+    """添加资产"""
+    db_asset = Asset(**asset.model_dump())
+    db.add(db_asset)
+    db.commit()
+    db.refresh(db_asset)
+    return db_asset
+
+
+@app.put("/assets/{asset_id}", response_model=AssetResponse)
+async def update_asset(
+    asset_id: int,
+    asset_update: AssetUpdate,
+    db: Session = Depends(get_db)
+):
+    """更新资产"""
+    db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    
+    update_data = asset_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_asset, key, value)
+    db_asset.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_asset)
+    return db_asset
+
+
+@app.delete("/assets/{asset_id}")
+async def delete_asset(asset_id: int, db: Session = Depends(get_db)):
+    """删除资产"""
+    db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    db.delete(db_asset)
+    db.commit()
+    return {"message": "已删除"}
+
+
+# ===== 负债管理 =====
+
+@app.get("/liabilities", response_model=List[LiabilityResponse])
+async def list_liabilities(
+    liability_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """获取负债列表"""
+    query = db.query(Liability)
+    if liability_type:
+        query = query.filter(Liability.liability_type == liability_type)
+    if status:
+        query = query.filter(Liability.status == status)
+    return query.order_by(Liability.updated_at.desc()).all()
+
+
+@app.post("/liabilities", response_model=LiabilityResponse)
+async def create_liability(liability: LiabilityCreate, db: Session = Depends(get_db)):
+    """添加负债"""
+    db_liability = Liability(**liability.model_dump())
+    db.add(db_liability)
+    db.commit()
+    db.refresh(db_liability)
+    return db_liability
+
+
+@app.put("/liabilities/{liability_id}", response_model=LiabilityResponse)
+async def update_liability(
+    liability_id: int,
+    liability_update: LiabilityUpdate,
+    db: Session = Depends(get_db)
+):
+    """更新负债"""
+    db_liability = db.query(Liability).filter(Liability.id == liability_id).first()
+    if not db_liability:
+        raise HTTPException(status_code=404, detail="负债不存在")
+    
+    update_data = liability_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_liability, key, value)
+    db_liability.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_liability)
+    return db_liability
+
+
+@app.delete("/liabilities/{liability_id}")
+async def delete_liability(liability_id: int, db: Session = Depends(get_db)):
+    """删除负债"""
+    db_liability = db.query(Liability).filter(Liability.id == liability_id).first()
+    if not db_liability:
+        raise HTTPException(status_code=404, detail="负债不存在")
+    db.delete(db_liability)
+    db.commit()
+    return {"message": "已删除"}

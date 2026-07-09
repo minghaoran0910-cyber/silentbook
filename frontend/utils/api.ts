@@ -132,3 +132,88 @@ export async function parseNotification(notification: ParseRequest): Promise<{ m
     body: JSON.stringify(notification)
   })
 }
+
+// ===== 资产管理 =====
+
+export interface Asset {
+  id: number
+  name: string
+  asset_type: string
+  account: string | null
+  current_value: number
+  initial_value: number
+  currency: string
+  liquidity: string
+  status: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Liability {
+  id: number
+  name: string
+  liability_type: string
+  total_amount: number
+  current_amount: number
+  interest_rate: number
+  due_date: string | null
+  status: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchAssets(params?: { asset_type?: string; status?: string }): Promise<Asset[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.asset_type) searchParams.append('asset_type', params.asset_type)
+  if (params?.status) searchParams.append('status', params.status)
+  return request<Asset[]>(`/assets?${searchParams}`)
+}
+
+export async function createAsset(data: Partial<Asset>): Promise<Asset> {
+  return request<Asset>('/assets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function updateAsset(id: number, data: Partial<Asset>): Promise<Asset> {
+  return request<Asset>(`/assets/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function deleteAsset(id: number): Promise<void> {
+  await request(`/assets/${id}`, { method: 'DELETE' })
+}
+
+export async function fetchLiabilities(params?: { liability_type?: string; status?: string }): Promise<Liability[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.liability_type) searchParams.append('liability_type', params.liability_type)
+  if (params?.status) searchParams.append('status', params.status)
+  return request<Liability[]>(`/liabilities?${searchParams}`)
+}
+
+export async function createLiability(data: Partial<Liability>): Promise<Liability> {
+  return request<Liability>('/liabilities', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function updateLiability(id: number, data: Partial<Liability>): Promise<Liability> {
+  return request<Liability>(`/liabilities/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function deleteLiability(id: number): Promise<void> {
+  await request(`/liabilities/${id}`, { method: 'DELETE' })
+}

@@ -29,6 +29,7 @@
 <script setup>
 const links = [
   { to: '/', label: '总览', icon: '◈' },
+  { to: '/assets', label: '资产', icon: '◈' },
   { to: '/transactions', label: '交易', icon: '⇅' },
   { to: '/analysis', label: '分析', icon: '◐' },
   { to: '/settings', label: '设置', icon: '⚙' }
