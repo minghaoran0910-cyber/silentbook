@@ -462,6 +462,32 @@ async def get_latest_analysis(db: Session = Depends(get_db)):
     )
 
 
+@app.get("/analysis/history")
+async def get_analysis_history(limit: int = 20, db: Session = Depends(get_db)):
+    """获取历史分析列表"""
+    records = db.query(AnalysisResult).order_by(
+        AnalysisResult.created_at.desc()
+    ).limit(limit * 3).all()
+    
+    # 按 created_at 分组
+    batches = {}
+    for r in records:
+        batch_time = r.created_at.isoformat() if r.created_at else "unknown"
+        if batch_time not in batches:
+            batches[batch_time] = {
+                "created_at": batch_time,
+                "items": []
+            }
+        batches[batch_time]["items"].append({
+            "id": r.id,
+            "analysis_type": r.analysis_type,
+            "content": r.content,
+            "agent_name": r.agent_name
+        })
+    
+    return list(batches.values())[:limit]
+
+
 # ===== 资产管理 =====
 
 @app.get("/assets", response_model=List[AssetResponse])

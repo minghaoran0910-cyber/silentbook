@@ -52,10 +52,14 @@
       <div v-if="history.length > 0" class="history-section">
         <h2>📜 历史分析</h2>
         <div class="history-list">
-          <div v-for="item in history" :key="item.id" class="history-item" @click="loadHistory(item)">
-            <span class="history-time">{{ formatTime(item.created_at) }}</span>
-            <span class="history-type">{{ typeLabels[item.analysis_type] || item.analysis_type }}</span>
-            <span class="history-preview">{{ item.content.substring(0, 60) }}...</span>
+          <div v-for="batch in history" :key="batch.created_at" class="history-batch">
+            <div class="history-time">{{ formatTime(batch.created_at) }}</div>
+            <div class="history-items">
+              <div v-for="item in batch.items" :key="item.id" class="history-item" @click="loadHistory(item)">
+                <span class="history-type">{{ typeLabels[item.analysis_type] || item.analysis_type }}</span>
+                <span class="history-preview">{{ item.content.substring(0, 80) }}...</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -70,7 +74,8 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { runAnalysis, fetchLatestAnalysis } from '~/utils/api'
+import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory } from '~/utils/api'
+import { getCategoryIcon } from '~/utils/icons'
 
 const analyzing = ref(false)
 const analysisMode = ref('')
@@ -128,13 +133,14 @@ const formatTime = (t) => {
 
 onMounted(async () => {
   try {
-    const data = await fetchLatestAnalysis()
+    const [data, hist] = await Promise.all([fetchLatestAnalysis(), fetchAnalysisHistory(10)])
     if (data && (data.consumption || data.investment)) {
       analysis.value = data
       analysisMode.value = data.mode || 'local'
     }
+    if (hist) history.value = hist
   } catch (e) {
-    console.error('加载分析失败:', e)
+    console.error('加载失败:', e)
   }
 })
 </script>

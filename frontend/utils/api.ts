@@ -135,6 +135,15 @@ export async function fetchLatestAnalysis(): Promise<AnalysisResult> {
   return request<AnalysisResult>('/analysis/latest')
 }
 
+export interface AnalysisHistoryItem {
+  created_at: string
+  items: { id: number; analysis_type: string; content: string; agent_name: string }[]
+}
+
+export async function fetchAnalysisHistory(limit: number = 20): Promise<AnalysisHistoryItem[]> {
+  return request<AnalysisHistoryItem[]>(`/analysis/history?limit=${limit}`)
+}
+
 // ===== Parse =====
 
 export async function parseNotification(notification: ParseRequest): Promise<{ message: string; id: number }> {
