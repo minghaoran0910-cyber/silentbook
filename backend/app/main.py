@@ -836,6 +836,30 @@ async def import_csv(file: dict, db: Session = Depends(get_db)):
 
 BUDGET_LEVELS = {"L1", "L2", "L3"}
 
+# ===== 五级预警阈值 (V2-007) =====
+# 五级预警：安全/正常/提醒/超支/严重超支
+# 每级定义：级别、名称、颜色、usage上界（小数）
+ALERT_LEVELS = [
+    {"level": 1, "name": "安全",     "color": "green",  "max": 0.5},
+    {"level": 2, "name": "正常",     "color": "blue",   "max": 0.8},
+    {"level": 3, "name": "提醒",     "color": "yellow", "max": 1.0},
+    {"level": 4, "name": "超支",     "color": "orange", "max": 1.2},
+    {"level": 5, "name": "严重超支", "color": "red",    "max": float('inf')},
+]
+
+# 默认预警阈值列表（可被预算级自定义覆盖）
+DEFAULT_ALERT_THRESHOLDS = [0.5, 0.8, 1.0, 1.2]
+
+
+def get_alert_level(usage_rate: float, custom_thresholds: list = None) -> dict:
+    """根据使用率返回预警级别。usage_rate 是小数（0.85 = 85%）。"""
+    thresholds = custom_thresholds if custom_thresholds and len(custom_thresholds) == 4 else DEFAULT_ALERT_THRESHOLDS
+    for i, t in enumerate(thresholds):
+        if usage_rate < t:
+            return ALERT_LEVELS[i]
+    return ALERT_LEVELS[4]
+
+
 LEVEL_LABELS = {
     "L1": "必要支出",
     "L2": "改善支出",
@@ -883,8 +907,9 @@ def get_category_level(category: str, db) -> str:
 class BudgetCreate(BaseModel):
     category: str
     monthly_limit: float
-    alert_threshold: float = 0.8
+    alert_threshold: float = 0.8  # 向后兼容，单个阈值
     level: str = Field("L2", pattern="^(L1|L2|L3)$")
+    alert_thresholds: Optional[List[float]] = None  # 五级预警自定义阈值（4个上界值）
 
 class BudgetResponse(BaseModel):
     id: int
@@ -921,11 +946,16 @@ async def get_budgets(db: Session = Depends(get_db)):
         ).scalar() or 0.0
         
         usage = float(spent) / b["monthly_limit"] if b["monthly_limit"] > 0 else 0
+        custom_ts = b.get("alert_thresholds")
+        alert_info = get_alert_level(usage, custom_ts)
         result.append({
             **b,
             "current_spent": round(float(spent), 2),
             "usage_rate": round(usage * 100, 1),
-            "alert": usage >= b.get("alert_threshold", 0.8)
+            "alert": usage >= b.get("alert_threshold", 0.8),
+            "alert_level": alert_info["level"],
+            "alert_name": alert_info["name"],
+            "alert_color": alert_info["color"],
         })
     return result
 
@@ -969,6 +999,7 @@ async def get_budgets_by_level(db: Session = Depends(get_db)):
             spent = actual_by_category.get(b["category"], 0)
             budgeted_spent += spent
             usage = spent / b["monthly_limit"] if b["monthly_limit"] > 0 else 0
+            alert_info = get_alert_level(usage, b.get("alert_thresholds"))
             items.append({
                 "category": b["category"],
                 "monthly_limit": b["monthly_limit"],
@@ -976,6 +1007,9 @@ async def get_budgets_by_level(db: Session = Depends(get_db)):
                 "usage_rate": round(usage * 100, 1),
                 "alert_threshold": b.get("alert_threshold", 0.8),
                 "alert": usage >= b.get("alert_threshold", 0.8),
+                "alert_level": alert_info["level"],
+                "alert_name": alert_info["name"],
+                "alert_color": alert_info["color"],
             })
         
         # 未设预算但属于该级别的分类支出
@@ -1006,6 +1040,53 @@ async def get_budgets_by_level(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/budgets/alerts")
+async def get_budget_alerts(db: Session = Depends(get_db)):
+    """五级预警状态：返回每个预算的预警级别"""
+    import json
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if not raw or not raw.value:
+        return {"alerts": [], "summary": {"safe": 0, "normal": 0, "notice": 0, "over": 0, "critical": 0}}
+
+    budgets = json.loads(raw.value)
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    alerts = []
+    summary = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for b in budgets:
+        spent = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            Transaction.category == b["category"],
+            Transaction.transaction_type == "expense",
+            Transaction.parsed_at >= month_start
+        ).scalar() or 0.0
+
+        usage = float(spent) / b["monthly_limit"] if b["monthly_limit"] > 0 else 0
+        alert_info = get_alert_level(usage, b.get("alert_thresholds"))
+        summary[alert_info["level"]] += 1
+        alerts.append({
+            "category": b["category"],
+            "monthly_limit": b["monthly_limit"],
+            "current_spent": round(float(spent), 2),
+            "usage_rate": round(usage * 100, 1),
+            "alert_level": alert_info["level"],
+            "alert_name": alert_info["name"],
+            "alert_color": alert_info["color"],
+            "level": b.get("level", DEFAULT_CATEGORY_LEVELS.get(b.get("category", ""), "L2")),
+        })
+
+    return {
+        "alerts": alerts,
+        "summary": {
+            "safe": summary[1],
+            "normal": summary[2],
+            "notice": summary[3],
+            "over": summary[4],
+            "critical": summary[5],
+        },
+    }
+
+
 @app.post("/budgets")
 async def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
     """创建/更新预算"""
@@ -1021,6 +1102,8 @@ async def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
     if existing:
         existing["monthly_limit"] = budget.monthly_limit
         existing["alert_threshold"] = budget.alert_threshold
+        if budget.alert_thresholds:
+            existing["alert_thresholds"] = budget.alert_thresholds
     else:
         budgets.append(budget.model_dump())
     
@@ -1045,6 +1128,144 @@ async def delete_budget(category: str, db: Session = Depends(get_db)):
     raw.value = json.dumps(budgets)
     db.commit()
     return {"status": "ok", "remaining": len(budgets)}
+
+
+# ===== 预算模板（V2-008）=====
+# 三套预设模板：节俭型/均衡型/宽松型
+# 每套模板包含 L1/L2/L3 三级分类的月度预算
+
+BUDGET_TEMPLATES = {
+    "frugal": {
+        "name": "节俭型",
+        "description": "必要支出为主，压缩改善和非必要支出",
+        "monthly_total": 4750,
+        "budgets": [
+            # L1 必要支出
+            {"category": "房租", "monthly_limit": 2500, "level": "L1", "alert_threshold": 0.9},
+            {"category": "餐饮", "monthly_limit": 1000, "level": "L1", "alert_threshold": 0.9},
+            {"category": "交通", "monthly_limit": 200, "level": "L1", "alert_threshold": 0.9},
+            {"category": "水电", "monthly_limit": 150, "level": "L1", "alert_threshold": 0.9},
+            {"category": "话费", "monthly_limit": 50, "level": "L1", "alert_threshold": 0.9},
+            {"category": "日用", "monthly_limit": 150, "level": "L1", "alert_threshold": 0.9},
+            # L2 改善支出
+            {"category": "学习", "monthly_limit": 200, "level": "L2", "alert_threshold": 0.8},
+            {"category": "社交", "monthly_limit": 100, "level": "L2", "alert_threshold": 0.8},
+            # L3 非必要支出
+            {"category": "娱乐", "monthly_limit": 100, "level": "L3", "alert_threshold": 0.8},
+            {"category": "购物", "monthly_limit": 300, "level": "L3", "alert_threshold": 0.8},
+        ],
+    },
+    "balanced": {
+        "name": "均衡型",
+        "description": "必要支出充裕，改善支出合理，适度非必要支出",
+        "monthly_total": 8400,
+        "budgets": [
+            # L1 必要支出
+            {"category": "房租", "monthly_limit": 3500, "level": "L1", "alert_threshold": 0.9},
+            {"category": "餐饮", "monthly_limit": 2000, "level": "L1", "alert_threshold": 0.9},
+            {"category": "交通", "monthly_limit": 400, "level": "L1", "alert_threshold": 0.9},
+            {"category": "水电", "monthly_limit": 300, "level": "L1", "alert_threshold": 0.9},
+            {"category": "话费", "monthly_limit": 100, "level": "L1", "alert_threshold": 0.9},
+            {"category": "日用", "monthly_limit": 300, "level": "L1", "alert_threshold": 0.9},
+            # L2 改善支出
+            {"category": "健身", "monthly_limit": 300, "level": "L2", "alert_threshold": 0.8},
+            {"category": "学习", "monthly_limit": 300, "level": "L2", "alert_threshold": 0.8},
+            {"category": "社交", "monthly_limit": 300, "level": "L2", "alert_threshold": 0.8},
+            {"category": "咖啡", "monthly_limit": 200, "level": "L2", "alert_threshold": 0.8},
+            # L3 非必要支出
+            {"category": "娱乐", "monthly_limit": 200, "level": "L3", "alert_threshold": 0.8},
+            {"category": "购物", "monthly_limit": 300, "level": "L3", "alert_threshold": 0.8},
+            {"category": "旅游", "monthly_limit": 200, "level": "L3", "alert_threshold": 0.8},
+        ],
+    },
+    "loose": {
+        "name": "宽松型",
+        "description": "各层级充裕，不刻意压缩非必要支出",
+        "monthly_total": 14300,
+        "budgets": [
+            # L1 必要支出
+            {"category": "房租", "monthly_limit": 5000, "level": "L1", "alert_threshold": 0.9},
+            {"category": "餐饮", "monthly_limit": 3500, "level": "L1", "alert_threshold": 0.9},
+            {"category": "交通", "monthly_limit": 800, "level": "L1", "alert_threshold": 0.9},
+            {"category": "水电", "monthly_limit": 500, "level": "L1", "alert_threshold": 0.9},
+            {"category": "话费", "monthly_limit": 200, "level": "L1", "alert_threshold": 0.9},
+            {"category": "日用", "monthly_limit": 500, "level": "L1", "alert_threshold": 0.9},
+            # L2 改善支出
+            {"category": "健身", "monthly_limit": 500, "level": "L2", "alert_threshold": 0.8},
+            {"category": "学习", "monthly_limit": 500, "level": "L2", "alert_threshold": 0.8},
+            {"category": "社交", "monthly_limit": 500, "level": "L2", "alert_threshold": 0.8},
+            {"category": "咖啡", "monthly_limit": 500, "level": "L2", "alert_threshold": 0.8},
+            # L3 非必要支出
+            {"category": "娱乐", "monthly_limit": 500, "level": "L3", "alert_threshold": 0.8},
+            {"category": "购物", "monthly_limit": 800, "level": "L3", "alert_threshold": 0.8},
+            {"category": "旅游", "monthly_limit": 500, "level": "L3", "alert_threshold": 0.8},
+        ],
+    },
+}
+
+
+@app.get("/budgets/templates")
+async def list_budget_templates():
+    """列出所有预算模板"""
+    result = []
+    for key, tpl in BUDGET_TEMPLATES.items():
+        level_summary = {"L1": 0, "L2": 0, "L3": 0}
+        for b in tpl["budgets"]:
+            level_summary[b["level"]] += b["monthly_limit"]
+        result.append({
+            "key": key,
+            "name": tpl["name"],
+            "description": tpl["description"],
+            "monthly_total": tpl["monthly_total"],
+            "category_count": len(tpl["budgets"]),
+            "level_summary": level_summary,
+        })
+    return result
+
+
+@app.get("/budgets/templates/{template_key}")
+async def get_budget_template(template_key: str):
+    """获取某个预算模板的详情"""
+    if template_key not in BUDGET_TEMPLATES:
+        raise HTTPException(status_code=404, detail=f"模板 '{template_key}' 不存在，可选: {', '.join(BUDGET_TEMPLATES.keys())}")
+    tpl = BUDGET_TEMPLATES[template_key]
+    return {
+        "key": template_key,
+        "name": tpl["name"],
+        "description": tpl["description"],
+        "monthly_total": tpl["monthly_total"],
+        "budgets": tpl["budgets"],
+    }
+
+
+@app.post("/budgets/templates/{template_key}/apply")
+async def apply_budget_template(template_key: str, db: Session = Depends(get_db)):
+    """应用预算模板 — 替换现有所有预算"""
+    import json
+    if template_key not in BUDGET_TEMPLATES:
+        raise HTTPException(status_code=404, detail=f"模板 '{template_key}' 不存在，可选: {', '.join(BUDGET_TEMPLATES.keys())}")
+
+    tpl = BUDGET_TEMPLATES[template_key]
+    budgets_data = [b.copy() for b in tpl["budgets"]]
+    # 补全 alert_thresholds 为 None（使用默认五级预警）
+    for b in budgets_data:
+        b.setdefault("alert_thresholds", None)
+
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    if raw:
+        raw.value = json.dumps(budgets_data)
+    else:
+        db.add(Setting(key="budgets", value=json.dumps(budgets_data)))
+    db.commit()
+
+    return {
+        "status": "ok",
+        "template": template_key,
+        "template_name": tpl["name"],
+        "applied_count": len(budgets_data),
+        "monthly_total": tpl["monthly_total"],
+        "budgets": budgets_data,
+    }
 
 
 # ===== 首次使用引导 =====

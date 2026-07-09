@@ -56,13 +56,18 @@
   - L2 改善支出（健身/学习/社交）— 30-50% 可压缩
   - L3 非必要支出（娱乐/奢侈品）— 80-100% 可砍
   - 实现：BudgetCreate 增加 level 字段 + /budgets/levels 端点 + 默认分类映射 + 16 个测试全通过
-- [ ] **五级预警阈值：**
-  - 🟢 安全区：0-60%
-  - 🟡 关注区：60-80%
-  - 🟠 预警区：80-95%
-  - 🔴 危险区：95-100%
-  - ⚫ 超支区：>100%
-- [ ] 预算模板（节俭型/均衡型/宽松型）
+- [x] **五级预警阈值：** ✅ V2-007 已完成
+  - 🟢 安全区：0-50%
+  - 🔵 正常区：50-80%
+  - 🟡 提醒区：80-100%
+  - 🟠 超支区：100-120%
+  - 🔴 严重超支区：≥120%
+  - 实现：ALERT_LEVELS常量 + get_alert_level()函数 + GET /budgets/alerts端点 + BudgetCreate可选alert_thresholds字段 + 28个测试全通过
+- [x] 预算模板（节俭型/均衡型/宽松型） ✅ V2-008 已完成
+  - 实现：BUDGET_TEMPLATES常量(3套) + GET /budgets/templates + GET /budgets/templates/{key} + POST /budgets/templates/{key}/apply
+  - 节俭型月总额4750 / 均衡型8400 / 宽松型14300
+  - apply行为：替换现有所有预算
+  - 测试：22/22 passed（含联动/budgets/alerts/levels）
 - [ ] 弹性预算机制（分类间可转移）
 - [ ] 预算历史对比
 
@@ -292,7 +297,7 @@
 - [x] 四账户体系实现 ✅ V2-004 已完成
 - [x] 账户间转账 ✅ V2-005 已完成（Transfer模型+转账历史查询+20测试全通过）
 - [x] 三级分类预算 ✅ V2-006 已完成（level字段+/budgets/levels端点+默认映射+16测试）
-- [ ] 五级预警阈值
+- [x] 五级预警阈值 ✅ V2-007 已完成（ALERT_LEVELS+get_alert_level()+/budgets/alerts端点+28测试）
 - [ ] 预算模板 + 弹性预算
 
 **第 3 周：** 现金流管理 + 负债管理 + 基础报表
