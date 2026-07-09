@@ -48,6 +48,24 @@
         </div>
       </div>
 
+      <!-- 图表区 -->
+      <div v-if="categoryStats.length > 0" class="charts-section">
+        <div class="chart-card">
+          <h3>📊 消费分类</h3>
+          <div class="pie-chart-wrapper">
+            <div class="css-pie" :style="pieStyle"></div>
+            <div class="pie-legend">
+              <div v-for="(cat, i) in categoryStats.slice(0, 8)" :key="cat.name" class="legend-item">
+                <span class="legend-dot" :style="{ background: pieColors[i % pieColors.length] }"></span>
+                <span class="legend-name">{{ cat.name }}</span>
+                <span class="legend-value">¥{{ cat.amount.toFixed(0) }}</span>
+                <span class="legend-pct">{{ ((cat.amount / totalExpense) * 100).toFixed(1) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 历史分析 -->
       <div v-if="history.length > 0" class="history-section">
         <h2>📜 历史分析</h2>
@@ -86,6 +104,21 @@ const analysis = ref({
 })
 const history = ref([])
 const loadingText = ref('AI 正在分析您的财务数据...')
+const categoryStats = ref([])
+const totalExpense = ref(0)
+const pieColors = ['#b45309', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1']
+
+const pieStyle = computed(() => {
+  if (!categoryStats.value.length) return ''
+  let acc = 0
+  const segments = categoryStats.value.slice(0, 8).map((cat, i) => {
+    const pct = (cat.amount / totalExpense.value) * 100
+    const start = acc
+    acc += pct
+    return `${pieColors[i % pieColors.length]} ${start}% ${acc}%`
+  })
+  return `background: conic-gradient(${segments.join(', ')})`
+})
 
 const typeLabels = {
   consumption: '消费',
@@ -139,6 +172,19 @@ onMounted(async () => {
       analysisMode.value = data.mode || 'local'
     }
     if (hist) history.value = hist
+    
+    // 加载分类统计
+    try {
+      const config = useRuntimeConfig()
+      const apiBase = config.public?.apiBase || 'http://localhost:8000'
+      const monthly = await $fetch(`${apiBase}/stats/monthly`)
+      if (monthly && monthly.expense_categories) {
+        categoryStats.value = monthly.expense_categories
+        totalExpense.value = monthly.total_expense || 0
+      }
+    } catch (e) {
+      console.error('加载分类统计失败:', e)
+    }
   } catch (e) {
     console.error('加载失败:', e)
   }
@@ -176,4 +222,16 @@ onMounted(async () => {
 .history-type { color: var(--accent); font-size: 0.85rem; min-width: 60px; }
 .history-preview { color: var(--text-secondary); font-size: 0.85rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-state { text-align: center; padding: 4rem; color: var(--text-secondary); }
+
+.charts-section { margin-bottom: 2rem; }
+.chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.chart-card h3 { color: var(--text-primary); margin-bottom: 1rem; }
+.pie-chart-wrapper { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; }
+.css-pie { width: 200px; height: 200px; border-radius: 50%; min-width: 200px; }
+.pie-legend { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; min-width: 200px; }
+.legend-item { display: flex; align-items: center; gap: 0.5rem; }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.legend-name { color: var(--text-primary); font-size: 0.85rem; min-width: 60px; }
+.legend-value { color: var(--text-primary); font-size: 0.85rem; font-weight: 500; }
+.legend-pct { color: var(--text-secondary); font-size: 0.8rem; }
 </style>
