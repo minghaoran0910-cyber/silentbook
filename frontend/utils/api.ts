@@ -49,10 +49,18 @@ export interface UpdateTransactionPayload {
   confidence?: number
 }
 
-const API_BASE = process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000'
+// 在服务端（SSR）用 Docker 内部网络，在客户端（浏览器）用宿主机地址
+function getApiBase(): string {
+  // 浏览器端：用宿主机地址
+  if (import.meta.client) {
+    return 'http://localhost:8000'
+  }
+  // 服务端（SSR）：用 Docker 内部网络
+  return process.env.NUXT_PUBLIC_API_BASE || 'http://backend:8000'
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, options)
+  const response = await fetch(`${getApiBase()}${url}`, options)
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
     throw new Error(`API error ${response.status}: ${detail}`)
