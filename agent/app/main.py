@@ -94,7 +94,7 @@ async def call_llm(prompt: str, system_prompt: str = "") -> str:
         "max_tokens": 2000
     }
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             response = await client.post(
                 f"{DASHSCOPE_BASE_URL}/chat/completions",
@@ -103,7 +103,13 @@ async def call_llm(prompt: str, system_prompt: str = "") -> str:
             )
             response.raise_for_status()
             result = response.json()
-            return result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            message = result.get("choices", [{}])[0].get("message", {})
+            content = message.get("content", "")
+            reasoning = message.get("reasoning_content", "")
+            # glm-5.2 等推理模型：content 可能为空，实际内容在 reasoning_content
+            if not content and reasoning:
+                return reasoning
+            return content or reasoning or "（模型未返回内容）"
         except Exception as e:
             return f"本地 LLM 调用失败: {str(e)}"
 
