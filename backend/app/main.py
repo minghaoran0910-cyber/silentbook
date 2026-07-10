@@ -26,6 +26,10 @@ import time
 import collections
 from .scheduler import create_scheduler
 from .notification_push import pusher
+from .logging_config import (
+    setup_logging, log_buffer, generate_request_id,
+    set_request_context, _request_id_var, _user_id_var
+)
 
 # CORS - 开发环境允许所有，生产环境需要配置
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -45,6 +49,7 @@ _scheduler = None
 async def lifespan(app: FastAPI):
     global _scheduler
     # Startup
+    setup_logging()
     init_db()
     _scheduler = create_scheduler()
     _scheduler.start()
@@ -88,6 +93,46 @@ async def rate_limit_middleware(request: Request, call_next):
     
     log.append(now)
     return await call_next(request)
+
+
+# ===== 请求日志中间件 =====
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """记录每个 HTTP 请求的日志（方法/路径/状态码/耗时）"""
+    request_id = request.headers.get("X-Request-ID") or generate_request_id()
+    set_request_context(request_id=request_id)
+    
+    start_time = time.time()
+    response = None
+    status_code = 500
+    
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    except Exception as e:
+        status_code = 500
+        logger.error(f"请求异常: {e}", extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error_type": type(e).__name__
+        })
+        raise
+    finally:
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        log_level = logging.WARNING if status_code >= 400 else logging.INFO
+        
+        logger.log(log_level, f"{request.method} {request.url.path} {status_code}", extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "ip": request.client.host if request.client else "unknown"
+        })
+        # Reset context
+        _request_id_var.set(None)
+        _user_id_var.set(None)
 
 
 @app.get("/")
@@ -6409,3 +6454,78 @@ async def delete_recurring_transaction(recurring_id: int, db: Session = Depends(
     db.delete(rt)
     db.commit()
     return {"message": "已删除", "id": recurring_id}
+
+
+# ===== 日志管理 API =====
+
+class LogQueryParams(BaseModel):
+    level: Optional[str] = None
+    module: Optional[str] = None
+    search: Optional[str] = None
+    since_minutes: Optional[int] = Field(default=60, description="查询最近N分钟的日志")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+@app.get("/admin/logs")
+async def query_logs(
+    level: Optional[str] = None,
+    module: Optional[str] = None,
+    search: Optional[str] = None,
+    since_minutes: int = 60,
+    limit: int = 100,
+    user: User = Depends(require_user)
+):
+    """
+    查询系统日志（内存缓冲区）
+    
+    支持过滤：
+    - level: DEBUG/INFO/WARNING/ERROR/CRITICAL
+    - module: 模块名（模糊匹配）
+    - search: 消息内容搜索
+    - since_minutes: 查询最近N分钟（默认60）
+    - limit: 返回条数上限（默认100，最大1000）
+    """
+    since = None
+    if since_minutes:
+        since = time.time() - (since_minutes * 60)
+    
+    records = log_buffer.query(
+        level=level,
+        module=module,
+        since=since,
+        limit=min(limit, 1000),
+        search=search
+    )
+    
+    return {
+        "count": len(records),
+        "logs": records,
+        "filters": {
+            "level": level,
+            "module": module,
+            "search": search,
+            "since_minutes": since_minutes
+        }
+    }
+
+
+@app.get("/admin/logs/stats")
+async def log_stats(user: User = Depends(require_user)):
+    """
+    日志统计信息
+    
+    返回：
+    - 总记录数 / 缓冲区容量
+    - 按级别分布
+    - 按模块分布
+    - 时间范围
+    """
+    return log_buffer.stats()
+
+
+@app.post("/admin/logs/clear")
+async def clear_logs(user: User = Depends(require_user)):
+    """清空日志缓冲区（调试用）"""
+    log_buffer.clear()
+    logger.info("日志缓冲区已清空")
+    return {"message": "日志缓冲区已清空"}
