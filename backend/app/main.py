@@ -2752,6 +2752,465 @@ async def get_balance_sheet(db: Session = Depends(get_db)):
     }
 
 
+# ===== 高级报表（V2-021 预算执行报表）=====
+
+@app.get("/reports/budget-execution")
+async def get_budget_execution_report(
+    year: int = None,
+    month: int = None,
+    months: int = 3,
+    db: Session = Depends(get_db),
+):
+    """预算执行报表：各分类预算vs实际/偏差率/按级别汇总/趋势/预警"""
+    import json as _json
+
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+    months = max(1, min(months, 12))
+
+    # --- 读取预算配置 ---
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    budgets = _json.loads(raw.value) if raw and raw.value else []
+    if not budgets:
+        return {
+            "year": y, "month": m,
+            "summary": {"total_budget": 0, "total_spent": 0, "remaining": 0,
+                        "execution_rate": 0, "days_elapsed": 0, "days_in_month": 0,
+                        "daily_budget": 0, "daily_actual": 0, "projected_usage": 0},
+            "by_category": [], "by_level": {}, "trend": [], "alerts": [],
+            "unbudgeted_categories": [],
+            "message": "未设置预算，请先创建预算或使用预算模板",
+        }
+
+    # 补全 level 字段
+    for b in budgets:
+        if "level" not in b:
+            b["level"] = DEFAULT_CATEGORY_LEVELS.get(b.get("category", ""), "L2")
+
+    # --- 计算当月时间范围 ---
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+    days_in_month = (end - start).days
+    days_elapsed = min((now - start).days + 1, days_in_month) if (y == now.year and m == now.month) else days_in_month
+
+    # --- 查询当月支出 ---
+    month_txs = db.query(Transaction).filter(
+        Transaction.transaction_type == "expense",
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end,
+    ).all()
+
+    actual_by_cat = {}
+    for tx in month_txs:
+        cat = tx.category or "其他"
+        actual_by_cat[cat] = actual_by_cat.get(cat, 0) + tx.amount
+
+    # --- 1. 按分类明细 ---
+    by_category = []
+    total_budget = 0
+    total_spent = 0
+    budgeted_cats = set()
+
+    for b in budgets:
+        cat = b["category"]
+        budgeted_cats.add(cat)
+        limit = b["monthly_limit"]
+        spent = actual_by_cat.get(cat, 0)
+        remaining = limit - spent
+        usage_rate = spent / limit if limit > 0 else 0
+        deviation = spent - limit
+        deviation_rate = (spent - limit) / limit * 100 if limit > 0 else 0
+        alert_info = get_alert_level(usage_rate, b.get("alert_thresholds"))
+
+        total_budget += limit
+        total_spent += spent
+
+        by_category.append({
+            "category": cat,
+            "level": b["level"],
+            "level_label": LEVEL_LABELS.get(b["level"], "改善支出"),
+            "budget_limit": round(limit, 2),
+            "actual_spent": round(spent, 2),
+            "remaining": round(remaining, 2),
+            "usage_rate": round(usage_rate * 100, 1),
+            "deviation": round(deviation, 2),
+            "deviation_rate": round(deviation_rate, 1),
+            "alert_level": alert_info["level"],
+            "alert_name": alert_info["name"],
+            "alert_color": alert_info["color"],
+        })
+
+    # 按偏差率降序排列（超支最多的排前面）
+    by_category.sort(key=lambda x: -x["deviation_rate"])
+
+    # --- 2. 未设预算但有支出的分类 ---
+    unbudgeted = []
+    for cat, amt in actual_by_cat.items():
+        if cat not in budgeted_cats:
+            unbudgeted.append({
+                "category": cat,
+                "actual_spent": round(amt, 2),
+                "level": DEFAULT_CATEGORY_LEVELS.get(cat, "L2"),
+                "level_label": LEVEL_LABELS.get(DEFAULT_CATEGORY_LEVELS.get(cat, "L2"), "改善支出"),
+            })
+    unbudgeted.sort(key=lambda x: -x["actual_spent"])
+
+    # --- 3. 按级别汇总 ---
+    by_level = {}
+    for level in ["L1", "L2", "L3"]:
+        level_budgets = [b for b in budgets if b.get("level") == level]
+        level_limit = sum(b["monthly_limit"] for b in level_budgets)
+        level_spent = sum(actual_by_cat.get(b["category"], 0) for b in level_budgets)
+        # 加上未设预算但属于该级别的支出
+        level_budgeted_cats = {b["category"] for b in level_budgets}
+        for cat, amt in actual_by_cat.items():
+            if cat not in budgeted_cats and DEFAULT_CATEGORY_LEVELS.get(cat, "L2") == level:
+                level_spent += amt
+        level_remaining = level_limit - level_spent
+        level_usage = level_spent / level_limit if level_limit > 0 else 0
+
+        by_level[level] = {
+            "label": LEVEL_LABELS[level],
+            "compressibility": LEVEL_COMPRESSIBILITY[level],
+            "budget_limit": round(level_limit, 2),
+            "actual_spent": round(level_spent, 2),
+            "remaining": round(level_remaining, 2),
+            "usage_rate": round(level_usage * 100, 1),
+            "deviation": round(level_spent - level_limit, 2),
+            "deviation_rate": round((level_spent - level_limit) / level_limit * 100, 1) if level_limit > 0 else 0,
+            "category_count": len(level_budgets),
+        }
+
+    # --- 4. 趋势分析（过去 N 个月） ---
+    trend = []
+    for i in range(months - 1, -1, -1):
+        # 计算目标月份
+        tm = m - i
+        ty = y
+        while tm <= 0:
+            tm += 12
+            ty -= 1
+
+        t_start = datetime(ty, tm, 1)
+        t_end = datetime(ty + 1, 1, 1) if tm == 12 else datetime(ty, tm + 1, 1)
+        t_days = (t_end - t_start).days
+
+        # 该月支出
+        t_txs = db.query(Transaction).filter(
+            Transaction.transaction_type == "expense",
+            Transaction.parsed_at >= t_start,
+            Transaction.parsed_at < t_end,
+        ).all()
+        t_actual_by_cat = {}
+        for tx in t_txs:
+            c = tx.category or "其他"
+            t_actual_by_cat[c] = t_actual_by_cat.get(c, 0) + tx.amount
+
+        t_total_spent = 0
+        t_cat_count = 0
+        t_over_count = 0
+        for b in budgets:
+            spent = t_actual_by_cat.get(b["category"], 0)
+            t_total_spent += spent
+            if spent > b["monthly_limit"]:
+                t_over_count += 1
+            t_cat_count += 1
+
+        t_execution = round(t_total_spent / total_budget * 100, 1) if total_budget > 0 else 0
+        trend.append({
+            "year": ty, "month": tm,
+            "period": f"{ty}年{tm}月",
+            "total_budget": round(total_budget, 2),
+            "total_spent": round(t_total_spent, 2),
+            "execution_rate": t_execution,
+            "over_budget_count": t_over_count,
+            "total_categories": t_cat_count,
+            "days_in_month": t_days,
+        })
+
+    # --- 5. 预警列表 ---
+    alerts = []
+    for item in by_category:
+        if item["alert_level"] >= 3:  # 提醒及以上
+            alerts.append({
+                "category": item["category"],
+                "level": item["level"],
+                "alert_level": item["alert_level"],
+                "alert_name": item["alert_name"],
+                "alert_color": item["alert_color"],
+                "usage_rate": item["usage_rate"],
+                "deviation": item["deviation"],
+                "message": f"{item['category']}已用{item['usage_rate']}%，{'超支' if item['usage_rate'] > 100 else '接近预算上限'}",
+            })
+    # 按告警级别降序
+    alerts.sort(key=lambda x: -x["alert_level"])
+
+    # --- 6. 汇总 ---
+    remaining = total_budget - total_spent
+    execution_rate = round(total_spent / total_budget * 100, 1) if total_budget > 0 else 0
+    daily_budget = round(total_budget / days_in_month, 2) if days_in_month > 0 else 0
+    daily_actual = round(total_spent / days_elapsed, 2) if days_elapsed > 0 else 0
+    # 预测本月使用率（按已过天数线性外推）
+    projected_usage = round(daily_actual * days_in_month / total_budget * 100, 1) if total_budget > 0 and days_elapsed > 0 else 0
+
+    return {
+        "year": y,
+        "month": m,
+        "period": f"{y}年{m}月",
+        "summary": {
+            "total_budget": round(total_budget, 2),
+            "total_spent": round(total_spent, 2),
+            "remaining": round(remaining, 2),
+            "execution_rate": execution_rate,
+            "days_elapsed": days_elapsed,
+            "days_in_month": days_in_month,
+            "daily_budget": daily_budget,
+            "daily_actual": daily_actual,
+            "projected_usage": projected_usage,
+            "budget_count": len(budgets),
+            "over_budget_count": sum(1 for c in by_category if c["usage_rate"] > 100),
+        },
+        "by_category": by_category,
+        "by_level": by_level,
+        "trend": trend,
+        "alerts": alerts,
+        "unbudgeted_categories": unbudgeted,
+    }
+
+
+# ===== V2-022 支出结构报表 =====
+
+# 结构健康度基准（L1/L2/L3 理想占比）
+STRUCTURE_BENCHMARKS = {
+    "L1": {"ideal_min": 0.35, "ideal_max": 0.55, "label": "必要支出"},
+    "L2": {"ideal_min": 0.20, "ideal_max": 0.35, "label": "改善支出"},
+    "L3": {"ideal_min": 0.00, "ideal_max": 0.20, "label": "非必要支出"},
+}
+
+
+def _classify_expense_structure(total: float, l1: float, l2: float, l3: float) -> dict:
+    """评估支出结构健康度"""
+    if total <= 0:
+        return {"level": "empty", "label": "暂无数据", "color": "gray", "score": 0, "suggestions": []}
+
+    l1_pct = l1 / total
+    l2_pct = l2 / total
+    l3_pct = l3 / total
+
+    # 评分：每级在理想区间得满分，偏离扣分
+    score = 0
+    suggestions = []
+
+    # L1 评分（40分）
+    if STRUCTURE_BENCHMARKS["L1"]["ideal_min"] <= l1_pct <= STRUCTURE_BENCHMARKS["L1"]["ideal_max"]:
+        score += 40
+    elif l1_pct < STRUCTURE_BENCHMARKS["L1"]["ideal_min"]:
+        score += max(0, 40 - int((STRUCTURE_BENCHMARKS["L1"]["ideal_min"] - l1_pct) * 200))
+    else:
+        score += max(0, 40 - int((l1_pct - STRUCTURE_BENCHMARKS["L1"]["ideal_max"]) * 200))
+        suggestions.append(f"必要支出占比 {l1_pct:.0%} 偏高，检查是否有可归入改善类的支出")
+
+    # L3 评分（35分）— 非必要越低越好
+    if l3_pct <= STRUCTURE_BENCHMARKS["L3"]["ideal_max"]:
+        score += 35
+    elif l3_pct <= 0.30:
+        score += 20
+        suggestions.append(f"非必要支出占比 {l3_pct:.0%}，建议控制在 20% 以内")
+    elif l3_pct <= 0.40:
+        score += 10
+        suggestions.append(f"非必要支出占比 {l3_pct:.0%} 偏高，优先削减娱乐/购物类")
+    else:
+        suggestions.append(f"⚠️ 非必要支出占比 {l3_pct:.0%} 严重超标，建议立即审视消费习惯")
+
+    # L2 评分（25分）
+    if STRUCTURE_BENCHMARKS["L2"]["ideal_min"] <= l2_pct <= STRUCTURE_BENCHMARKS["L2"]["ideal_max"]:
+        score += 25
+    elif l2_pct < STRUCTURE_BENCHMARKS["L2"]["ideal_min"]:
+        score += max(0, 25 - int((STRUCTURE_BENCHMARKS["L2"]["ideal_min"] - l2_pct) * 150))
+    else:
+        score += max(0, 25 - int((l2_pct - STRUCTURE_BENCHMARKS["L2"]["ideal_max"]) * 150))
+        suggestions.append(f"改善支出占比 {l2_pct:.0%}，部分可压缩（如订阅/会员）")
+
+    # 综合判定
+    if score >= 80:
+        level, label, color = "excellent", "结构优秀", "green"
+    elif score >= 65:
+        level, label, color = "healthy", "结构健康", "blue"
+    elif score >= 45:
+        level, label, color = "warning", "结构一般", "yellow"
+    else:
+        level, label, color = "danger", "结构需改善", "red"
+
+    if not suggestions:
+        suggestions.append("支出结构良好，继续保持 👍")
+
+    return {"level": level, "label": label, "color": color, "score": score, "suggestions": suggestions}
+
+
+@app.get("/reports/expense-structure")
+async def get_expense_structure(
+    year: int = None,
+    month: int = None,
+    months: int = 3,
+    db: Session = Depends(get_db),
+):
+    """V2-022 支出结构报表：L1/L2/L3占比 + 分类明细 + 趋势 + 健康度评估"""
+    import json as _json
+
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+    months = max(1, min(months, 12))
+
+    # --- 读取预算配置（获取自定义 level 覆盖）---
+    raw = db.query(Setting).filter(Setting.key == "budgets").first()
+    budgets = _json.loads(raw.value) if raw and raw.value else []
+    budget_level_map = {}  # category -> level
+    for b in budgets:
+        if "level" in b:
+            budget_level_map[b["category"]] = b["level"]
+
+    def _get_level(category: str) -> str:
+        return budget_level_map.get(category, DEFAULT_CATEGORY_LEVELS.get(category, "L2"))
+
+    # --- 当月支出查询 ---
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+
+    month_txs = db.query(Transaction).filter(
+        Transaction.transaction_type == "expense",
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end,
+    ).all()
+
+    # 按级别和分类汇总
+    level_amounts = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+    cat_amounts = {}  # category -> amount
+    for tx in month_txs:
+        cat = tx.category or "其他"
+        level = _get_level(cat)
+        level_amounts[level] = level_amounts.get(level, 0) + tx.amount
+        cat_amounts[cat] = cat_amounts.get(cat, 0) + tx.amount
+
+    total_expense = sum(level_amounts.values())
+
+    # --- 按级别明细 ---
+    by_level = {}
+    for level in ["L1", "L2", "L3"]:
+        level_cats = {c: a for c, a in cat_amounts.items() if _get_level(c) == level}
+        # 按金额降序
+        sorted_cats = sorted(level_cats.items(), key=lambda x: -x[1])
+        categories = [
+            {
+                "category": cat,
+                "amount": round(amt, 2),
+                "percentage": round(amt / total_expense * 100, 1) if total_expense > 0 else 0,
+            }
+            for cat, amt in sorted_cats
+        ]
+        level_amt = level_amounts[level]
+        by_level[level] = {
+            "label": LEVEL_LABELS[level],
+            "compressibility": LEVEL_COMPRESSIBILITY[level],
+            "amount": round(level_amt, 2),
+            "percentage": round(level_amt / total_expense * 100, 1) if total_expense > 0 else 0,
+            "ideal_range": f"{STRUCTURE_BENCHMARKS[level]['ideal_min']:.0%}-{STRUCTURE_BENCHMARKS[level]['ideal_max']:.0%}",
+            "categories": categories,
+        }
+
+    # --- 结构健康度 ---
+    structure_health = _classify_expense_structure(
+        total_expense, level_amounts["L1"], level_amounts["L2"], level_amounts["L3"]
+    )
+
+    # --- 趋势分析（过去 N 个月）---
+    trend = []
+    for i in range(months - 1, -1, -1):
+        tm = m - i
+        ty = y
+        while tm <= 0:
+            tm += 12
+            ty -= 1
+
+        t_start = datetime(ty, tm, 1)
+        t_end = datetime(ty + 1, 1, 1) if tm == 12 else datetime(ty, tm + 1, 1)
+
+        t_txs = db.query(Transaction).filter(
+            Transaction.transaction_type == "expense",
+            Transaction.parsed_at >= t_start,
+            Transaction.parsed_at < t_end,
+        ).all()
+
+        t_levels = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
+        t_total = 0.0
+        for tx in t_txs:
+            cat = tx.category or "其他"
+            level = _get_level(cat)
+            t_levels[level] += tx.amount
+            t_total += tx.amount
+
+        trend.append({
+            "year": ty,
+            "month": tm,
+            "total": round(t_total, 2),
+            "l1_amount": round(t_levels["L1"], 2),
+            "l2_amount": round(t_levels["L2"], 2),
+            "l3_amount": round(t_levels["L3"], 2),
+            "l1_pct": round(t_levels["L1"] / t_total * 100, 1) if t_total > 0 else 0,
+            "l2_pct": round(t_levels["L2"] / t_total * 100, 1) if t_total > 0 else 0,
+            "l3_pct": round(t_levels["L3"] / t_total * 100, 1) if t_total > 0 else 0,
+        })
+
+    # --- 环比分析 ---
+    mom_change = None
+    if len(trend) >= 2:
+        curr = trend[-1]
+        prev = trend[-2]
+        if prev["total"] > 0:
+            mom_change = {
+                "total_change": round(curr["total"] - prev["total"], 2),
+                "total_change_pct": round((curr["total"] - prev["total"]) / prev["total"] * 100, 1),
+                "l1_change_pct": round(curr["l1_pct"] - prev["l1_pct"], 1),
+                "l2_change_pct": round(curr["l2_pct"] - prev["l2_pct"], 1),
+                "l3_change_pct": round(curr["l3_pct"] - prev["l3_pct"], 1),
+            }
+
+    # --- Top 支出分类（跨级别）---
+    top_categories = sorted(cat_amounts.items(), key=lambda x: -x[1])[:10]
+    top_categories = [
+        {
+            "category": cat,
+            "amount": round(amt, 2),
+            "percentage": round(amt / total_expense * 100, 1) if total_expense > 0 else 0,
+            "level": _get_level(cat),
+            "level_label": LEVEL_LABELS.get(_get_level(cat), "改善支出"),
+        }
+        for cat, amt in top_categories
+    ]
+
+    return {
+        "year": y,
+        "month": m,
+        "summary": {
+            "total_expense": round(total_expense, 2),
+            "l1_amount": round(level_amounts["L1"], 2),
+            "l1_pct": round(level_amounts["L1"] / total_expense * 100, 1) if total_expense > 0 else 0,
+            "l2_amount": round(level_amounts["L2"], 2),
+            "l2_pct": round(level_amounts["L2"] / total_expense * 100, 1) if total_expense > 0 else 0,
+            "l3_amount": round(level_amounts["L3"], 2),
+            "l3_pct": round(level_amounts["L3"] / total_expense * 100, 1) if total_expense > 0 else 0,
+            "category_count": len(cat_amounts),
+            "transaction_count": len(month_txs),
+        },
+        "by_level": by_level,
+        "structure_health": structure_health,
+        "trend": trend,
+        "mom_change": mom_change,
+        "top_categories": top_categories,
+    }
+
+
 # ===== 财务健康评分（V2-016 五维度评分模型）=====
 
 # 必要支出分类（用于支出结构维度）
