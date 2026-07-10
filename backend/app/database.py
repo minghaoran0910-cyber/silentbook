@@ -204,6 +204,29 @@ class GoalContribution(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RecurringTransaction(Base):
+    """固定收支：工资/房租/订阅/保险等周期性收支"""
+    __tablename__ = "recurring_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # 名称（如"工资""房租""Netflix"）
+    amount = Column(Float, nullable=False)  # 金额
+    category = Column(String(50), nullable=False)  # 分类
+    transaction_type = Column(String(20), nullable=False)  # income/expense
+    frequency = Column(String(20), nullable=False, default="monthly")  # daily/weekly/biweekly/monthly/quarterly/yearly
+    day_of_month = Column(Integer, default=1)  # 每月几号（1-28）
+    day_of_week = Column(Integer, default=0)  # 周几（0=周一，weekly用）
+    start_date = Column(Date, nullable=True)  # 生效日期
+    end_date = Column(Date, nullable=True)  # 结束日期（None=永久）
+    account = Column(String(100))  # 关联账户
+    is_active = Column(Boolean, default=True)  # 是否启用
+    source = Column(String(20), default="manual")  # manual(手动)/auto(自动检测)
+    confidence = Column(Float, default=1.0)  # 自动检测时的置信度
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class BackupRecord(Base):
     """增量备份记录"""
     __tablename__ = "backup_records"

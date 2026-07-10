@@ -377,3 +377,78 @@ class GoalSummaryResponse(BaseModel):
     total_current: float = 0
     overall_progress: float = 0  # 0-100
     goals: List[GoalResponse] = []
+
+
+# ===== 固定收支管理（V2-027） =====
+
+RECURRING_FREQUENCIES = {"daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"}
+RECURRING_SOURCES = {"manual", "auto"}
+
+
+class RecurringTransactionBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    amount: float = Field(..., gt=0, description="金额必须大于0")
+    category: str = Field(..., min_length=1, max_length=50)
+    transaction_type: str = Field(..., pattern="^(income|expense)$")
+    frequency: str = Field("monthly", pattern="^(daily|weekly|biweekly|monthly|quarterly|yearly)$")
+    day_of_month: int = Field(1, ge=1, le=28, description="每月几号（1-28）")
+    day_of_week: int = Field(0, ge=0, le=6, description="周几（0=周一，weekly用）")
+    start_date: Optional[str] = None  # ISO date
+    end_date: Optional[str] = None  # ISO date, None=永久
+    account: Optional[str] = Field(None, max_length=100)
+    is_active: bool = Field(True)
+    notes: Optional[str] = Field(None, max_length=500)
+
+    @field_validator('transaction_type')
+    @classmethod
+    def validate_type(cls, v):
+        if v not in ['income', 'expense']:
+            raise ValueError('transaction_type must be income or expense')
+        return v
+
+
+class RecurringTransactionCreate(RecurringTransactionBase):
+    pass
+
+
+class RecurringTransactionUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    amount: Optional[float] = Field(None, gt=0)
+    category: Optional[str] = Field(None, min_length=1, max_length=50)
+    transaction_type: Optional[str] = None
+    frequency: Optional[str] = None
+    day_of_month: Optional[int] = Field(None, ge=1, le=28)
+    day_of_week: Optional[int] = Field(None, ge=0, le=6)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    account: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class RecurringTransactionResponse(RecurringTransactionBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source: str = "manual"
+    confidence: float = 1.0
+    created_at: datetime
+    updated_at: datetime
+
+
+class RecurringSummaryResponse(BaseModel):
+    """固定收支月度汇总"""
+    total_monthly_income: float = 0
+    total_monthly_expense: float = 0
+    monthly_net: float = 0
+    income_count: int = 0
+    expense_count: int = 0
+    active_count: int = 0
+    items: List[RecurringTransactionResponse] = []
+
+
+class AutoDetectResponse(BaseModel):
+    """自动检测结果"""
+    detected_count: int = 0
+    imported_count: int = 0
+    skipped_count: int = 0
+    items: List[dict] = []  # 检测到的候选项
