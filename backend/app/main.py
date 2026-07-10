@@ -2418,6 +2418,276 @@ async def get_cashflow_forecast(
     }
 
 
+# ===== V2-028: 下月支出预测 =====
+
+@app.get("/forecast/next-month")
+async def get_next_month_forecast(
+    lookback_months: int = 6,
+    account: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """下月支出预测：基于历史月度趋势预测下月各类别支出
+    
+    算法：
+    1. 统计过去 N 个月各分类的月度支出
+    2. 对每个分类做线性回归检测趋势（增长/下降/稳定）
+    3. 用回归方程预测下月金额
+    4. 合并用户定义的固定收支（V2-027）
+    5. 计算置信度（基于数据量和波动性）
+    
+    返回：
+    - 下月预测总额
+    - 各分类预测明细 + 趋势方向
+    - 与本月/上月的对比
+    - 固定收支列表
+    """
+    from datetime import datetime, timedelta
+    import math
+    
+    now = datetime.utcnow()
+    # 计算下个月的第一天
+    if now.month == 12:
+        next_month_start = datetime(now.year + 1, 1, 1)
+    else:
+        next_month_start = datetime(now.year, now.month + 1, 1)
+    next_month_end = datetime(now.year + (1 if now.month == 12 else 0), 
+                               (now.month % 12) + 1, 1)
+    # 回推 lookback_months 个月
+    start_month = now.month - lookback_months
+    start_year = now.year
+    while start_month <= 0:
+        start_month += 12
+        start_year -= 1
+    history_start = datetime(start_year, start_month, 1)
+    
+    # 获取历史支出
+    query = db.query(Transaction).filter(
+        Transaction.parsed_at >= history_start,
+        Transaction.transaction_type == "expense"
+    )
+    if account:
+        query = query.filter(Transaction.account == account)
+    transactions = query.all()
+    
+    if not transactions:
+        return {
+            "forecast_month": next_month_start.strftime("%Y-%m"),
+            "lookback_months": lookback_months,
+            "total_predicted": 0,
+            "categories": [],
+            "recurring_items": [],
+            "comparison": {
+                "current_month": 0,
+                "last_month": 0,
+                "change_percent": 0,
+            },
+            "confidence": "low",
+            "history_months": 0,
+            "trend_summary": {"increasing": 0, "stable": 0, "decreasing": 0},
+        }
+    
+    # 按月份和分类汇总
+    monthly_category = {}  # {(year, month): {category: total}}
+    for tx in transactions:
+        if tx.parsed_at:
+            ym = (tx.parsed_at.year, tx.parsed_at.month)
+            cat = tx.category or "其他"
+            monthly_category.setdefault(ym, {})
+            monthly_category[ym][cat] = monthly_category[ym].get(cat, 0) + tx.amount
+    
+    # 获取所有分类
+    all_categories = set()
+    for month_data in monthly_category.values():
+        all_categories.update(month_data.keys())
+    
+    # 生成月份序列（用于回归）
+    sorted_months = sorted(monthly_category.keys())
+    month_to_idx = {ym: i for i, ym in enumerate(sorted_months)}
+    
+    # 当前月和上月的实际支出
+    current_ym = (now.year, now.month)
+    last_ym = (now.year - (1 if now.month == 1 else 0), 
+               (now.month - 1) if now.month > 1 else 12)
+    current_month_total = sum(monthly_category.get(current_ym, {}).values())
+    last_month_total = sum(monthly_category.get(last_ym, {}).values())
+    
+    # 对每个分类做线性回归预测
+    categories_forecast = []
+    total_predicted = 0.0
+    trend_counts = {"increasing": 0, "stable": 0, "decreasing": 0}
+    
+    for cat in sorted(all_categories):
+        # 收集该分类的月度数据（只包含该分类有数据的月份）
+        cat_monthly = []
+        for ym in sorted_months:
+            amt = monthly_category.get(ym, {}).get(cat, 0)
+            if amt > 0:
+                cat_monthly.append((month_to_idx[ym], amt))
+        monthly_amounts = cat_monthly
+        
+        n = len(monthly_amounts)
+        if n == 0:
+            continue
+        
+        # 线性回归: y = a + b*x
+        sum_x = sum(x for x, _ in monthly_amounts)
+        sum_y = sum(y for _, y in monthly_amounts)
+        sum_xy = sum(x * y for x, y in monthly_amounts)
+        sum_x2 = sum(x * x for x, _ in monthly_amounts)
+        
+        denom = n * sum_x2 - sum_x * sum_x
+        if denom == 0:
+            # 只有一个数据点或所有 x 相同
+            slope = 0
+            intercept = sum_y / n
+        else:
+            slope = (n * sum_xy - sum_x * sum_y) / denom
+            intercept = (sum_y - slope * sum_x) / n
+        
+        # 预测下月（x = n，即下一个索引）
+        predicted = intercept + slope * n
+        predicted = max(predicted, 0)  # 不能为负
+        
+        # 计算均值和标准差（用于置信度）
+        amounts = [y for _, y in monthly_amounts]
+        mean_amt = sum(amounts) / n
+        if n > 1:
+            variance = sum((a - mean_amt) ** 2 for a in amounts) / (n - 1)
+            std_dev = math.sqrt(variance)
+            cv = std_dev / mean_amt if mean_amt > 0 else 999  # 变异系数
+        else:
+            std_dev = 0
+            cv = 0
+        
+        # 趋势判断（基于斜率相对均值的比例）
+        if mean_amt > 0:
+            trend_ratio = slope / mean_amt
+            if trend_ratio > 0.05:  # 月增长>5%
+                trend = "increasing"
+                trend_label = "↑ 增长"
+            elif trend_ratio < -0.05:  # 月下降>5%
+                trend = "decreasing"
+                trend_label = "↓ 下降"
+            else:
+                trend = "stable"
+                trend_label = "→ 稳定"
+        else:
+            trend = "stable"
+            trend_label = "→ 稳定"
+        
+        trend_counts[trend] += 1
+        
+        # 单分类置信度
+        if n >= 3 and cv < 0.5:
+            cat_confidence = "high"
+        elif n >= 2 and cv < 1.0:
+            cat_confidence = "medium"
+        else:
+            cat_confidence = "low"
+        
+        # 本月实际值
+        current_cat_amount = monthly_category.get(current_ym, {}).get(cat, 0)
+        last_cat_amount = monthly_category.get(last_ym, {}).get(cat, 0)
+        
+        categories_forecast.append({
+            "category": cat,
+            "predicted_amount": round(predicted, 2),
+            "trend": trend,
+            "trend_label": trend_label,
+            "slope": round(slope, 2),  # 每月变化量
+            "avg_monthly": round(mean_amt, 2),
+            "std_dev": round(std_dev, 2),
+            "confidence": cat_confidence,
+            "data_months": n,
+            "current_month": round(current_cat_amount, 2),
+            "last_month": round(last_cat_amount, 2),
+            "history": [
+                {"month": f"{ym[0]}-{ym[1]:02d}", "amount": round(monthly_category.get(ym, {}).get(cat, 0), 2)}
+                for ym in sorted_months
+            ],
+        })
+        total_predicted += predicted
+    
+    # 合并用户定义的固定收支（V2-027）
+    recurring_items = []
+    user_recurring = db.query(RecurringTransaction).filter(
+        RecurringTransaction.is_active == True,
+        RecurringTransaction.transaction_type == "expense"
+    ).all()
+    
+    next_month_num = next_month_start.month
+    for rt in user_recurring:
+        # 根据频率判断下月是否会发生
+        will_occur = False
+        if rt.frequency == "monthly":
+            will_occur = True
+        elif rt.frequency == "daily":
+            will_occur = True
+        elif rt.frequency == "weekly":
+            will_occur = True
+        elif rt.frequency == "biweekly":
+            will_occur = True
+        elif rt.frequency == "quarterly":
+            will_occur = (next_month_num - 1) % 3 == 0
+        elif rt.frequency == "yearly":
+            will_occur = next_month_num == 1
+        
+        if will_occur:
+            # 检查是否已在分类预测中（同分类）
+            already_included = any(
+                cf["category"] == rt.category for cf in categories_forecast
+            )
+            recurring_items.append({
+                "name": rt.name,
+                "category": rt.category,
+                "amount": rt.amount,
+                "day_of_month": rt.day_of_month,
+                "frequency": rt.frequency,
+                "already_in_forecast": already_included,
+            })
+            if not already_included:
+                total_predicted += rt.amount
+    
+    # 按预测金额降序排列
+    categories_forecast.sort(key=lambda x: x["predicted_amount"], reverse=True)
+    
+    # 整体置信度
+    total_months = len(sorted_months)
+    total_tx_count = len(transactions)
+    if total_months >= 4 and total_tx_count >= 30:
+        overall_confidence = "high"
+    elif total_months >= 2 and total_tx_count >= 10:
+        overall_confidence = "medium"
+    else:
+        overall_confidence = "low"
+    
+    # 对比
+    change_percent = 0
+    if last_month_total > 0:
+        change_percent = ((total_predicted - last_month_total) / last_month_total) * 100
+    
+    return {
+        "forecast_month": next_month_start.strftime("%Y-%m"),
+        "lookback_months": lookback_months,
+        "total_predicted": round(total_predicted, 2),
+        "categories": categories_forecast,
+        "recurring_items": recurring_items,
+        "comparison": {
+            "current_month": round(current_month_total, 2),
+            "last_month": round(last_month_total, 2),
+            "predicted_vs_last_change": round(change_percent, 1),
+            "predicted_vs_current_change": round(
+                ((total_predicted - current_month_total) / current_month_total * 100) 
+                if current_month_total > 0 else 0, 1
+            ),
+        },
+        "confidence": overall_confidence,
+        "history_months": total_months,
+        "history_transactions": total_tx_count,
+        "trend_summary": trend_counts,
+    }
+
+
 # ===== 基础报表（V2-013）=====
 
 @app.get("/reports/monthly-summary")
