@@ -23,6 +23,8 @@ export function useAuth() {
     if (import.meta.client) {
       localStorage.setItem('auth_token', t)
       localStorage.setItem('user_info', JSON.stringify(u))
+      // 同时设置 cookie，供 SSR 使用（7天过期）
+      document.cookie = `auth_token=${t}; path=/; max-age=${7 * 24 * 3600}; SameSite=Lax`
     }
   }
 
@@ -32,6 +34,8 @@ export function useAuth() {
     if (import.meta.client) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user_info')
+      // 清除 cookie
+      document.cookie = 'auth_token=; path=/; max-age=0'
     }
   }
 

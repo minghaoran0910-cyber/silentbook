@@ -1,6 +1,5 @@
 <template>
   <div class="auth-container">
-    <ClientOnly>
     <div class="auth-card">
       <div class="auth-header">
         <h1>🔐 SilentBook</h1>
@@ -152,13 +151,6 @@
       </div>
       <div v-if="success" class="success-message">{{ success }}</div>
     </div>
-    <template #fallback>
-      <div class="auth-card" style="text-align:center;padding:3rem;">
-        <h1 style="color:#b45309;font-size:2rem;margin-bottom:1rem;">🔐 SilentBook</h1>
-        <p style="color:#888;">加载中...</p>
-      </div>
-    </template>
-    </ClientOnly>
   </div>
 </template>
 
@@ -284,10 +276,27 @@ const handleLogin = async () => {
   }
 }
 
-// Auto-redirect if already logged in
-onMounted(() => {
+// Auto-redirect if already logged in with valid token
+onMounted(async () => {
   if (isAuthenticated()) {
-    navigateTo('/')
+    // 验证 token 是否仍然有效
+    try {
+      const config = useRuntimeConfig()
+      const apiBase = config.public?.apiBase || '/api'
+      const resp = await fetch(`${apiBase}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+      })
+      if (resp.ok) {
+        navigateTo('/')
+      } else {
+        // Token 无效，清除
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_info')
+        document.cookie = 'auth_token=; path=/; max-age=0'
+      }
+    } catch {
+      // 网络错误，不清除 token
+    }
   }
 })
 </script>

@@ -167,7 +167,10 @@ const formatTime = (t) => {
   return date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+const loadError = ref('')
+
 const loadAll = async () => {
+  loadError.value = ''
   try {
     const [data, hist] = await Promise.all([fetchLatestAnalysis(), fetchAnalysisHistory(10)])
     if (data && (data.consumption || data.investment)) {
@@ -180,7 +183,10 @@ const loadAll = async () => {
     try {
       const config = useRuntimeConfig()
       const apiBase = config.public?.apiBase || '/api'
-      const monthly = await $fetch(`${apiBase}/stats/monthly`)
+      const token = localStorage.getItem('auth_token')
+      const monthly = await $fetch(`${apiBase}/stats/monthly`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
       if (monthly && monthly.expense_categories) {
         categoryStats.value = monthly.expense_categories
         totalExpense.value = monthly.total_expense || 0
@@ -188,8 +194,13 @@ const loadAll = async () => {
     } catch (e) {
       console.error('加载分类统计失败:', e)
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('加载失败:', e)
+    if (e.message?.includes('登录已过期')) {
+      loadError.value = '登录已过期，请重新登录'
+      return
+    }
+    loadError.value = '加载分析数据失败，请稍后重试'
   }
 }
 onMounted(() => { setTimeout(() => { clientReady.value = true }, 0); loadAll() })

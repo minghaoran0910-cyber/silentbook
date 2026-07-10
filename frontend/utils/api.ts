@@ -69,8 +69,19 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   
   // 自动附加 Authorization header
   const headers = new Headers(options?.headers)
-  if (import.meta.client && !headers.has('Authorization')) {
-    const token = localStorage.getItem('auth_token')
+  if (!headers.has('Authorization')) {
+    let token: string | null = null
+    if (import.meta.client) {
+      token = localStorage.getItem('auth_token')
+    } else {
+      // SSR: 从 cookie 读取 token（需要 middleware 将 cookie 同步到请求中）
+      try {
+        const event = useRequestHeaders(['cookie'])
+        const cookieHeader = event?.cookie || ''
+        const match = cookieHeader.match(/auth_token=([^;]+)/)
+        if (match) token = match[1]
+      } catch {}
+    }
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
@@ -86,6 +97,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
         window.location.href = '/auth'
       }
       throw new Error('登录已过期，请重新登录')
+    }
+    // SSR 401: 静默返回空数据，让客户端重新加载
+    if (response.status === 401 && import.meta.server) {
+      return [] as T  // 返回空数组/对象，避免 SSR 崩溃
     }
     const detail = await response.text().catch(() => '')
     throw new Error(`API error ${response.status}: ${detail}`)

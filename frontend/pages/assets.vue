@@ -7,8 +7,20 @@
       </button>
     </div>
 
+    <!-- 加载中 -->
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>加载资产数据...</p>
+    </div>
+
+    <!-- 加载失败 -->
+    <div v-else-if="loadError" class="error-state">
+      <p>⚠️ {{ loadError }}</p>
+      <button @click="loadData" class="btn btn-primary">重试</button>
+    </div>
+
     <!-- 总览卡片 -->
-    <div class="overview">
+    <div class="overview" v-if="!loading && !loadError">
       <div class="overview-card">
         <div class="label">总资产</div>
         <div class="value income">¥{{ totalAssets.toFixed(2) }}</div>
@@ -24,6 +36,7 @@
     </div>
 
     <!-- 添加资产表单 -->
+    <template v-if="!loading && !loadError">
     <div v-if="showAddForm" class="form-card">
       <h3>{{ editingId ? '编辑资产' : '添加资产' }}</h3>
       <form @submit.prevent="handleSubmit">
@@ -237,6 +250,7 @@
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -333,12 +347,26 @@ const assetsByType = computed(() => {
   return groups
 })
 
+const loading = ref(true)
+const loadError = ref('')
+
 const loadData = async () => {
+  loading.value = true
+  loadError.value = ''
   try {
     const [a, l] = await Promise.all([fetchAssets(), fetchLiabilities()])
     assets.value = a
     liabilities.value = l
-  } catch (e) { console.error(e) }
+  } catch (e: any) {
+    console.error('加载资产失败:', e)
+    loadError.value = e.message || '加载失败'
+    // 如果是 401，跳转到登录页
+    if (e.message?.includes('登录已过期')) {
+      return
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleSubmit = async () => {
@@ -391,6 +419,9 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 
 <style scoped>
 .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+.loading-state, .error-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 .header h1 { color: var(--accent); }
 .overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
