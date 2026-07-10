@@ -2389,3 +2389,364 @@ async def get_cashflow_forecast(
         },
         "recurring_items": recurring_items,
     }
+
+
+# ===== 基础报表（V2-013）=====
+
+@app.get("/reports/monthly-summary")
+async def get_monthly_summary(year: int = None, month: int = None, db: Session = Depends(get_db)):
+    """月度财务摘要：收入/支出/结余/储蓄率/净资产变化/账户概览/预算执行/负债概览"""
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+
+    # --- 1. 本月收支 ---
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end
+    ).all()
+
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    net_balance = total_income - total_expense
+    savings_rate = round(net_balance / total_income * 100, 1) if total_income > 0 else 0.0
+
+    # --- 2. 净资产快照 ---
+    account_total = db.query(func.coalesce(func.sum(Account.balance), 0)).filter(
+        Account.status == "active"
+    ).scalar() or 0.0
+
+    asset_total = db.query(func.coalesce(func.sum(Asset.current_value), 0)).filter(
+        Asset.status == "active"
+    ).scalar() or 0.0
+
+    liability_total = db.query(func.coalesce(func.sum(Liability.current_amount), 0)).filter(
+        Liability.status == "active"
+    ).scalar() or 0.0
+
+    current_net_worth = account_total + asset_total - liability_total
+    # 净资产变化 ≈ 本月净收支（交易驱动的财富变化）
+    net_worth_change = round(net_balance, 2)
+
+    # --- 3. 账户概览（四账户体系）---
+    accounts = db.query(Account).filter(Account.status == "active").all()
+    purpose_labels = {
+        "consumption": "日常消费",
+        "emergency": "应急储备",
+        "investment": "投资增值",
+        "goal": "目标储蓄",
+    }
+    account_summary = {"total_balance": round(sum(a.balance for a in accounts), 2), "by_purpose": {}}
+    for purpose, label in purpose_labels.items():
+        pa = [a for a in accounts if a.purpose == purpose]
+        account_summary["by_purpose"][purpose] = {
+            "label": label,
+            "count": len(pa),
+            "total_balance": round(sum(a.balance for a in pa), 2),
+        }
+
+    # --- 4. 预算执行 ---
+    import json as _json
+    raw_budgets = db.query(Setting).filter(Setting.key == "budgets").first()
+    budgets = _json.loads(raw_budgets.value) if raw_budgets and raw_budgets.value else []
+    budget_execution = []
+    for b in budgets:
+        spent = sum(t.amount for t in transactions if t.category == b["category"] and t.transaction_type == "expense")
+        limit = b["monthly_limit"]
+        usage = spent / limit if limit > 0 else 0.0
+        budget_execution.append({
+            "category": b["category"],
+            "level": b.get("level", "L2"),
+            "budget_limit": round(limit, 2),
+            "actual_spent": round(spent, 2),
+            "usage_rate": round(usage * 100, 1),
+            "remaining": round(limit - spent, 2),
+        })
+
+    # --- 5. 负债概览 ---
+    liabilities = db.query(Liability).filter(Liability.status == "active").all()
+    liability_summary = {
+        "total_debt": round(sum(l.current_amount for l in liabilities), 2),
+        "monthly_payment": round(sum(l.monthly_payment for l in liabilities), 2),
+        "count": len(liabilities),
+    }
+
+    # --- 6. 支出分类 ---
+    expense_cats = {}
+    for t in transactions:
+        if t.transaction_type == "expense":
+            cat = t.category or "其他"
+            expense_cats[cat] = expense_cats.get(cat, 0) + t.amount
+    top_expenses = sorted(
+        [{"category": k, "amount": round(v, 2), "percentage": round(v / total_expense * 100, 1) if total_expense > 0 else 0.0} for k, v in expense_cats.items()],
+        key=lambda x: -x["amount"]
+    )[:10]
+
+    # --- 7. 收入分类 ---
+    income_cats = {}
+    for t in transactions:
+        if t.transaction_type == "income":
+            cat = t.category or "其他"
+            income_cats[cat] = income_cats.get(cat, 0) + t.amount
+    top_incomes = sorted(
+        [{"category": k, "amount": round(v, 2)} for k, v in income_cats.items()],
+        key=lambda x: -x["amount"]
+    )[:5]
+
+    return {
+        "year": y,
+        "month": m,
+        "period": f"{y}年{m}月",
+        "total_income": round(total_income, 2),
+        "total_expense": round(total_expense, 2),
+        "net_balance": round(net_balance, 2),
+        "savings_rate": savings_rate,
+        "transaction_count": len(transactions),
+        "current_net_worth": round(current_net_worth, 2),
+        "net_worth_change": net_worth_change,
+        "account_summary": account_summary,
+        "budget_execution": budget_execution,
+        "liability_summary": liability_summary,
+        "top_expenses": top_expenses,
+        "top_incomes": top_incomes,
+    }
+
+
+# ===== 基础报表（V2-014 现金流报表）=====
+
+@app.get("/reports/cashflow")
+async def get_cashflow_report(
+    year: int = None,
+    month: int = None,
+    account: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """现金流报表：现金流入/流出/净现金流/趋势/环比/按账户分解"""
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+    days_in_month = (end - start).days
+
+    # --- 本月交易 ---
+    query = db.query(Transaction).filter(
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end
+    )
+    if account:
+        query = query.filter(Transaction.account == account)
+    transactions = query.all()
+
+    total_inflow = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_outflow = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    net_cashflow = total_inflow - total_outflow
+
+    # --- 日趋势 ---
+    daily_map = {}
+    for tx in transactions:
+        dk = tx.parsed_at.strftime("%Y-%m-%d")
+        if dk not in daily_map:
+            daily_map[dk] = {"inflow": 0.0, "outflow": 0.0, "count": 0}
+        if tx.transaction_type == "income":
+            daily_map[dk]["inflow"] += tx.amount
+        else:
+            daily_map[dk]["outflow"] += tx.amount
+        daily_map[dk]["count"] += 1
+
+    daily = []
+    for d in range(days_in_month):
+        date = start + timedelta(days=d)
+        dk = date.strftime("%Y-%m-%d")
+        dd = daily_map.get(dk, {"inflow": 0.0, "outflow": 0.0, "count": 0})
+        daily.append({
+            "date": dk,
+            "day": d + 1,
+            "weekday": date.weekday(),
+            "inflow": round(dd["inflow"], 2),
+            "outflow": round(dd["outflow"], 2),
+            "net": round(dd["inflow"] - dd["outflow"], 2),
+            "transaction_count": dd["count"],
+        })
+
+    # --- 环比（上月）---
+    prev_end = start
+    prev_start = datetime(y, m - 1, 1) if m > 1 else datetime(y - 1, 12, 1)
+    prev_query = db.query(Transaction).filter(
+        Transaction.parsed_at >= prev_start,
+        Transaction.parsed_at < prev_end
+    )
+    if account:
+        prev_query = prev_query.filter(Transaction.account == account)
+    prev_txs = prev_query.all()
+    prev_inflow = sum(t.amount for t in prev_txs if t.transaction_type == "income")
+    prev_outflow = sum(t.amount for t in prev_txs if t.transaction_type == "expense")
+    prev_net = prev_inflow - prev_outflow
+    prev_days = (prev_end - prev_start).days
+
+    comparison = {
+        "prev_period": f"{prev_start.year}年{prev_start.month}月",
+        "prev_inflow": round(prev_inflow, 2),
+        "prev_outflow": round(prev_outflow, 2),
+        "prev_net": round(prev_net, 2),
+        "inflow_change": round(total_inflow - prev_inflow, 2),
+        "outflow_change": round(total_outflow - prev_outflow, 2),
+        "net_change": round(net_cashflow - prev_net, 2),
+        "inflow_change_pct": round((total_inflow - prev_inflow) / prev_inflow * 100, 1) if prev_inflow > 0 else 0.0,
+        "outflow_change_pct": round((total_outflow - prev_outflow) / prev_outflow * 100, 1) if prev_outflow > 0 else 0.0,
+    }
+
+    # --- 按账户分解 ---
+    by_account = {}
+    for tx in transactions:
+        acc = tx.account or "未分类"
+        if acc not in by_account:
+            by_account[acc] = {"inflow": 0.0, "outflow": 0.0, "count": 0}
+        if tx.transaction_type == "income":
+            by_account[acc]["inflow"] += tx.amount
+        else:
+            by_account[acc]["outflow"] += tx.amount
+        by_account[acc]["count"] += 1
+    account_breakdown = [
+        {"account": k, "inflow": round(v["inflow"], 2), "outflow": round(v["outflow"], 2),
+         "net": round(v["inflow"] - v["outflow"], 2), "count": v["count"]}
+        for k, v in sorted(by_account.items(), key=lambda x: -(x[1]["inflow"] + x[1]["outflow"]))
+    ]
+
+    # --- 累计净现金流（年初至今）---
+    year_start = datetime(y, 1, 1)
+    ytd_query = db.query(Transaction).filter(
+        Transaction.parsed_at >= year_start,
+        Transaction.parsed_at < end
+    )
+    if account:
+        ytd_query = ytd_query.filter(Transaction.account == account)
+    ytd_txs = ytd_query.all()
+    ytd_inflow = sum(t.amount for t in ytd_txs if t.transaction_type == "income")
+    ytd_outflow = sum(t.amount for t in ytd_txs if t.transaction_type == "expense")
+
+    return {
+        "year": y,
+        "month": m,
+        "period": f"{y}年{m}月",
+        "account": account,
+        "total_inflow": round(total_inflow, 2),
+        "total_outflow": round(total_outflow, 2),
+        "net_cashflow": round(net_cashflow, 2),
+        "avg_daily_inflow": round(total_inflow / days_in_month, 2) if days_in_month > 0 else 0,
+        "avg_daily_outflow": round(total_outflow / days_in_month, 2) if days_in_month > 0 else 0,
+        "transaction_count": len(transactions),
+        "active_days": len([d for d in daily if d["transaction_count"] > 0]),
+        "daily": daily,
+        "comparison": comparison,
+        "account_breakdown": account_breakdown,
+        "ytd": {
+            "inflow": round(ytd_inflow, 2),
+            "outflow": round(ytd_outflow, 2),
+            "net": round(ytd_inflow - ytd_outflow, 2),
+        },
+    }
+
+
+# ===== 基础报表（V2-015 资产负债表）=====
+
+# 资产类型中文标签
+ASSET_TYPE_LABELS = {
+    "cash": "现金",
+    "savings": "存款",
+    "fund": "基金",
+    "stock": "股票",
+    "bond": "债券",
+    "property": "房产",
+    "other": "其他",
+}
+
+# 负债类型中文标签（复用 V2-011 定义的 LIABI_LIABILITY_TYPE_LABELS）
+
+
+@app.get("/reports/balance-sheet")
+async def get_balance_sheet(db: Session = Depends(get_db)):
+    """资产负债表：资产/负债/净资产/资产负债率/分类明细"""
+    # --- 资产 ---
+    assets = db.query(Asset).filter(Asset.status == "active").all()
+    asset_by_type = {}
+    for a in assets:
+        t = a.asset_type if a.asset_type in ASSET_TYPE_LABELS else "other"
+        if t not in asset_by_type:
+            asset_by_type[t] = {"label": ASSET_TYPE_LABELS[t], "items": [], "total_value": 0.0, "count": 0}
+        asset_by_type[t]["items"].append({
+            "id": a.id, "name": a.name, "current_value": a.current_value,
+            "initial_value": a.initial_value,
+            "gain_loss": round(a.current_value - a.initial_value, 2) if a.initial_value else 0.0,
+            "gain_loss_pct": round((a.current_value - a.initial_value) / a.initial_value * 100, 1) if a.initial_value and a.initial_value > 0 else 0.0,
+            "liquidity": a.liquidity,
+            "account": a.account,
+        })
+        asset_by_type[t]["total_value"] += a.current_value
+        asset_by_type[t]["count"] += 1
+
+    total_assets = sum(a.current_value for a in assets)
+
+    # --- 负债 ---
+    liabilities = db.query(Liability).filter(Liability.status == "active").all()
+    liab_by_type = {}
+    for l in liabilities:
+        t = l.liability_type if l.liability_type in LIABILITY_TYPE_LABELS else "other"
+        if t not in liab_by_type:
+            liab_by_type[t] = {"label": LIABILITY_TYPE_LABELS[t], "items": [], "total_amount": 0.0, "count": 0}
+        liab_by_type[t]["items"].append({
+            "id": l.id, "name": l.name,
+            "total_amount": l.total_amount, "current_amount": l.current_amount,
+            "interest_rate": l.interest_rate,
+            "monthly_payment": l.monthly_payment,
+            "remaining_periods": l.remaining_periods,
+            "due_date": str(l.due_date) if l.due_date else None,
+        })
+        liab_by_type[t]["total_amount"] += l.current_amount
+        liab_by_type[t]["count"] += 1
+
+    total_liabilities = sum(l.current_amount for l in liabilities)
+    net_worth = total_assets - total_liabilities
+    debt_ratio = round(total_liabilities / total_assets * 100, 1) if total_assets > 0 else 0.0
+
+    # --- 账户余额（四账户体系）---
+    accounts = db.query(Account).filter(Account.status == "active").all()
+    total_account_balance = sum(a.balance for a in accounts)
+
+    # --- 健康指标 ---
+    if total_assets == 0 and total_liabilities == 0:
+        health_status = "empty"
+        health_message = "无资产和负债数据"
+    elif debt_ratio < 30:
+        health_status = "healthy"
+        health_message = "资产负债率健康"
+    elif debt_ratio < 50:
+        health_status = "normal"
+        health_message = "资产负债率正常"
+    elif debt_ratio < 70:
+        health_status = "warning"
+        health_message = "资产负债率偏高，建议关注"
+    else:
+        health_status = "danger"
+        health_message = "资产负债率过高，存在风险"
+
+    return {
+        "as_of": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+        "total_assets": round(total_assets, 2),
+        "total_liabilities": round(total_liabilities, 2),
+        "net_worth": round(net_worth, 2),
+        "total_account_balance": round(total_account_balance, 2),
+        "total_net_worth": round(net_worth + total_account_balance, 2),
+        "debt_ratio": debt_ratio,
+        "health_status": health_status,
+        "health_message": health_message,
+        "assets_by_type": {k: {**v, "total_value": round(v["total_value"], 2)} for k, v in asset_by_type.items()},
+        "liabilities_by_type": {k: {**v, "total_amount": round(v["total_amount"], 2)} for k, v in liab_by_type.items()},
+        "asset_count": len(assets),
+        "liability_count": len(liabilities),
+        "account_count": len(accounts),
+    }
