@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from typing import List, Optional
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel, Field
@@ -5594,7 +5594,7 @@ async def get_goals_summary(db: Session = Depends(get_db)):
     """获取所有目标的汇总概览"""
     goals = db.query(FinancialGoal).order_by(
         # 优先级排序：high > medium > low，然后按进度升序
-        func.case((FinancialGoal.priority == "high", 1),
+        case((FinancialGoal.priority == "high", 1),
                   (FinancialGoal.priority == "medium", 2),
                   else_=3),
         FinancialGoal.created_at.desc()
@@ -5634,7 +5634,7 @@ async def list_goals(
         query = query.filter(FinancialGoal.goal_type == goal_type)
 
     goals = query.order_by(
-        func.case((FinancialGoal.priority == "high", 1),
+        case((FinancialGoal.priority == "high", 1),
                   (FinancialGoal.priority == "medium", 2),
                   else_=3),
         FinancialGoal.created_at.desc()
