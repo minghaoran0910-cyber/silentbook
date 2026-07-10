@@ -18,4 +18,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # Build for production and run preview
 RUN npm run build
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0"]
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=production
+CMD ["node", ".output/server/index.mjs"]
