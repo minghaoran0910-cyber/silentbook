@@ -18,7 +18,7 @@ from .schemas import (
     RecurringTransactionCreate, RecurringTransactionUpdate, RecurringTransactionResponse,
     RecurringSummaryResponse, AutoDetectResponse
 )
-from .auth import router as auth_router, require_user
+from .auth import router as auth_router, require_user, get_current_user
 import httpx
 import os
 import logging
@@ -6478,7 +6478,7 @@ async def query_logs(
     search: Optional[str] = None,
     since_minutes: int = 60,
     limit: int = 100,
-    user: User = Depends(require_user)
+    user: Optional[User] = Depends(get_current_user)
 ):
     """
     查询系统日志（内存缓冲区）
@@ -6490,6 +6490,8 @@ async def query_logs(
     - since_minutes: 查询最近N分钟（默认60）
     - limit: 返回条数上限（默认100，最大1000）
     """
+    if not user:
+        return {"count": 0, "logs": [], "filters": {}}
     since = None
     if since_minutes:
         since = time.time() - (since_minutes * 60)

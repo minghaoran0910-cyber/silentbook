@@ -103,6 +103,7 @@ const analysis = ref({
   suggestion: ''
 })
 const history = ref([])
+const clientReady = ref(false)
 const loadingText = ref('AI 正在分析您的财务数据...')
 const categoryStats = ref([])
 const totalExpense = ref(0)
@@ -161,7 +162,9 @@ const loadHistory = (item) => {
 
 const formatTime = (t) => {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const date = new Date(t)
+  if (!clientReady.value) return date.toLocaleDateString('zh-CN')
+  return date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 const loadAll = async () => {
@@ -189,8 +192,8 @@ const loadAll = async () => {
     console.error('加载失败:', e)
   }
 }
-onMounted(loadAll)
-onActivated(loadAll)
+onMounted(() => { setTimeout(() => { clientReady.value = true }, 0); loadAll() })
+onActivated(() => { setTimeout(() => { clientReady.value = true }, 0); loadAll() })
 </script>
 
 <style scoped>

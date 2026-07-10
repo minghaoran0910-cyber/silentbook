@@ -133,7 +133,17 @@
       </select>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="skeleton-list">
+      <div v-for="i in 6" :key="i" class="skeleton-item">
+        <div class="skeleton-icon skeleton-pulse"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-line skeleton-pulse" style="width: 60%"></div>
+          <div class="skeleton-line skeleton-pulse short" style="width: 40%"></div>
+        </div>
+        <div class="skeleton-amount skeleton-pulse"></div>
+      </div>
+    </div>
 
     <div v-else-if="transactions.length === 0" class="empty">
       <div class="empty-icon">📭</div>
@@ -555,7 +565,65 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   cursor: pointer;
 }
 
-.loading, .empty {
+/* Skeleton loading */
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.skeleton-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  flex-shrink: 0;
+}
+
+.skeleton-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+}
+
+.skeleton-line.short {
+  height: 10px;
+}
+
+.skeleton-amount {
+  width: 80px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  flex-shrink: 0;
+}
+
+.skeleton-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.empty {
   text-align: center;
   padding: 3rem;
   color: var(--text-secondary);
