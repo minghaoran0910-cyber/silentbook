@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date, Index
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, date
 import os
@@ -14,14 +14,23 @@ class Transaction(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     amount = Column(Float, nullable=False)
-    category = Column(String(50), nullable=False)
-    account = Column(String(50), nullable=False)
+    category = Column(String(50), nullable=False, index=True)
+    account = Column(String(50), nullable=False, index=True)
     description = Column(Text)
-    transaction_type = Column(String(20), nullable=False)  # income/expense
+    transaction_type = Column(String(20), nullable=False, index=True)  # income/expense
     raw_text = Column(Text)
     confidence = Column(Float, default=0.5)
-    parsed_at = Column(DateTime, default=datetime.utcnow)
+    parsed_at = Column(DateTime, default=datetime.utcnow, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        # 复合索引：按时间范围+类型查询（月报、现金流报表高频使用）
+        Index('ix_transactions_type_parsed', 'transaction_type', 'parsed_at'),
+        # 复合索引：按分类+时间查询（支出结构报表）
+        Index('ix_transactions_category_parsed', 'category', 'parsed_at'),
+        # 复合索引：按账户+时间查询
+        Index('ix_transactions_account_parsed', 'account', 'parsed_at'),
+    )
 
 class Asset(Base):
     """资产：现金、存款、基金、股票、理财、房产等"""
@@ -29,13 +38,13 @@ class Asset(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    asset_type = Column(String(30), nullable=False)  # cash/savings/fund/stock/bond/property/other
+    asset_type = Column(String(30), nullable=False, index=True)  # cash/savings/fund/stock/bond/property/other
     account = Column(String(100))  # 所属机构
     current_value = Column(Float, nullable=False, default=0)  # 当前价值
     initial_value = Column(Float, default=0)  # 初始投入
     currency = Column(String(10), default="CNY")
     liquidity = Column(String(10), default="medium")  # high/medium/low
-    status = Column(String(20), default="active")  # active/frozen/closed
+    status = Column(String(20), default="active", index=True)  # active/frozen/closed
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -46,21 +55,21 @@ class Liability(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    liability_type = Column(String(30), nullable=False)  # mortgage/car_loan/credit_card/credit_card_installment/huabei/baitiao/loan/other
+    liability_type = Column(String(30), nullable=False, index=True)  # mortgage/car_loan/credit_card/credit_card_installment/huabei/baitiao/loan/other
     total_amount = Column(Float, nullable=False, default=0)  # 总额
     current_amount = Column(Float, nullable=False, default=0)  # 当前待还
     interest_rate = Column(Float, default=0)  # 年利率
     monthly_payment = Column(Float, default=0)  # 月还款额
     remaining_periods = Column(Integer, default=0)  # 剩余期数（月）
     due_date = Column(Date)  # 到期日
-    status = Column(String(20), default="active")  # active/paid/overdue
+    status = Column(String(20), default="active", index=True)  # active/paid/overdue
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-    
+
 class AgentConfig(Base):
     __tablename__ = "agent_configs"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     api_endpoint = Column(String(500), nullable=False)
@@ -69,9 +78,9 @@ class AgentConfig(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Setting(Base):
-    """系统设置：键值对存储"""
+    """系统设置:键值对存储"""
     __tablename__ = "settings"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(100), nullable=False, unique=True)
     value = Column(Text)
@@ -85,17 +94,17 @@ class Account(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 账户名称（微信/招商银行卡等）
     account_type = Column(String(30), nullable=False)  # bank/alipay/wechat/cash/fund/stock/other
-    purpose = Column(String(20), nullable=False)  # consumption/emergency/investment/goal
+    purpose = Column(String(20), nullable=False, index=True)  # consumption/emergency/investment/goal
     balance = Column(Float, nullable=False, default=0)  # 当前余额
     target_balance = Column(Float, default=0)  # 目标余额
     currency = Column(String(10), default="CNY")
-    status = Column(String(20), default="active")  # active/frozen/closed
+    status = Column(String(20), default="active", index=True)  # active/frozen/closed
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class User(Base):
-    """用户表：支持邮箱或手机号注册"""
+    """用户表:支持邮箱或手机号注册"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -117,7 +126,7 @@ class Transfer(Base):
     to_account_id = Column(Integer, nullable=False, index=True)
     amount = Column(Float, nullable=False)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AnalysisResult(Base):
@@ -125,9 +134,9 @@ class AnalysisResult(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String(100), nullable=False)
-    analysis_type = Column(String(50), nullable=False)  # consumption/investment/suggestion
+    analysis_type = Column(String(50), nullable=False, index=True)  # consumption/investment/suggestion
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class Position(Base):
@@ -135,15 +144,15 @@ class Position(Base):
     __tablename__ = "positions"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)  # 持仓名称（如“沪深300ETF”）
+    name = Column(String(100), nullable=False)  # 持仓名称（如"沪深300ETF"）
     symbol = Column(String(20))  # 代码（如 510300）
-    position_type = Column(String(20), nullable=False)  # stock/fund/bond/wealth_mgmt/other
+    position_type = Column(String(20), nullable=False, index=True)  # stock/fund/bond/wealth_mgmt/other
     quantity = Column(Float, default=0)  # 持有份额/股数
     avg_cost = Column(Float, default=0)  # 平均成本价
     current_price = Column(Float, default=0)  # 当前价格/净值
     currency = Column(String(10), default="CNY")
     account = Column(String(100))  # 所属账户（证券账户等）
-    status = Column(String(20), default="active")  # active/closed
+    status = Column(String(20), default="active", index=True)  # active/closed
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -155,12 +164,12 @@ class TradeRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     position_id = Column(Integer, nullable=False, index=True)  # 关联持仓
-    trade_type = Column(String(20), nullable=False)  # buy/sell/dividend
+    trade_type = Column(String(20), nullable=False, index=True)  # buy/sell/dividend
     quantity = Column(Float, nullable=False)  # 数量
     price = Column(Float, nullable=False)  # 成交价
     amount = Column(Float, nullable=False)  # 成交金额
     fee = Column(Float, default=0)  # 手续费
-    trade_date = Column(Date, nullable=False)  # 交易日期
+    trade_date = Column(Date, nullable=False, index=True)  # 交易日期
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -181,20 +190,20 @@ class FinancialGoal(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 目标名称
-    goal_type = Column(String(30), nullable=False)  # savings/debt_payoff/investment/purchase
+    goal_type = Column(String(30), nullable=False, index=True)  # savings/debt_payoff/investment/purchase
     target_amount = Column(Float, nullable=False, default=0)  # 目标金额
     current_amount = Column(Float, nullable=False, default=0)  # 当前已积累
     currency = Column(String(10), default="CNY")
     deadline = Column(Date)  # 目标达成日期
     priority = Column(String(10), default="medium")  # high/medium/low
-    status = Column(String(20), default="active")  # active/completed/abandoned/paused
+    status = Column(String(20), default="active", index=True)  # active/completed/abandoned/paused
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class GoalContribution(Base):
-    """目标投入记录：每次往目标里存钱"""
+    """目标投入记录:每次往目标里存钱"""
     __tablename__ = "goal_contributions"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -211,15 +220,15 @@ class RecurringTransaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 名称（如"工资""房租""Netflix"）
     amount = Column(Float, nullable=False)  # 金额
-    category = Column(String(50), nullable=False)  # 分类
-    transaction_type = Column(String(20), nullable=False)  # income/expense
+    category = Column(String(50), nullable=False, index=True)  # 分类
+    transaction_type = Column(String(20), nullable=False, index=True)  # income/expense
     frequency = Column(String(20), nullable=False, default="monthly")  # daily/weekly/biweekly/monthly/quarterly/yearly
     day_of_month = Column(Integer, default=1)  # 每月几号（1-28）
     day_of_week = Column(Integer, default=0)  # 周几（0=周一，weekly用）
     start_date = Column(Date, nullable=True)  # 生效日期
     end_date = Column(Date, nullable=True)  # 结束日期（None=永久）
     account = Column(String(100))  # 关联账户
-    is_active = Column(Boolean, default=True)  # 是否启用
+    is_active = Column(Boolean, default=True, index=True)  # 是否启用
     source = Column(String(20), default="manual")  # manual(手动)/auto(自动检测)
     confidence = Column(Float, default=1.0)  # 自动检测时的置信度
     notes = Column(Text)
@@ -233,7 +242,7 @@ class BackupRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     backup_type = Column(String(20), nullable=False, default="incremental")  # full/incremental
-    status = Column(String(20), nullable=False, default="running")  # running/completed/failed
+    status = Column(String(20), nullable=False, default="running", index=True)  # running/completed/failed
     file_path = Column(String(500))  # 备份文件路径
     file_size = Column(Integer, default=0)  # 文件大小(bytes)
     record_count = Column(Integer, default=0)  # 备份记录总数
@@ -241,5 +250,5 @@ class BackupRecord(Base):
     since_checkpoint = Column(DateTime)  # 上次备份的时间点（增量备份用）
     error_message = Column(Text)  # 失败原因
     duration_seconds = Column(Float, default=0)  # 备份耗时
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime)
