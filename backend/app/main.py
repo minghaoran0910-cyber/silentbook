@@ -4345,3 +4345,393 @@ def _calc_position_returns(position, trades):
         "holding_days": days,
         "trade_count": len(trades),
     }
+
+# ==== V2-023 收益率分析（高级组合绩效分析） ====
+
+import math
+
+def _build_daily_portfolio_series(db, days: int):
+    """构建每日组合市值序列（用于计算风险指标）
+    
+    策略：
+    1. 获取所有活跃持仓和交易记录
+    2. 对每个持仓，根据交易记录推算历史每日持有数量
+    3. 用 avg_cost 和 current_price 线性插值估算历史价格
+    4. 汇总每日总市值
+    """
+    positions = db.query(Position).filter(Position.status == "active").all()
+    if not positions:
+        return []
+    
+    today = datetime.utcnow().date()
+    start_date = today - timedelta(days=days)
+    
+    # 每个持仓的每日市值贡献
+    daily_totals = collections.defaultdict(float)
+    
+    for pos in positions:
+        trades = db.query(TradeRecord).filter(
+            TradeRecord.position_id == pos.id
+        ).order_by(TradeRecord.trade_date.asc()).all()
+        
+        if not trades:
+            # 无交易记录：假设整个期间持有当前数量
+            # 价格用 cost→current 线性插值
+            total_days = days
+            if total_days <= 0:
+                continue
+            for d in range(total_days + 1):
+                dt = start_date + timedelta(days=d)
+                progress = d / total_days
+                est_price = pos.avg_cost + (pos.current_price - pos.avg_cost) * progress
+                daily_totals[dt] += pos.quantity * est_price
+            continue
+        
+        # 有交易记录：追踪数量变化
+        # 构建 (date, cumulative_quantity) 序列
+        qty_changes = []
+        for t in trades:
+            if t.trade_type == "buy":
+                qty_changes.append((t.trade_date, t.quantity))
+            elif t.trade_type == "sell":
+                qty_changes.append((t.trade_date, -t.quantity))
+            elif t.trade_type == "dividend":
+                pass  # 分红不影响持仓数量
+        
+        # 估算价格轨迹：从 avg_cost 到 current_price 线性插值
+        # 更精确：用交易价格作为锚点
+        trade_prices = [(t.trade_date, t.price) for t in trades]
+        
+        for d in range(days + 1):
+            dt = start_date + timedelta(days=d)
+            
+            # 计算该日的持有数量
+            cum_qty = 0
+            for td, delta in qty_changes:
+                if td <= dt:
+                    cum_qty += delta
+            
+            if cum_qty <= 0:
+                continue
+            
+            # 估算该日价格
+            if dt <= trade_prices[0][0]:
+                est_price = trade_prices[0][1]
+            elif dt >= trade_prices[-1][0]:
+                # 最后交易后：线性插值到当前价格
+                last_td, last_p = trade_prices[-1]
+                days_after = (today - last_td).days
+                if days_after > 0:
+                    progress = (dt - last_td).days / days_after
+                    est_price = last_p + (pos.current_price - last_p) * progress
+                else:
+                    est_price = pos.current_price
+            else:
+                # 在交易之间插值
+                est_price = trade_prices[0][1]
+                for i in range(len(trade_prices) - 1):
+                    t0, p0 = trade_prices[i]
+                    t1, p1 = trade_prices[i + 1]
+                    if t0 <= dt <= t1:
+                        span = (t1 - t0).days
+                        if span > 0:
+                            prog = (dt - t0).days / span
+                            est_price = p0 + (p1 - p0) * prog
+                        else:
+                            est_price = p1
+                        break
+            
+            daily_totals[dt] += cum_qty * est_price
+    
+    # 转为有序序列
+    series = []
+    for d in range(days + 1):
+        dt = start_date + timedelta(days=d)
+        series.append({"date": dt.isoformat(), "value": round(daily_totals.get(dt, 0), 2)})
+    
+    return series
+
+
+def _calc_daily_returns(series):
+    """从市值序列计算日收益率序列"""
+    returns = []
+    for i in range(1, len(series)):
+        prev = series[i - 1]["value"]
+        curr = series[i]["value"]
+        if prev > 0:
+            r = (curr - prev) / prev
+        else:
+            r = 0.0
+        returns.append(r)
+    return returns
+
+
+def _calc_max_drawdown(series):
+    """计算最大回撤"""
+    if not series:
+        return 0.0
+    peak = series[0]["value"]
+    max_dd = 0.0
+    for point in series:
+        val = point["value"]
+        if val > peak:
+            peak = val
+        if peak > 0:
+            dd = (peak - val) / peak
+            if dd > max_dd:
+                max_dd = dd
+    return max_dd
+
+
+def _calc_volatility(returns, annualize=True):
+    """计算波动率（标准差）"""
+    if len(returns) < 2:
+        return 0.0
+    mean = sum(returns) / len(returns)
+    variance = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
+    vol = variance ** 0.5
+    if annualize:
+        vol *= (252 ** 0.5)  # 年化（交易日）
+    return vol
+
+
+def _calc_downside_volatility(returns, risk_free_daily=0.0, annualize=True):
+    """计算下行波动率（只考虑低于目标收益的波动）"""
+    downside = [r for r in returns if r < risk_free_daily]
+    if len(downside) < 2:
+        return 0.0
+    mean = sum(downside) / len(downside)
+    variance = sum((r - mean) ** 2 for r in downside) / (len(downside) - 1)
+    vol = variance ** 0.5
+    if annualize:
+        vol *= (252 ** 0.5)
+    return vol
+
+
+def _calc_sharpe_ratio(returns, risk_free_rate=0.02):
+    """计算夏普比率 = (年化收益 - 无风险利率) / 年化波动率"""
+    if len(returns) < 2:
+        return None
+    ann_return = _calc_annualized_return_simple(returns)
+    ann_vol = _calc_volatility(returns, annualize=True)
+    if ann_vol <= 0:
+        return None
+    return (ann_return - risk_free_rate) / ann_vol
+
+
+def _calc_sortino_ratio(returns, risk_free_rate=0.02):
+    """计算索提诺比率 = (年化收益 - 无风险利率) / 下行波动率"""
+    if len(returns) < 2:
+        return None
+    ann_return = _calc_annualized_return_simple(returns)
+    daily_rf = risk_free_rate / 252
+    down_vol = _calc_downside_volatility(returns, risk_free_daily=daily_rf, annualize=True)
+    if down_vol <= 0:
+        return None
+    return (ann_return - risk_free_rate) / down_vol
+
+
+def _calc_calmar_ratio(series):
+    """计算卡尔马比率 = 年化收益 / 最大回撤"""
+    if len(series) < 2:
+        return None
+    first_val = series[0]["value"]
+    last_val = series[-1]["value"]
+    if first_val <= 0:
+        return None
+    total_return = (last_val - first_val) / first_val
+    days = len(series) - 1
+    if days <= 0:
+        return None
+    ann_return = (1 + total_return) ** (365 / days) - 1
+    max_dd = _calc_max_drawdown(series)
+    if max_dd <= 0:
+        return None
+    return ann_return / max_dd
+
+
+def _calc_annualized_return_simple(returns):
+    """从日收益率序列计算年化收益率（几何法）"""
+    if not returns:
+        return 0.0
+    cumulative = 1.0
+    for r in returns:
+        cumulative *= (1 + r)
+    n_days = len(returns)
+    if n_days <= 0:
+        return 0.0
+    ann = cumulative ** (252 / n_days) - 1  # 用交易日年化
+    return ann
+
+
+@app.get("/investment/performance-analysis")
+async def get_performance_analysis(
+    days: int = Query(default=365, ge=7, le=1825, description="回溯天数(7-1825)"),
+    risk_free_rate: float = Query(default=0.02, ge=0, le=0.2, description="年化无风险利率"),
+    db: Session = Depends(get_db)
+):
+    """
+    V2-023 高级收益率分析（组合绩效分析）
+    
+    提供：
+    1. 风险调整收益指标：夏普比率、索提诺比率、卡尔马比率
+    2. 风险指标：最大回撤、年化波动率、下行波动率
+    3. 收益归因：按持仓的贡献度、按资产类型的分布
+    4. 多时间段分析：近1周/1月/3月/6月/1年/YTD
+    5. 日收益率序列（供前端图表使用）
+    """
+    # 1. 构建每日市值序列
+    series = _build_daily_portfolio_series(db, days)
+    
+    if not series or all(p["value"] == 0 for p in series):
+        return {
+            "message": "无有效持仓数据",
+            "days": days,
+            "metrics": None,
+        }
+    
+    # 过滤掉零值开头（可能前面没持仓）
+    first_nonzero = 0
+    for i, p in enumerate(series):
+        if p["value"] > 0:
+            first_nonzero = i
+            break
+    effective_series = series[first_nonzero:]
+    
+    if len(effective_series) < 2:
+        return {
+            "message": "数据点不足，无法计算绩效指标",
+            "days": days,
+            "metrics": None,
+        }
+    
+    # 2. 计算日收益率
+    daily_returns = _calc_daily_returns(effective_series)
+    
+    # 3. 计算各项指标
+    max_dd = _calc_max_drawdown(effective_series)
+    ann_vol = _calc_volatility(daily_returns, annualize=True)
+    down_vol = _calc_downside_volatility(daily_returns, risk_free_daily=risk_free_rate / 252, annualize=True)
+    sharpe = _calc_sharpe_ratio(daily_returns, risk_free_rate)
+    sortino = _calc_sortino_ratio(daily_returns, risk_free_rate)
+    calmar = _calc_calmar_ratio(effective_series)
+    
+    # 总收益和年化收益
+    first_val = effective_series[0]["value"]
+    last_val = effective_series[-1]["value"]
+    total_return = (last_val - first_val) / first_val if first_val > 0 else 0
+    eff_days = len(effective_series) - 1
+    ann_return = (1 + total_return) ** (365 / eff_days) - 1 if eff_days > 0 else 0
+    
+    # 4. 收益归因（按持仓）
+    positions = db.query(Position).filter(Position.status == "active").all()
+    total_cost = sum(p.quantity * p.avg_cost for p in positions)
+    total_value = sum(p.quantity * p.current_price for p in positions)
+    
+    position_attribution = []
+    for p in positions:
+        cost = p.quantity * p.avg_cost
+        value = p.quantity * p.current_price
+        profit = value - cost
+        weight = cost / total_cost if total_cost > 0 else 0
+        contribution = weight * (profit / cost) if cost > 0 else 0
+        position_attribution.append({
+            "position_id": p.id,
+            "name": p.name,
+            "type": p.position_type,
+            "weight": round(weight * 100, 2),
+            "return_pct": round((profit / cost * 100) if cost > 0 else 0, 2),
+            "contribution": round(contribution * 100, 2),
+            "profit": round(profit, 2),
+        })
+    
+    # 按资产类型归因
+    type_attribution = collections.defaultdict(lambda: {"cost": 0, "value": 0, "count": 0})
+    for p in positions:
+        t = type_attribution[p.position_type]
+        t["cost"] += p.quantity * p.avg_cost
+        t["value"] += p.quantity * p.current_price
+        t["count"] += 1
+    
+    type_list = []
+    for ptype, data in type_attribution.items():
+        ret = (data["value"] - data["cost"]) / data["cost"] * 100 if data["cost"] > 0 else 0
+        weight = data["cost"] / total_cost * 100 if total_cost > 0 else 0
+        type_list.append({
+            "type": ptype,
+            "weight": round(weight, 2),
+            "return_pct": round(ret, 2),
+            "count": data["count"],
+            "value": round(data["value"], 2),
+        })
+    
+    # 5. 多时间段收益率
+    def _period_return(series, lookback_days):
+        if len(series) < 2:
+            return None
+        end_val = series[-1]["value"]
+        target_idx = max(0, len(series) - 1 - lookback_days)
+        start_val = series[target_idx]["value"]
+        if start_val <= 0:
+            return None
+        return round((end_val - start_val) / start_val * 100, 2)
+    
+    period_returns = {
+        "1w": _period_return(effective_series, 7),
+        "1m": _period_return(effective_series, 30),
+        "3m": _period_return(effective_series, 90),
+        "6m": _period_return(effective_series, 180),
+        "1y": _period_return(effective_series, 365),
+        "ytd": _period_return(effective_series, eff_days),
+    }
+    
+    # 6. 日收益率序列（降采样到最多90个点供前端使用）
+    step = max(1, (len(daily_returns) + 89) // 90)  # ceiling division ensures ≤90 points
+    chart_returns = [
+        {"date": effective_series[i + 1]["date"], "return": round(r * 100, 4)}
+        for i, r in enumerate(daily_returns)
+        if i % step == 0
+    ]
+    
+    # 7. 风险等级判定
+    risk_level = "unknown"
+    if sharpe is not None:
+        if sharpe >= 1.5:
+            risk_level = "excellent"
+        elif sharpe >= 1.0:
+            risk_level = "good"
+        elif sharpe >= 0.5:
+            risk_level = "moderate"
+        elif sharpe >= 0:
+            risk_level = "poor"
+        else:
+            risk_level = "danger"
+    
+    return {
+        "days": days,
+        "effective_days": eff_days,
+        "metrics": {
+            "total_return": round(total_return * 100, 2),
+            "annualized_return": round(ann_return * 100, 2),
+            "sharpe_ratio": round(sharpe, 3) if sharpe is not None else None,
+            "sortino_ratio": round(sortino, 3) if sortino is not None else None,
+            "calmar_ratio": round(calmar, 3) if calmar is not None else None,
+            "max_drawdown": round(max_dd * 100, 2),
+            "annualized_volatility": round(ann_vol * 100, 2),
+            "downside_volatility": round(down_vol * 100, 2),
+            "risk_free_rate": round(risk_free_rate * 100, 2),
+            "risk_level": risk_level,
+        },
+        "attribution": {
+            "by_position": position_attribution,
+            "by_type": type_list,
+        },
+        "period_returns": period_returns,
+        "summary": {
+            "total_value": round(last_val, 2),
+            "total_cost": round(first_val, 2),
+            "total_profit": round(last_val - first_val, 2),
+            "position_count": len(positions),
+        },
+        "chart_data": chart_returns,
+    }
