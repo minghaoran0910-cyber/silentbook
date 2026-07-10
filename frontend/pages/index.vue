@@ -34,6 +34,7 @@
     </div>
 
     <!-- AI 洞察 -->
+    <ClientOnly>
     <div class="ai-section">
       <div class="section-header">
         <h2>🤖 AI 洞察</h2>
@@ -69,7 +70,10 @@
       </div>
     </div>
 
+    </ClientOnly>
+
     <!-- 资产概览 -->
+    <ClientOnly>
     <div class="asset-section" v-if="assets.length > 0 || liabilities.length > 0">
       <div class="section-header">
         <h2>🏦 资产概览</h2>
@@ -119,7 +123,10 @@
       </div>
     </div>
 
+    </ClientOnly>
+
     <!-- 最近交易 -->
+    <ClientOnly>
     <div class="recent-section" v-if="recentTransactions.length > 0">
       <div class="section-header">
         <h2>💸 最近交易</h2>
@@ -145,7 +152,10 @@
       </div>
     </div>
 
+    </ClientOnly>
+
     <!-- 消费趋势图 -->
+    <ClientOnly>
     <div class="trend-section">
       <div class="section-header">
         <h2>📊 消费趋势</h2>
@@ -166,7 +176,10 @@
       <div v-else class="empty-trend">暂无交易数据</div>
     </div>
 
+    </ClientOnly>
+
     <!-- 消费分类 -->
+    <ClientOnly>
     <div class="category-section" v-if="trend.categories.length > 0">
       <div class="section-header">
         <h2>🏷 消费分类</h2>
@@ -184,7 +197,10 @@
       </div>
     </div>
 
+    </ClientOnly>
+
     <!-- 月度报表 -->
+    <ClientOnly>
     <div class="monthly-section" v-if="monthly">
       <div class="section-header">
         <h2>📋 {{ monthly.year }}年{{ monthly.month }}月报表</h2>
@@ -230,6 +246,8 @@
         </div>
       </div>
     </div>
+
+    </ClientOnly>
 
     <!-- 功能特性 -->
     <div class="features">
