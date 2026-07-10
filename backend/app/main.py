@@ -1496,9 +1496,12 @@ async def get_latest_analysis(user: User = Depends(require_user), db: Session = 
             suggestion="点击分析按钮获取 AI 建议"
         )
 
+    # 同一批次的记录创建时间相差在几秒内（微秒精度导致不完全一致）
+    # 用 10 秒窗口匹配同一批次的所有类型
     batch_time = latest.created_at
     analyses = db.query(AnalysisResult).filter(
-        AnalysisResult.created_at == batch_time
+        AnalysisResult.created_at >= batch_time - text("interval '5 seconds'"),
+        AnalysisResult.created_at <= batch_time + text("interval '5 seconds'")
     ).all()
 
     result = {}
@@ -1508,7 +1511,8 @@ async def get_latest_analysis(user: User = Depends(require_user), db: Session = 
     return AnalysisResponse(
         consumption=result.get("consumption", "暂无分析"),
         investment=result.get("investment", "暂无分析"),
-        suggestion=result.get("suggestion", "暂无建议")
+        suggestion=result.get("suggestion", "暂无建议"),
+        mode=result.get("mode", "")
     )
 
 
