@@ -370,3 +370,84 @@ export function clearAuth() {
   localStorage.removeItem('auth_token')
   localStorage.removeItem('user_info')
 }
+
+// ===== 财务目标 =====
+
+export interface FinancialGoal {
+  id: number
+  name: string
+  goal_type: 'savings' | 'debt_payoff' | 'investment' | 'purchase'
+  target_amount: number
+  current_amount: number
+  currency: string
+  deadline: string | null
+  priority: 'high' | 'medium' | 'low'
+  status: 'active' | 'completed' | 'abandoned' | 'paused'
+  notes: string | null
+  progress_percent: number
+  created_at: string
+  updated_at: string
+}
+
+export interface GoalContribution {
+  id: number
+  goal_id: number
+  amount: number
+  description: string | null
+  created_at: string
+}
+
+export interface GoalSummary {
+  total_goals: number
+  active_goals: number
+  completed_goals: number
+  total_target: number
+  total_current: number
+  overall_progress: number
+  goals: FinancialGoal[]
+}
+
+export async function fetchGoalsSummary(): Promise<GoalSummary> {
+  return request<GoalSummary>('/goals/summary')
+}
+
+export async function fetchGoals(params?: { status?: string; priority?: string; goal_type?: string }): Promise<FinancialGoal[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.status) searchParams.append('status', params.status)
+  if (params?.priority) searchParams.append('priority', params.priority)
+  if (params?.goal_type) searchParams.append('goal_type', params.goal_type)
+  const q = searchParams.toString() ? `?${searchParams.toString()}` : ''
+  return request<FinancialGoal[]>(`/goals${q}`)
+}
+
+export async function createGoal(data: Partial<FinancialGoal>): Promise<FinancialGoal> {
+  return request<FinancialGoal>('/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function updateGoal(id: number, data: Partial<FinancialGoal>): Promise<FinancialGoal> {
+  return request<FinancialGoal>(`/goals/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function deleteGoal(id: number): Promise<void> {
+  await request(`/goals/${id}`, { method: 'DELETE' })
+}
+
+export async function contributeToGoal(goalId: number, amount: number, description?: string): Promise<FinancialGoal> {
+  return request<FinancialGoal>(`/goals/${goalId}/contribute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, description })
+  })
+}
+
+export async function fetchGoalContributions(goalId: number): Promise<GoalContribution[]> {
+  return request<GoalContribution[]>(`/goals/${goalId}/contributions`)
+}

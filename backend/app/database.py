@@ -175,6 +175,35 @@ def get_db():
         db.close()
 
 
+class FinancialGoal(Base):
+    """财务目标：买房首付/应急基金/旅行基金等"""
+    __tablename__ = "financial_goals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # 目标名称
+    goal_type = Column(String(30), nullable=False)  # savings/debt_payoff/investment/purchase
+    target_amount = Column(Float, nullable=False, default=0)  # 目标金额
+    current_amount = Column(Float, nullable=False, default=0)  # 当前已积累
+    currency = Column(String(10), default="CNY")
+    deadline = Column(Date)  # 目标达成日期
+    priority = Column(String(10), default="medium")  # high/medium/low
+    status = Column(String(20), default="active")  # active/completed/abandoned/paused
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GoalContribution(Base):
+    """目标投入记录：每次往目标里存钱"""
+    __tablename__ = "goal_contributions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, nullable=False, index=True)  # 关联目标
+    amount = Column(Float, nullable=False)  # 投入金额
+    description = Column(Text)  # 备注
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class BackupRecord(Base):
     """增量备份记录"""
     __tablename__ = "backup_records"

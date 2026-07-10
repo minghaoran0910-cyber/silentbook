@@ -311,3 +311,69 @@ class RestoreRequest(BaseModel):
     backup_id: int
     tables: Optional[List[str]] = None  # 指定恢复的表，None=全部
     dry_run: bool = False  # True=只预览不实际恢复
+
+
+# ===== 财务目标 =====
+
+GOAL_TYPES = {"savings", "debt_payoff", "investment", "purchase"}
+GOAL_PRIORITIES = {"high", "medium", "low"}
+GOAL_STATUSES = {"active", "completed", "abandoned", "paused"}
+
+
+class GoalBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    goal_type: str = Field(..., pattern="^(savings|debt_payoff|investment|purchase)$")
+    target_amount: float = Field(..., gt=0, description="目标金额必须大于0")
+    current_amount: float = Field(0, ge=0)
+    currency: str = Field("CNY", max_length=10)
+    deadline: Optional[str] = None  # ISO date string
+    priority: str = Field("medium", pattern="^(high|medium|low)$")
+    status: str = Field("active", pattern="^(active|completed|abandoned|paused)$")
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class GoalCreate(GoalBase):
+    pass
+
+
+class GoalUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    goal_type: Optional[str] = None
+    target_amount: Optional[float] = Field(None, gt=0)
+    current_amount: Optional[float] = Field(None, ge=0)
+    deadline: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class GoalResponse(GoalBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    progress_percent: float = 0  # 进度百分比
+    created_at: datetime
+    updated_at: datetime
+
+
+class GoalContributionCreate(BaseModel):
+    amount: float = Field(..., gt=0, description="投入金额必须大于0")
+    description: Optional[str] = Field(None, max_length=500)
+
+
+class GoalContributionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    goal_id: int
+    amount: float
+    description: Optional[str] = None
+    created_at: datetime
+
+
+class GoalSummaryResponse(BaseModel):
+    total_goals: int = 0
+    active_goals: int = 0
+    completed_goals: int = 0
+    total_target: float = 0
+    total_current: float = 0
+    overall_progress: float = 0  # 0-100
+    goals: List[GoalResponse] = []
