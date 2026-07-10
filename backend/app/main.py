@@ -1956,6 +1956,94 @@ async def get_debt_ratio(db: Session = Depends(get_db)):
     }
 
 
+# ===== 还款计划（V2-012）=====
+
+def _add_months(dt: datetime, months: int) -> datetime:
+    """简单月份加法，不依赖 dateutil"""
+    month = dt.month - 1 + months
+    year = dt.year + month // 12
+    month = month % 12 + 1
+    day = min(dt.day, 28)  # 避免月末溢出
+    return dt.replace(year=year, month=month, day=day)
+
+
+@app.get("/liabilities/{liability_id}/repayment-plan")
+async def get_repayment_plan(liability_id: int, db: Session = Depends(get_db)):
+    """还款计划：每期金额/利息/本金/余额 + 总利息 + 预计还清日期"""
+    liability = db.query(Liability).filter(Liability.id == liability_id).first()
+    if not liability:
+        raise HTTPException(status_code=404, detail="负债不存在")
+    if liability.status == "paid":
+        return {"schedule": [], "total_interest": 0, "total_payment": 0,
+                "remaining_periods": 0, "payoff_date": None, "message": "该负债已还清"}
+    
+    current = liability.current_amount or 0
+    monthly_payment = liability.monthly_payment or 0
+    remaining_periods = liability.remaining_periods or 0
+    monthly_rate = (liability.interest_rate or 0) / 12 / 100
+    
+    if current <= 0 or remaining_periods <= 0 or monthly_payment <= 0:
+        return {"schedule": [], "total_interest": 0, "total_payment": 0,
+                "remaining_periods": 0, "payoff_date": None,
+                "message": "当前余额、月供或剩余期数为0，无法生成还款计划"}
+    
+    # 检查月供是否足以覆盖首月利息
+    first_month_interest = current * monthly_rate
+    if monthly_payment <= first_month_interest and monthly_rate > 0:
+        return {"error": "月供不足以覆盖月利息，无法生成还款计划",
+                "monthly_payment": monthly_payment,
+                "first_month_interest": round(first_month_interest, 2)}
+    
+    schedule = []
+    total_interest = 0.0
+    total_payment = 0.0
+    balance = current
+    
+    for period in range(1, remaining_periods + 1):
+        interest = round(balance * monthly_rate, 2)
+        principal = round(monthly_payment - interest, 2)
+        
+        # 最后一期或余额不足以支撑完整月供：清零余额
+        if period == remaining_periods or principal >= balance:
+            principal = round(balance, 2)
+            payment = round(principal + interest, 2)
+        else:
+            payment = round(monthly_payment, 2)
+        
+        balance = round(balance - principal, 2)
+        total_interest += interest
+        total_payment += payment
+        
+        schedule.append({
+            "period": period,
+            "payment": payment,
+            "principal": principal,
+            "interest": interest,
+            "balance": max(balance, 0),
+            "date": _add_months(datetime.utcnow(), period).strftime("%Y-%m-%d"),
+        })
+        
+        if balance <= 0:
+            break
+    
+    payoff_date = _add_months(datetime.utcnow(), len(schedule)).strftime("%Y-%m-%d")
+    
+    return {
+        "liability_id": liability_id,
+        "liability_name": liability.name,
+        "liability_type": liability.liability_type,
+        "schedule": schedule,
+        "total_interest": round(total_interest, 2),
+        "total_payment": round(total_payment, 2),
+        "total_principal": round(current, 2),
+        "remaining_periods": len(schedule),
+        "monthly_payment": monthly_payment,
+        "current_amount": current,
+        "annual_interest_rate": liability.interest_rate or 0,
+        "payoff_date": payoff_date,
+    }
+
+
 # ===== 设置 =====
 
 @app.get("/settings")
