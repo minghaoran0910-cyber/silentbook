@@ -400,7 +400,7 @@ async def check_abnormal_and_analyze(tx: Transaction, db: Session) -> dict:
 @app.get("/analysis/results")
 async def get_analysis_results(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """分析结果（兼容旧路径，等同于 /analysis/latest）"""
-    return await get_latest_analysis(db)
+    return await get_latest_analysis(user=user, db=db)
 
 
 @app.get("/agent/configs")
