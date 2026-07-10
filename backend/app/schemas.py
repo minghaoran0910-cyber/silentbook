@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 import re
 
@@ -257,3 +257,50 @@ class TransferResponse(BaseModel):
     amount: float
     description: Optional[str] = None
     created_at: datetime
+
+
+# ===== 增量备份 =====
+
+class BackupCreate(BaseModel):
+    backup_type: str = Field("incremental", pattern="^(full|incremental)$")
+    tables: Optional[List[str]] = None  # 指定备份的表，None=全部
+
+
+class BackupTableDetail(BaseModel):
+    table_name: str
+    record_count: int
+    new_records: int = 0
+    updated_records: int = 0
+
+
+class BackupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    backup_type: str
+    status: str
+    file_path: Optional[str] = None
+    file_size: int = 0
+    record_count: int = 0
+    tables_backed_up: Optional[str] = None
+    since_checkpoint: Optional[datetime] = None
+    error_message: Optional[str] = None
+    duration_seconds: float = 0
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+class BackupStatusResponse(BaseModel):
+    last_backup: Optional[datetime] = None
+    last_backup_type: Optional[str] = None
+    last_backup_status: Optional[str] = None
+    total_backups: int = 0
+    total_backup_size: int = 0
+    next_scheduled_backup: Optional[str] = None
+    backup_directory: str = ""
+    auto_backup_enabled: bool = True
+
+
+class RestoreRequest(BaseModel):
+    backup_id: int
+    tables: Optional[List[str]] = None  # 指定恢复的表，None=全部
+    dry_run: bool = False  # True=只预览不实际恢复

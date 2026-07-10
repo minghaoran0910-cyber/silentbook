@@ -173,3 +173,21 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+class BackupRecord(Base):
+    """增量备份记录"""
+    __tablename__ = "backup_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    backup_type = Column(String(20), nullable=False, default="incremental")  # full/incremental
+    status = Column(String(20), nullable=False, default="running")  # running/completed/failed
+    file_path = Column(String(500))  # 备份文件路径
+    file_size = Column(Integer, default=0)  # 文件大小(bytes)
+    record_count = Column(Integer, default=0)  # 备份记录总数
+    tables_backed_up = Column(Text)  # JSON: 各表备份的记录数
+    since_checkpoint = Column(DateTime)  # 上次备份的时间点（增量备份用）
+    error_message = Column(Text)  # 失败原因
+    duration_seconds = Column(Float, default=0)  # 备份耗时
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)

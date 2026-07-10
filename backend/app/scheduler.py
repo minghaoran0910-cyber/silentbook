@@ -3,13 +3,14 @@ SilentBook 定时任务调度器
 - 通知清理：每6小时清理过期原始通知数据
 - AI分析：每天20:00（北京时间）自动运行Agent分析
 """
+import os
 import logging
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
-from .database import SessionLocal, Transaction, AnalysisResult
+from .database import SessionLocal, Transaction, AnalysisResult, BackupRecord
 
 logger = logging.getLogger("silentbook.scheduler")
 
@@ -102,6 +103,131 @@ async def scheduled_daily_analysis():
         db.close()
 
 
+async def _run_backup(backup_type: str = "incremental"):
+    """执行备份的通用逻辑"""
+    import json
+    import gzip
+    import time as _time
+    from pathlib import Path
+    from datetime import datetime, date
+    from .database import (
+        Transaction, Asset, Liability, Account, Position,
+        TradeRecord, Transfer, AgentConfig, Setting, User
+    )
+
+    BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "/tmp/silentbook-backups"))
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    BACKUP_TABLES = {
+        "transactions": Transaction,
+        "assets": Asset,
+        "liabilities": Liability,
+        "accounts": Account,
+        "positions": Position,
+        "trade_records": TradeRecord,
+        "transfers": Transfer,
+        "agent_configs": AgentConfig,
+        "settings": Setting,
+        "users": User,
+    }
+
+    start_time = _time.time()
+    db: Session = SessionLocal()
+
+    try:
+        # 获取上次备份时间点
+        since = None
+        if backup_type == "incremental":
+            last = db.query(BackupRecord).filter(
+                BackupRecord.status == "completed",
+                BackupRecord.backup_type == "incremental"
+            ).order_by(BackupRecord.created_at.desc()).first()
+            if last and last.completed_at:
+                since = last.completed_at
+
+        # 创建备份记录
+        record = BackupRecord(
+            backup_type=backup_type,
+            status="running",
+            since_checkpoint=since,
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        backup_data = {"metadata": {}, "tables": {}}
+        table_details = {}
+        total_records = 0
+
+        for table_name, model in BACKUP_TABLES.items():
+            rows = db.query(model).all()
+            serialized = []
+            for row in rows:
+                data = {}
+                for col in model.__table__.columns:
+                    val = getattr(row, col.name, None)
+                    if isinstance(val, (datetime, date)):
+                        val = val.isoformat()
+                    data[col.name] = val
+                serialized.append(data)
+
+            backup_data["tables"][table_name] = serialized
+            table_details[table_name] = {"record_count": len(serialized)}
+            total_records += len(serialized)
+
+        backup_data["metadata"] = {
+            "backup_id": record.id,
+            "backup_type": backup_type,
+            "created_at": datetime.utcnow().isoformat(),
+            "since_checkpoint": since.isoformat() if since else None,
+            "total_records": total_records,
+        }
+
+        # 写入压缩文件
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"backup_{record.id}_{timestamp}.json.gz"
+        file_path = BACKUP_DIR / filename
+
+        with gzip.open(file_path, "wt", encoding="utf-8") as f:
+            json.dump(backup_data, f, ensure_ascii=False, default=str)
+
+        file_size = file_path.stat().st_size
+        duration = _time.time() - start_time
+
+        record.status = "completed"
+        record.file_path = str(file_path)
+        record.file_size = file_size
+        record.record_count = total_records
+        record.tables_backed_up = json.dumps(table_details, ensure_ascii=False)
+        record.duration_seconds = round(duration, 2)
+        record.completed_at = datetime.utcnow()
+        db.commit()
+
+        logger.info(f"定时{backup_type}备份完成: {total_records}条记录, {file_size}字节, 耗时{duration:.1f}s")
+
+    except Exception as e:
+        logger.error(f"定时备份失败: {e}")
+        try:
+            record.status = "failed"
+            record.error_message = str(e)
+            record.completed_at = datetime.utcnow()
+            db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+async def scheduled_incremental_backup():
+    """每日03:00增量备份"""
+    await _run_backup("incremental")
+
+
+async def scheduled_full_backup():
+    """每周日04:00全量备份"""
+    await _run_backup("full")
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """创建并配置调度器"""
     scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
@@ -121,6 +247,24 @@ def create_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=20, minute=0, timezone="Asia/Shanghai"),
         id="daily_analysis",
         name="每日20:00自动分析",
+        replace_existing=True
+    )
+
+    # 增量备份：每天03:00（北京时间）
+    scheduler.add_job(
+        scheduled_incremental_backup,
+        trigger=CronTrigger(hour=3, minute=0, timezone="Asia/Shanghai"),
+        id="incremental_backup",
+        name="每日03:00增量备份",
+        replace_existing=True
+    )
+
+    # 全量备份：每周日04:00（北京时间）
+    scheduler.add_job(
+        scheduled_full_backup,
+        trigger=CronTrigger(day_of_week="sun", hour=4, minute=0, timezone="Asia/Shanghai"),
+        id="full_backup",
+        name="每周日04:00全量备份",
         replace_existing=True
     )
 
