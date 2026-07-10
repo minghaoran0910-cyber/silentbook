@@ -277,6 +277,7 @@ const renderedAnalysis = computed(() => ({
 }))
 
 const analyzing = ref(false)
+const clientReady = ref(false)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
 const recentTransactions = ref([])
@@ -374,6 +375,7 @@ const getAccountName = (account) => {
 
 const formatTime = (time) => {
   const date = new Date(time)
+  if (!clientReady.value) return date.toLocaleDateString('zh-CN')
   const now = new Date()
   const diff = now - date
   if (diff < 60000) return '刚刚'
@@ -384,6 +386,7 @@ const formatTime = (time) => {
 }
 
 onMounted(() => {
+  clientReady.value = true
   loadStats()
   loadAnalysis()
   loadTrend()

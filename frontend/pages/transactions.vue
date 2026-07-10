@@ -263,6 +263,7 @@ const form = ref({
 
 // 编辑
 const editingId = ref(null)
+const clientReady = ref(false)
 const editForm = ref({ amount: 0, category: '', account: '', description: '', transaction_type: 'expense' })
 
 const loadTransactions = async () => {
@@ -367,6 +368,7 @@ const getAccountName = (account) => {
 
 const formatTime = (time) => {
   const date = new Date(time)
+  if (!clientReady.value) return date.toLocaleDateString('zh-CN')
   const now = new Date()
   const diff = now - date
   if (diff < 60000) return '刚刚'
@@ -386,7 +388,7 @@ const handleDelete = async (id) => {
   }
 }
 
-onMounted(() => { loadTransactions() })
+onMounted(() => { clientReady.value = true; loadTransactions() })
 </script>
 
 <style scoped>
