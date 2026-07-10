@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.main import app
-from backend.app.database import Base, get_db
-from backend.app.main import create_account, list_accounts, get_accounts_summary, transfer_between_accounts
+from app.main import app
+from app.database import Base, get_db
+from app.main import create_account, list_accounts, get_accounts_summary, transfer_between_accounts
 
 # 使用 SQLite 内存数据库做测试
 SQLALCHEMY_DATABASE_URL = "sqlite://"

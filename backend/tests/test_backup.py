@@ -43,7 +43,7 @@ def setup_backup_env():
 def client(setup_backup_env):
     """创建测试客户端"""
     # 使用测试数据库
-    test_db = "sqlite:///./test_backup.db"
+    test_db = "sqlite://"
     os.environ["DATABASE_URL"] = test_db
 
     # 重新导入以使用测试配置
@@ -55,12 +55,12 @@ def client(setup_backup_env):
         if "backend.app" in mod:
             del sys.modules[mod]
 
-    from backend.app.database import engine, Base, SessionLocal, Transaction, Account, Asset
+    from app.database import engine, Base, SessionLocal, Transaction, Account, Asset
     Base.metadata.create_all(bind=engine)
 
-    from backend.app.main import app, BACKUP_TABLES
+    from app.main import app, BACKUP_TABLES
     # 更新备份目录
-    import backend.app.main as main_module
+    import app.main as main_module
     main_module.BACKUP_DIR = Path(TEST_BACKUP_DIR)
 
     # 插入测试数据
@@ -137,7 +137,7 @@ class TestBackupCreate:
     def test_create_incremental_backup_second(self, client):
         """测试第二次增量备份"""
         # 先添加新数据
-        from backend.app.database import SessionLocal, Transaction
+        from app.database import SessionLocal, Transaction
         db = SessionLocal()
         tx = Transaction(
             amount=99.9,

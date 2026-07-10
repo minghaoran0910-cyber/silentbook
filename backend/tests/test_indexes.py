@@ -20,7 +20,7 @@ from sqlalchemy import inspect, text
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
 # 使用 SQLite 测试数据库
-os.environ["DATABASE_URL"] = "sqlite:///./test_indexes.db"
+os.environ["DATABASE_URL"] = "sqlite://"
 
 from database import (
     engine, Base, SessionLocal, init_db,

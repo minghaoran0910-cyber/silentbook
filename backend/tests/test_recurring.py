@@ -2,6 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date, timedelta
 
@@ -9,8 +10,8 @@ from app.main import app, get_db
 from app.database import Base, RecurringTransaction, Transaction
 
 
-TEST_DB = "sqlite:///./test_recurring.db"
-engine = create_engine(TEST_DB, connect_args={"check_same_thread": False})
+TEST_DB = "sqlite://"
+engine = create_engine(TEST_DB, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
