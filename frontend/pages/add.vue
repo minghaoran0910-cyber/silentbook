@@ -192,7 +192,7 @@ const parseAndCreate = async () => {
   parseResult.value = null
   try {
     const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || 'http://localhost:8000'
+    const apiBase = config.public?.apiBase || '/api'
     const result = await $fetch(`${apiBase}/webhook/notify`, {
       method: 'POST',
       body: {

@@ -109,7 +109,7 @@ const agents = ref([
 ])
 
 const agentMode = ref('auto')
-const apiBase = ref('http://localhost:8000')
+const apiBase = ref('/api')
 const autoAnalyze = ref(false)
 const importResult = ref(null)
 

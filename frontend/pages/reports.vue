@@ -174,7 +174,7 @@ const fetchReport = async (type) => {
   error.value = ''
   try {
     const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || 'http://localhost:8000'
+    const apiBase = config.public?.apiBase || '/api'
     const resp = await fetch(`${apiBase}/stats/${type}`)
     if (!resp.ok) throw new Error('加载失败')
     const data = await resp.json()

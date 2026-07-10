@@ -199,7 +199,7 @@ const clearError = () => {
 
 const apiBase = () => {
   const config = useRuntimeConfig()
-  return config.public?.apiBase || 'http://localhost:8000'
+  return config.public?.apiBase || '/api'
 }
 
 const handleRegister = async () => {

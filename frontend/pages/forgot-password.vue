@@ -105,7 +105,7 @@ const canReset = computed(() => {
 
 const apiBase = () => {
   const config = useRuntimeConfig()
-  return config.public?.apiBase || 'http://localhost:8000'
+  return config.public?.apiBase || '/api'
 }
 
 const handleRequest = async () => {

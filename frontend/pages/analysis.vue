@@ -176,7 +176,7 @@ onMounted(async () => {
     // 加载分类统计
     try {
       const config = useRuntimeConfig()
-      const apiBase = config.public?.apiBase || 'http://localhost:8000'
+      const apiBase = config.public?.apiBase || '/api'
       const monthly = await $fetch(`${apiBase}/stats/monthly`)
       if (monthly && monthly.expense_categories) {
         categoryStats.value = monthly.expense_categories
