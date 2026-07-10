@@ -104,8 +104,8 @@ class LiabilityBase(BaseModel):
     total_amount: float = Field(0, ge=0)
     current_amount: float = Field(0, ge=0)
     interest_rate: float = Field(0, ge=0)
-    monthly_payment: float = Field(0, ge=0)  # 月还款额
-    remaining_periods: int = Field(0, ge=0)  # 剩余期数（月）
+    monthly_payment: Optional[float] = Field(0, ge=0)  # 月还款额（允许NULL）
+    remaining_periods: Optional[int] = Field(0, ge=0)  # 剩余期数（允许NULL）
     due_date: Optional[str] = None
     status: str = Field("active", pattern="^(active|paid|overdue)$")
     notes: Optional[str] = Field(None, max_length=500)
@@ -132,6 +132,11 @@ class LiabilityResponse(LiabilityBase):
     remaining_periods: Optional[int] = Field(0, ge=0)
     created_at: datetime
     updated_at: datetime
+
+    @field_validator('monthly_payment', 'remaining_periods', 'interest_rate', 'total_amount', 'current_amount', mode='before')
+    @classmethod
+    def none_to_zero(cls, v):
+        return 0 if v is None else v
 
 
 # ===== 用户认证 =====

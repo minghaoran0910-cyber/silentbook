@@ -50,17 +50,41 @@ export interface UpdateTransactionPayload {
   confidence?: number
 }
 
-// SSR 端用 Docker 内部网络，浏览器端用宿主机地址
+// SSR 端用 Docker 内部网络，浏览器端用 nginx 代理的 /api 前缀
 function getApiBase(): string {
   if (import.meta.server) {
     return process.env.NUXT_SSR_API_BASE || 'http://backend:8000'
   }
-  return 'http://localhost:8000'
+  // 浏览器端：生产环境用 /api（nginx 代理），开发环境用 localhost
+  if (import.meta.env?.DEV) {
+    return 'http://localhost:8000'
+  }
+  return '/api'
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBase()}${url}`, options)
+  const apiBase = getApiBase()
+  const fullUrl = apiBase.startsWith('/') ? `${apiBase}${url}` : `${apiBase}${url}`
+  
+  // 自动附加 Authorization header
+  const headers = new Headers(options?.headers)
+  if (import.meta.client && !headers.has('Authorization')) {
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+  }
+  
+  const response = await fetch(fullUrl, { ...options, headers })
   if (!response.ok) {
+    // 401 时清除过期 token 并跳转登录
+    if (response.status === 401 && import.meta.client) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user_info')
+      if (window.location.pathname !== '/auth') {
+        window.location.href = '/auth'
+      }
+    }
     const detail = await response.text().catch(() => '')
     throw new Error(`API error ${response.status}: ${detail}`)
   }
@@ -200,6 +224,8 @@ export interface Liability {
   total_amount: number
   current_amount: number
   interest_rate: number
+  monthly_payment: number | null
+  remaining_periods: number | null
   due_date: string | null
   status: string
   notes: string | null
