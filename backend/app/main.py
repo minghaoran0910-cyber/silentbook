@@ -4735,3 +4735,433 @@ async def get_performance_analysis(
         },
         "chart_data": chart_returns,
     }
+
+
+# ============================================================
+# V2-024: 风险分析 (Risk Analysis)
+# ============================================================
+
+def _calc_var_historical(returns, confidence=0.95):
+    """历史模拟法计算 VaR (Value at Risk)"""
+    if len(returns) < 10:
+        return None
+    sorted_returns = sorted(returns)
+    index = int((1 - confidence) * len(sorted_returns))
+    index = max(0, min(index, len(sorted_returns) - 1))
+    return sorted_returns[index]
+
+
+def _calc_cvar(returns, confidence=0.95):
+    """CVaR (Expected Shortfall) = VaR 以下的平均损失"""
+    if len(returns) < 10:
+        return None
+    sorted_returns = sorted(returns)
+    cutoff = int((1 - confidence) * len(sorted_returns))
+    cutoff = max(1, cutoff)
+    tail = sorted_returns[:cutoff]
+    return sum(tail) / len(tail)
+
+
+def _calc_drawdown_details(series):
+    """详细回撤分析：当前回撤、最大回撤、平均回撤持续时间、最长回撤期"""
+    if not series or len(series) < 2:
+        return {
+            "current_drawdown": 0,
+            "max_drawdown": 0,
+            "max_drawdown_start": None,
+            "max_drawdown_end": None,
+            "avg_recovery_days": None,
+            "longest_drawdown_days": 0,
+            "drawdown_periods": [],
+        }
+    
+    # 计算每日回撤序列
+    peak = series[0]["value"]
+    drawdowns = []
+    in_drawdown = False
+    dd_start = None
+    periods = []
+    max_dd = 0.0
+    max_dd_start = None
+    max_dd_end = None
+    
+    for i, point in enumerate(series):
+        val = point["value"]
+        if val >= peak:
+            if in_drawdown and dd_start is not None:
+                # 回撤恢复
+                duration = i - dd_start
+                periods.append({
+                    "start": series[dd_start]["date"],
+                    "end": point["date"],
+                    "duration_days": duration,
+                    "max_drawdown": round(max(drawdowns[dd_start:i]) if dd_start < len(drawdowns) else 0, 4),
+                })
+                in_drawdown = False
+            peak = val
+            drawdowns.append(0.0)
+        else:
+            dd = (peak - val) / peak if peak > 0 else 0
+            drawdowns.append(dd)
+            if not in_drawdown:
+                in_drawdown = True
+                dd_start = i - 1  # peak day
+            if dd > max_dd:
+                max_dd = dd
+                max_dd_start = series[dd_start]["date"] if dd_start is not None else None
+                max_dd_end = point["date"]
+    
+    # 如果当前仍在回撤中
+    current_dd = drawdowns[-1] if drawdowns else 0.0
+    if in_drawdown and dd_start is not None:
+        duration = len(series) - 1 - dd_start
+        periods.append({
+            "start": series[dd_start]["date"],
+            "end": series[-1]["date"],
+            "duration_days": duration,
+            "max_drawdown": round(max(drawdowns[dd_start:]) if dd_start < len(drawdowns) else 0, 4),
+            "recovered": False,
+        })
+    
+    # 标记已恢复的期间
+    for p in periods:
+        if "recovered" not in p:
+            p["recovered"] = True
+    
+    # 统计
+    recovered_durations = [p["duration_days"] for p in periods if p.get("recovered", True)]
+    avg_recovery = sum(recovered_durations) / len(recovered_durations) if recovered_durations else None
+    longest = max((p["duration_days"] for p in periods), default=0)
+    
+    return {
+        "current_drawdown": round(current_dd * 100, 2),
+        "max_drawdown": round(max_dd * 100, 2),
+        "max_drawdown_start": max_dd_start,
+        "max_drawdown_end": max_dd_end,
+        "avg_recovery_days": round(avg_recovery, 1) if avg_recovery else None,
+        "longest_drawdown_days": longest,
+        "drawdown_periods": periods[:10],  # 最多返回10个
+    }
+
+
+def _calc_rolling_metrics(daily_returns, dates, window=30):
+    """滚动指标：滚动夏普、滚动波动率"""
+    if len(daily_returns) < window:
+        return {"rolling_sharpe": [], "rolling_volatility": []}
+    
+    rolling_sharpe = []
+    rolling_vol = []
+    
+    for i in range(window - 1, len(daily_returns)):
+        window_returns = daily_returns[i - window + 1:i + 1]
+        # 滚动年化波动率
+        mean = sum(window_returns) / len(window_returns)
+        variance = sum((r - mean) ** 2 for r in window_returns) / (len(window_returns) - 1)
+        vol = (variance ** 0.5) * (252 ** 0.5)
+        
+        # 滚动年化收益
+        ann_ret = (1 + mean) ** 252 - 1
+        
+        # 滚动夏普
+        sharpe = (ann_ret - 0.02) / vol if vol > 0 else 0
+        
+        rolling_sharpe.append({"date": dates[i + 1], "value": round(sharpe, 3)})
+        rolling_vol.append({"date": dates[i + 1], "value": round(vol * 100, 2)})
+    
+    # 降采样到最多60个点
+    step = max(1, len(rolling_sharpe) // 60)
+    return {
+        "rolling_sharpe": rolling_sharpe[::step],
+        "rolling_volatility": rolling_vol[::step],
+    }
+
+
+def _calc_stress_test(total_value, positions):
+    """压力测试：模拟极端市场情景"""
+    scenarios = [
+        {"name": "温和下跌", "emoji": "🟡", "shock": -0.05, "description": "市场温和调整，主要指数下跌5%"},
+        {"name": "中度回调", "emoji": "🟠", "shock": -0.10, "description": "经济数据不及预期，市场回调10%"},
+        {"name": "大幅下跌", "emoji": "🔴", "shock": -0.20, "description": "黑天鹅事件，市场恐慌性下跌20%"},
+        {"name": "极端崩盘", "emoji": "💀", "shock": -0.30, "description": "系统性风险，类似2008年金融危机"},
+        {"name": "利率急升", "emoji": "📈", "shock": -0.08, "description": "央行大幅加息，债券/成长股承压"},
+    ]
+    
+    results = []
+    for s in scenarios:
+        loss = total_value * s["shock"]
+        remaining = total_value + loss
+        results.append({
+            "name": s["name"],
+            "emoji": s["emoji"],
+            "description": s["description"],
+            "shock_pct": round(s["shock"] * 100, 1),
+            "estimated_loss": round(loss, 2),
+            "remaining_value": round(max(0, remaining), 2),
+        })
+    
+    return results
+
+
+def _calc_risk_grade(var_95, max_dd, sharpe, vol, current_dd):
+    """综合风险评级 A-F"""
+    score = 100
+    
+    # VaR 评分 (25分)
+    if var_95 is not None:
+        var_abs = abs(var_95)
+        if var_abs <= 0.01:
+            score += 0  # 很好
+        elif var_abs <= 0.02:
+            score -= 5
+        elif var_abs <= 0.03:
+            score -= 10
+        elif var_abs <= 0.05:
+            score -= 15
+        else:
+            score -= 25
+    
+    # 最大回撤评分 (25分)
+    if max_dd is not None:
+        dd_pct = max_dd
+        if dd_pct <= 5:
+            score += 0
+        elif dd_pct <= 10:
+            score -= 5
+        elif dd_pct <= 20:
+            score -= 10
+        elif dd_pct <= 30:
+            score -= 15
+        else:
+            score -= 25
+    
+    # 夏普比率评分 (25分)
+    if sharpe is not None:
+        if sharpe >= 1.5:
+            score += 0
+        elif sharpe >= 1.0:
+            score -= 5
+        elif sharpe >= 0.5:
+            score -= 10
+        elif sharpe >= 0:
+            score -= 15
+        else:
+            score -= 25
+    
+    # 当前回撤评分 (25分)
+    if current_dd is not None:
+        if current_dd <= 3:
+            score += 0
+        elif current_dd <= 5:
+            score -= 5
+        elif current_dd <= 10:
+            score -= 10
+        elif current_dd <= 20:
+            score -= 15
+        else:
+            score -= 25
+    
+    score = max(0, min(100, score))
+    
+    if score >= 85:
+        grade = "A"
+        label = "低风险"
+        emoji = "🟢"
+    elif score >= 70:
+        grade = "B"
+        label = "中低风险"
+        emoji = "🔵"
+    elif score >= 55:
+        grade = "C"
+        label = "中等风险"
+        emoji = "🟡"
+    elif score >= 40:
+        grade = "D"
+        label = "中高风险"
+        emoji = "🟠"
+    else:
+        grade = "F"
+        label = "高风险"
+        emoji = "🔴"
+    
+    return {
+        "grade": grade,
+        "label": label,
+        "emoji": emoji,
+        "score": score,
+    }
+
+
+@app.get("/investment/risk-analysis")
+async def get_risk_analysis(
+    days: int = Query(default=365, ge=30, le=1825, description="回溯天数(30-1825)"),
+    confidence: float = Query(default=0.95, ge=0.90, le=0.99, description="VaR置信度(0.90-0.99)"),
+    risk_free_rate: float = Query(default=0.02, ge=0, le=0.2, description="年化无风险利率"),
+    db: Session = Depends(get_db)
+):
+    """
+    V2-024 深度风险分析
+    
+    提供比 performance-analysis 更深入的风险评估：
+    1. VaR (Value at Risk) - 历史模拟法，95%/99% 置信度
+    2. CVaR (Expected Shortfall) - 尾部风险
+    3. 详细回撤分析 - 当前回撤/最大回撤/恢复时间/回撤期列表
+    4. 滚动指标 - 30日滚动夏普/滚动波动率（图表数据）
+    5. 压力测试 - 5种极端情景模拟
+    6. 风险分解 - 各持仓对组合风险的贡献
+    7. 综合风险评级 - A-F 五级
+    """
+    # 1. 构建每日市值序列
+    series = _build_daily_portfolio_series(db, days)
+    
+    if not series or all(p["value"] == 0 for p in series):
+        return {
+            "message": "无有效持仓数据",
+            "days": days,
+            "risk_metrics": None,
+        }
+    
+    # 过滤零值
+    first_nonzero = 0
+    for i, p in enumerate(series):
+        if p["value"] > 0:
+            first_nonzero = i
+            break
+    effective_series = series[first_nonzero:]
+    
+    if len(effective_series) < 10:
+        return {
+            "message": "数据点不足，无法进行风险分析",
+            "days": days,
+            "risk_metrics": None,
+        }
+    
+    # 2. 计算日收益率
+    daily_returns = _calc_daily_returns(effective_series)
+    dates = [p["date"] for p in effective_series]
+    
+    # 3. VaR & CVaR
+    var_95 = _calc_var_historical(daily_returns, 0.95)
+    var_99 = _calc_var_historical(daily_returns, 0.99)
+    cvar_95 = _calc_cvar(daily_returns, 0.95)
+    cvar_99 = _calc_cvar(daily_returns, 0.99)
+    
+    # 4. 回撤详细分析
+    dd_details = _calc_drawdown_details(effective_series)
+    
+    # 5. 滚动指标
+    rolling = _calc_rolling_metrics(daily_returns, dates, window=30)
+    
+    # 6. 基础指标（复用 helper）
+    max_dd = _calc_max_drawdown(effective_series)
+    ann_vol = _calc_volatility(daily_returns, annualize=True)
+    sharpe = _calc_sharpe_ratio(daily_returns, risk_free_rate)
+    down_vol = _calc_downside_volatility(daily_returns, risk_free_daily=risk_free_rate / 252, annualize=True)
+    
+    # 7. 压力测试
+    current_value = effective_series[-1]["value"]
+    positions = db.query(Position).filter(Position.status == "active").all()
+    stress = _calc_stress_test(current_value, positions)
+    
+    # 8. 风险分解（按持仓）
+    total_cost = sum(p.quantity * p.avg_cost for p in positions)
+    total_value_pos = sum(p.quantity * p.current_price for p in positions)
+    
+    risk_decomposition = []
+    for p in positions:
+        cost = p.quantity * p.avg_cost
+        value = p.quantity * p.current_price
+        weight = cost / total_cost if total_cost > 0 else 0
+        pnl_pct = (value - cost) / cost * 100 if cost > 0 else 0
+        
+        # 简化风险贡献：按权重 * 波动率估算
+        # 更精确需要协方差矩阵，这里用权重近似
+        risk_contribution = weight * ann_vol
+        
+        risk_decomposition.append({
+            "position_id": p.id,
+            "name": p.name,
+            "type": p.position_type,
+            "weight": round(weight * 100, 2),
+            "value": round(value, 2),
+            "pnl_pct": round(pnl_pct, 2),
+            "risk_contribution": round(risk_contribution * 100, 2),
+        })
+    
+    # 按风险贡献排序
+    risk_decomposition.sort(key=lambda x: x["risk_contribution"], reverse=True)
+    
+    # 9. 综合风险评级
+    risk_grade = _calc_risk_grade(
+        var_95=abs(var_95) if var_95 is not None else None,
+        max_dd=max_dd * 100,
+        sharpe=sharpe,
+        vol=ann_vol,
+        current_dd=dd_details["current_drawdown"],
+    )
+    
+    # 10. 收益分布统计
+    positive_days = sum(1 for r in daily_returns if r > 0)
+    negative_days = sum(1 for r in daily_returns if r < 0)
+    total_days = len(daily_returns)
+    
+    avg_gain = sum(r for r in daily_returns if r > 0) / positive_days if positive_days > 0 else 0
+    avg_loss = sum(r for r in daily_returns if r < 0) / negative_days if negative_days > 0 else 0
+    
+    best_day = max(daily_returns) if daily_returns else 0
+    worst_day = min(daily_returns) if daily_returns else 0
+    
+    distribution = {
+        "total_days": total_days,
+        "positive_days": positive_days,
+        "negative_days": negative_days,
+        "zero_days": total_days - positive_days - negative_days,
+        "positive_pct": round(positive_days / total_days * 100, 1) if total_days > 0 else 0,
+        "avg_daily_gain": round(avg_gain * 100, 4),
+        "avg_daily_loss": round(avg_loss * 100, 4),
+        "best_day": round(best_day * 100, 4),
+        "worst_day": round(worst_day * 100, 4),
+        "gain_loss_ratio": round(abs(avg_gain / avg_loss), 2) if avg_loss != 0 else None,
+    }
+    
+    # 11. 风险建议
+    recommendations = []
+    if dd_details["current_drawdown"] > 10:
+        recommendations.append("⚠️ 当前回撤超过10%，建议审视持仓集中度，考虑分散投资")
+    if var_95 is not None and abs(var_95) > 0.03:
+        recommendations.append("🔴 日VaR超过3%，单日波动较大，建议增加低风险资产配置")
+    if ann_vol > 0.3:
+        recommendations.append("📊 年化波动率超过30%，组合波动较大，可考虑配置债券/货币基金平滑波动")
+    if sharpe is not None and sharpe < 0.5:
+        recommendations.append("📉 夏普比率偏低，风险调整后的收益不理想，建议优化持仓结构")
+    if len(positions) <= 2 and total_value_pos > 0:
+        recommendations.append("🎯 持仓集中度过高（仅{}只），建议分散到3-5只标的".format(len(positions)))
+    if not recommendations:
+        recommendations.append("✅ 风险指标整体健康，继续保持当前配置")
+    
+    return {
+        "days": days,
+        "effective_days": len(effective_series),
+        "confidence_level": confidence,
+        "risk_grade": risk_grade,
+        "var": {
+            "var_95": round(var_95 * 100, 4) if var_95 is not None else None,
+            "var_99": round(var_99 * 100, 4) if var_99 is not None else None,
+            "cvar_95": round(cvar_95 * 100, 4) if cvar_95 is not None else None,
+            "cvar_99": round(cvar_99 * 100, 4) if cvar_99 is not None else None,
+            "interpretation": f"在{confidence*100:.0f}%置信度下，单日最大预期损失为{round(abs(var_95 or 0)*100, 2)}%",
+        },
+        "drawdown": dd_details,
+        "risk_metrics": {
+            "annualized_volatility": round(ann_vol * 100, 2),
+            "downside_volatility": round(down_vol * 100, 2),
+            "sharpe_ratio": round(sharpe, 3) if sharpe is not None else None,
+            "max_drawdown": round(max_dd * 100, 2),
+            "current_drawdown": dd_details["current_drawdown"],
+        },
+        "distribution": distribution,
+        "stress_test": stress,
+        "risk_decomposition": risk_decomposition,
+        "rolling_metrics": rolling,
+        "recommendations": recommendations,
+        "portfolio_value": round(current_value, 2),
+    }
