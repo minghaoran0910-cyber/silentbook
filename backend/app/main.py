@@ -5589,7 +5589,7 @@ def _goal_to_response(goal: FinancialGoal) -> GoalResponse:
     )
 
 
-@app.get("/api/goals/summary", response_model=GoalSummaryResponse)
+@app.get("/goals/summary", response_model=GoalSummaryResponse)
 async def get_goals_summary(db: Session = Depends(get_db)):
     """获取所有目标的汇总概览"""
     goals = db.query(FinancialGoal).order_by(
@@ -5617,7 +5617,7 @@ async def get_goals_summary(db: Session = Depends(get_db)):
     )
 
 
-@app.get("/api/goals", response_model=List[GoalResponse])
+@app.get("/goals", response_model=List[GoalResponse])
 async def list_goals(
     status: Optional[str] = None,
     priority: Optional[str] = None,
@@ -5643,7 +5643,7 @@ async def list_goals(
     return [_goal_to_response(g) for g in goals]
 
 
-@app.post("/api/goals", response_model=GoalResponse, status_code=201)
+@app.post("/goals", response_model=GoalResponse, status_code=201)
 async def create_goal(goal: GoalCreate, db: Session = Depends(get_db)):
     """创建新目标"""
     # 解析 deadline
@@ -5671,7 +5671,7 @@ async def create_goal(goal: GoalCreate, db: Session = Depends(get_db)):
     return _goal_to_response(db_goal)
 
 
-@app.get("/api/goals/{goal_id}", response_model=GoalResponse)
+@app.get("/goals/{goal_id}", response_model=GoalResponse)
 async def get_goal(goal_id: int, db: Session = Depends(get_db)):
     """获取单个目标详情"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
@@ -5680,7 +5680,7 @@ async def get_goal(goal_id: int, db: Session = Depends(get_db)):
     return _goal_to_response(goal)
 
 
-@app.put("/api/goals/{goal_id}", response_model=GoalResponse)
+@app.put("/goals/{goal_id}", response_model=GoalResponse)
 async def update_goal(goal_id: int, updates: GoalUpdate, db: Session = Depends(get_db)):
     """更新目标"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
@@ -5711,7 +5711,7 @@ async def update_goal(goal_id: int, updates: GoalUpdate, db: Session = Depends(g
     return _goal_to_response(goal)
 
 
-@app.delete("/api/goals/{goal_id}")
+@app.delete("/goals/{goal_id}")
 async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
     """删除目标（同时删除投入记录）"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
@@ -5725,7 +5725,7 @@ async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
     return {"message": f"目标 '{goal.name}' 已删除"}
 
 
-@app.post("/api/goals/{goal_id}/contribute", response_model=GoalResponse)
+@app.post("/goals/{goal_id}/contribute", response_model=GoalResponse)
 async def contribute_to_goal(
     goal_id: int,
     contribution: GoalContributionCreate,
@@ -5758,7 +5758,7 @@ async def contribute_to_goal(
     return _goal_to_response(goal)
 
 
-@app.get("/api/goals/{goal_id}/contributions", response_model=List[GoalContributionResponse])
+@app.get("/goals/{goal_id}/contributions", response_model=List[GoalContributionResponse])
 async def list_contributions(goal_id: int, db: Session = Depends(get_db)):
     """获取目标的投入记录"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
