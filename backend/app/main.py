@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 from typing import List, Optional
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel, Field
