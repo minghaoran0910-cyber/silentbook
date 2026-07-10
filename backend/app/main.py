@@ -2750,3 +2750,1139 @@ async def get_balance_sheet(db: Session = Depends(get_db)):
         "liability_count": len(liabilities),
         "account_count": len(accounts),
     }
+
+
+# ===== 财务健康评分（V2-016 五维度评分模型）=====
+
+# 必要支出分类（用于支出结构维度）
+NECESSARY_CATEGORIES = {
+    "房租", "房贷", "水电", "燃气", "物业", "餐饮", "食品", " groceries",
+    "交通", "地铁", "公交", "医疗", "药品", "保险", "通讯", "话费",
+    "宽带", "教育", "学费", "日用", "日用品", "服饰", "基本",
+}
+# 非必要支出分类
+DISCRETIONARY_CATEGORIES = {
+    "娱乐", "游戏", "电影", "旅游", "奢侈品", "奢侈品", "酒吧",
+    "KTV", "健身", "美容", "美甲", "SPA", "数码", "电子产品",
+}
+
+
+def _score_savings(total_income: float, total_expense: float) -> dict:
+    """💰 储蓄能力（25分）：月储蓄率"""
+    if total_income <= 0:
+        return {
+            "score": 0, "max": 25, "rate": 0,
+            "message": "无收入数据，请添加收入记录",
+            "suggestion": "先记录至少一个月的完整收支数据",
+        }
+    rate = (total_income - total_expense) / total_income * 100
+    if rate >= 30:
+        score = 25
+    elif rate >= 20:
+        score = 20
+    elif rate >= 10:
+        score = 15
+    elif rate >= 0:
+        score = 8
+    else:
+        score = 0
+
+    suggestions = []
+    if rate < 10:
+        suggestions.append("储蓄率偏低，建议从减少非必要支出开始")
+    if rate < 0:
+        suggestions.append("当前入不敷出，需要紧急调整消费结构")
+    if rate >= 30:
+        msg = f"储蓄率 {rate:.1f}%，优秀！"
+    elif rate >= 20:
+        msg = f"储蓄率 {rate:.1f}%，良好"
+    elif rate >= 10:
+        msg = f"储蓄率 {rate:.1f}%，还有提升空间"
+    elif rate >= 0:
+        msg = f"储蓄率 {rate:.1f}%，偏低"
+    else:
+        msg = f"储蓄率 {rate:.1f}%，入不敷出"
+
+    return {
+        "score": score, "max": 25, "rate": round(rate, 1),
+        "message": msg,
+        "suggestion": suggestions[0] if suggestions else "继续保持当前储蓄水平",
+    }
+
+
+def _score_risk(emergency_balance: float, monthly_expense: float) -> dict:
+    """🛡️ 抗风险能力（25分）：应急储备覆盖月数"""
+    if monthly_expense <= 0:
+        months = 0
+    else:
+        months = emergency_balance / monthly_expense
+
+    if months >= 6:
+        score = 25
+    elif months >= 3:
+        score = 20
+    elif months >= 1:
+        score = 12
+    elif months > 0:
+        score = 5
+    else:
+        score = 0
+
+    if months >= 6:
+        msg = f"应急储备可覆盖 {months:.1f} 个月，充足"
+    elif months >= 3:
+        msg = f"应急储备可覆盖 {months:.1f} 个月，良好"
+    elif months >= 1:
+        msg = f"应急储备可覆盖 {months:.1f} 个月，建议补充到 3-6 个月"
+    elif months > 0:
+        msg = f"应急储备仅覆盖 {months:.1f} 个月，不足"
+    else:
+        msg = "无应急储备数据"
+
+    return {
+        "score": score, "max": 25, "months": round(months, 1),
+        "message": msg,
+        "suggestion": "将应急账户储备到覆盖 3-6 个月生活费" if months < 3 else "应急储备充足，可考虑多余部分用于投资",
+    }
+
+
+def _score_budget(budget_execution: list) -> dict:
+    """📊 预算纪律（20分）：预算执行率"""
+    if not budget_execution:
+        return {
+            "score": 0, "max": 20, "execution_rate": 0,
+            "message": "未设置预算",
+            "suggestion": "先使用预算模板创建分类预算，再评估执行纪律",
+        }
+
+    # 执行率 = 100% - 平均偏差率（超支扣分，节约不加分过多）
+    deviations = []
+    for b in budget_execution:
+        usage = b.get("usage_rate", 0) / 100  # 0~1+
+        if usage > 1:
+            deviations.append(usage - 1)  # 超支部分
+        else:
+            deviations.append(0)  # 节约不视为偏差
+
+    avg_deviation = sum(deviations) / len(deviations) if deviations else 0
+    execution_rate = max(0, 100 - avg_deviation * 100)
+
+    if execution_rate >= 90:
+        score = 20
+    elif execution_rate >= 80:
+        score = 15
+    elif execution_rate >= 70:
+        score = 10
+    elif execution_rate >= 60:
+        score = 5
+    else:
+        score = 0
+
+    if execution_rate >= 90:
+        msg = f"预算执行率 {execution_rate:.0f}%，纪律优秀"
+    elif execution_rate >= 80:
+        msg = f"预算执行率 {execution_rate:.0f}%，良好"
+    elif execution_rate >= 70:
+        msg = f"预算执行率 {execution_rate:.0f}%，有超支倾向"
+    elif execution_rate >= 60:
+        msg = f"预算执行率 {execution_rate:.0f}%，需加强控制"
+    else:
+        msg = f"预算执行率 {execution_rate:.0f}%，严重超支"
+
+    return {
+        "score": score, "max": 20, "execution_rate": round(execution_rate, 1),
+        "message": msg,
+        "suggestion": "控制超支分类，必要时调整预算额度" if execution_rate < 80 else "预算纪律良好，继续保持",
+    }
+
+
+def _score_expense_structure(transactions: list) -> dict:
+    """🏗️ 支出结构（15分）：必要支出占比"""
+    expenses = [t for t in transactions if t.transaction_type == "expense"]
+    if not expenses:
+        return {
+            "score": 0, "max": 15, "necessary_ratio": 0,
+            "message": "无支出数据",
+            "suggestion": "先记录日常支出数据",
+        }
+
+    total = sum(t.amount for t in expenses)
+    necessary = sum(t.amount for t in expenses if t.category in NECESSARY_CATEGORIES)
+    ratio = necessary / total * 100 if total > 0 else 0
+
+    if ratio < 50:
+        score = 15
+    elif ratio < 60:
+        score = 12
+    elif ratio < 70:
+        score = 8
+    elif ratio < 80:
+        score = 4
+    else:
+        score = 0
+
+    if ratio < 50:
+        msg = f"必要支出占比 {ratio:.0f}%，结构健康"
+    elif ratio < 60:
+        msg = f"必要支出占比 {ratio:.0f}%，结构良好"
+    elif ratio < 70:
+        msg = f"必要支出占比 {ratio:.0f}%，偏高"
+    elif ratio < 80:
+        msg = f"必要支出占比 {ratio:.0f}%，必要支出占比过高"
+    else:
+        msg = f"必要支出占比 {ratio:.0f}%，结构紧张"
+
+    return {
+        "score": score, "max": 15, "necessary_ratio": round(ratio, 1),
+        "message": msg,
+        "suggestion": "尝试降低非必要支出比例" if ratio >= 60 else "支出结构合理，继续保持",
+    }
+
+
+def _score_investment_growth(db: Session) -> dict:
+    """📈 投资增长（15分）：投资类资产月度变化"""
+    # 查询投资类账户和资产的当前值
+    investment_accounts = db.query(Account).filter(
+        Account.purpose == "investment",
+        Account.status == "active"
+    ).all()
+    investment_assets = db.query(Asset).filter(
+        Asset.asset_type.in_(["fund", "stock", "bond"]),
+        Asset.status == "active"
+    ).all()
+
+    current_value = sum(a.balance for a in investment_accounts) + sum(a.current_value for a in investment_assets)
+
+    if current_value <= 0:
+        return {
+            "score": 0, "max": 15, "growth_rate": 0,
+            "message": "无投资数据",
+            "suggestion": "建立投资账户并记录投资资产，开始理财规划",
+        }
+
+    # 尝试获取上月数据（通过交易记录中的投资类支出反推）
+    now = datetime.utcnow()
+    this_month_start = datetime(now.year, now.month, 1)
+    last_month_start = this_month_start - timedelta(days=30)
+
+    # 简化：用当月投资类资产变化估算增长率
+    # 如果有初始值，用 (current - initial) / initial
+    initial_total = sum(a.initial_value for a in investment_assets)
+    if initial_total > 0:
+        growth_rate = (current_value - initial_total) / initial_total * 100
+    else:
+        # 无初始值数据，给中间分
+        return {
+            "score": 8, "max": 15, "growth_rate": None,
+            "current_value": round(current_value, 2),
+            "message": f"投资资产 {current_value:.0f} 元，缺少历史对比数据",
+            "suggestion": "为投资资产设置初始值，以便追踪增长",
+        }
+
+    if growth_rate >= 5:
+        score = 15
+    elif growth_rate >= 2:
+        score = 12
+    elif growth_rate >= 0:
+        score = 8
+    elif growth_rate >= -2:
+        score = 4
+    else:
+        score = 0
+
+    if growth_rate >= 5:
+        msg = f"投资增长 {growth_rate:.1f}%，表现优秀"
+    elif growth_rate >= 2:
+        msg = f"投资增长 {growth_rate:.1f}%，表现良好"
+    elif growth_rate >= 0:
+        msg = f"投资增长 {growth_rate:.1f}%，增长缓慢"
+    elif growth_rate >= -2:
+        msg = f"投资变化 {growth_rate:.1f}%，略有下降"
+    else:
+        msg = f"投资变化 {growth_rate:.1f}%，需关注"
+
+    return {
+        "score": score, "max": 15, "growth_rate": round(growth_rate, 1),
+        "current_value": round(current_value, 2),
+        "message": msg,
+        "suggestion": "保持当前投资策略" if growth_rate >= 2 else "审视投资组合，考虑分散风险",
+    }
+
+
+@app.get("/reports/health-score")
+async def get_health_score(year: int = None, month: int = None, db: Session = Depends(get_db)):
+    """
+    财务健康评分（五维度模型，满分100分）
+
+    维度：
+    - 💰 储蓄能力（25分）：月储蓄率
+    - 🛡️ 抗风险能力（25分）：应急储备覆盖月数
+    - 📊 预算纪律（20分）：预算执行率
+    - 🏗️ 支出结构（15分）：必要支出占比
+    - 📈 投资增长（15分）：投资资产增长率
+
+    等级：
+    - 90-100：🏆 财务优秀
+    - 75-89：✅ 财务健康
+    - 60-74：⚠️ 财务一般
+    - 40-59：🔶 财务紧张
+    - 0-39：🔴 财务危险
+    """
+    import json as _json
+
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+
+    # 本月交易
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end
+    ).all()
+
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+
+    # 应急账户余额
+    emergency_accounts = db.query(Account).filter(
+        Account.purpose == "emergency",
+        Account.status == "active"
+    ).all()
+    emergency_balance = sum(a.balance for a in emergency_accounts)
+
+    # 预算执行数据
+    raw_budgets = db.query(Setting).filter(Setting.key == "budgets").first()
+    budgets = _json.loads(raw_budgets.value) if raw_budgets and raw_budgets.value else []
+    budget_execution = []
+    for b in budgets:
+        spent = sum(t.amount for t in transactions if t.category == b["category"] and t.transaction_type == "expense")
+        limit = b["monthly_limit"]
+        usage = spent / limit * 100 if limit > 0 else 0
+        budget_execution.append({
+            "category": b["category"],
+            "budget_limit": round(limit, 2),
+            "actual_spent": round(spent, 2),
+            "usage_rate": round(usage, 1),
+        })
+
+    # 五维度评分
+    dim_savings = _score_savings(total_income, total_expense)
+    dim_risk = _score_risk(emergency_balance, total_expense)
+    dim_budget = _score_budget(budget_execution)
+    dim_structure = _score_expense_structure(transactions)
+    dim_investment = _score_investment_growth(db)
+
+    total_score = dim_savings["score"] + dim_risk["score"] + dim_budget["score"] + dim_structure["score"] + dim_investment["score"]
+
+    # 等级判定
+    if total_score >= 90:
+        grade = "🏆 财务优秀"
+        grade_code = "excellent"
+    elif total_score >= 75:
+        grade = "✅ 财务健康"
+        grade_code = "healthy"
+    elif total_score >= 60:
+        grade = "⚠️ 财务一般"
+        grade_code = "average"
+    elif total_score >= 40:
+        grade = "🔶 财务紧张"
+        grade_code = "tight"
+    else:
+        grade = "🔴 财务危险"
+        grade_code = "danger"
+
+    # 雷达图数据（归一化到 0-1）
+    radar = {
+        "savings": dim_savings["score"] / dim_savings["max"],
+        "risk": dim_risk["score"] / dim_risk["max"],
+        "budget": dim_budget["score"] / dim_budget["max"],
+        "structure": dim_structure["score"] / dim_structure["max"],
+        "investment": dim_investment["score"] / dim_investment["max"],
+    }
+
+    # 综合建议（取最低分维度的建议）
+    dimensions = [
+        ("储蓄能力", dim_savings),
+        ("抗风险能力", dim_risk),
+        ("预算纪律", dim_budget),
+        ("支出结构", dim_structure),
+        ("投资增长", dim_investment),
+    ]
+    weakest = min(dimensions, key=lambda x: x[1]["score"] / x[1]["max"])
+    top_suggestion = f"最需要改善「{weakest[0]}」：{weakest[1]['suggestion']}"
+
+    return {
+        "year": y,
+        "month": m,
+        "period": f"{y}年{m}月",
+        "total_score": total_score,
+        "max_score": 100,
+        "grade": grade,
+        "grade_code": grade_code,
+        "dimensions": {
+            "savings": dim_savings,
+            "risk": dim_risk,
+            "budget": dim_budget,
+            "structure": dim_structure,
+            "investment": dim_investment,
+        },
+        "radar": radar,
+        "top_suggestion": top_suggestion,
+        "data_sources": {
+            "transaction_count": len(transactions),
+            "total_income": round(total_income, 2),
+            "total_expense": round(total_expense, 2),
+            "emergency_balance": round(emergency_balance, 2),
+            "budget_count": len(budgets),
+        },
+    }
+
+
+# ===== 风险画像推断（V2-017）=====
+
+@app.get("/investment/risk-profile")
+async def get_risk_profile(year: int = None, month: int = None, db: Session = Depends(get_db)):
+    """
+    基于消费习惯推断投资风险承受能力
+
+    推断逻辑：
+    - 消费稳定（月度变异系数低）+ 应急充足 → 稳健型
+    - 消费波动大 + 应急不足 → 保守型
+    - 消费克制 + 应急充足 + 有投资经验 → 激进型
+
+    输出：风险等级/风险分数/投资期限/流动性需求/配置建议
+    """
+    import json as _json
+    import math
+
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+
+    # 取最近 6 个月交易数据
+    end = datetime(y, m + 1, 1) if m < 12 else datetime(y + 1, 1, 1)
+    start = end - timedelta(days=180)  # 约 6 个月
+
+    transactions = db.query(Transaction).filter(
+        Transaction.parsed_at >= start,
+        Transaction.parsed_at < end,
+    ).all()
+
+    # 按月聚合支出
+    monthly_expenses = {}
+    for t in transactions:
+        if t.transaction_type != "expense":
+            continue
+        key = (t.parsed_at.year, t.parsed_at.month)
+        monthly_expenses[key] = monthly_expenses.get(key, 0) + t.amount
+
+    expenses_list = list(monthly_expenses.values()) if monthly_expenses else []
+    n_months = len(expenses_list)
+
+    # --- 维度1：消费稳定性（变异系数 CV = std/mean）---
+    if n_months >= 2 and sum(expenses_list) > 0:
+        mean_exp = sum(expenses_list) / n_months
+        variance = sum((x - mean_exp) ** 2 for x in expenses_list) / n_months
+        std_exp = math.sqrt(variance)
+        cv = std_exp / mean_exp if mean_exp > 0 else 1
+        # CV < 0.2 稳定, 0.2-0.5 中等, > 0.5 波动大
+        if cv < 0.2:
+            stability_score = 3
+            stability_msg = "消费非常稳定"
+        elif cv < 0.5:
+            stability_score = 2
+            stability_msg = "消费较稳定"
+        elif cv < 0.8:
+            stability_score = 1
+            stability_msg = "消费波动较大"
+        else:
+            stability_score = 0
+            stability_msg = "消费波动极大"
+    else:
+        cv = None
+        stability_score = 1  # 数据不足，默认中等
+        stability_msg = "数据不足，默认中等"
+
+    # --- 维度2：应急充足度 ---
+    avg_monthly_exp = sum(expenses_list) / n_months if n_months > 0 else 0
+    emergency_accounts = db.query(Account).filter(
+        Account.purpose == "emergency",
+        Account.status == "active"
+    ).all()
+    emergency_balance = sum(a.balance for a in emergency_accounts)
+    coverage_months = emergency_balance / avg_monthly_exp if avg_monthly_exp > 0 else 0
+
+    if coverage_months >= 6:
+        emergency_score = 3
+        emergency_msg = "应急储备充足（≥6个月）"
+    elif coverage_months >= 3:
+        emergency_score = 2
+        emergency_msg = "应急储备良好（3-6个月）"
+    elif coverage_months >= 1:
+        emergency_score = 1
+        emergency_msg = "应急储备不足（1-3个月）"
+    else:
+        emergency_score = 0
+        emergency_msg = "无应急储备"
+
+    # --- 维度3：消费克制力（储蓄率）---
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    savings_rate = (total_income - total_expense) / total_income if total_income > 0 else 0
+
+    if savings_rate >= 0.3:
+        discipline_score = 3
+        discipline_msg = "消费克制，储蓄率高"
+    elif savings_rate >= 0.15:
+        discipline_score = 2
+        discipline_msg = "消费较克制"
+    elif savings_rate >= 0:
+        discipline_score = 1
+        discipline_msg = "储蓄率偏低"
+    else:
+        discipline_score = 0
+        discipline_msg = "入不敷出"
+
+    # --- 维度4：投资经验 ---
+    investment_accounts = db.query(Account).filter(
+        Account.purpose == "investment",
+        Account.status == "active"
+    ).all()
+    investment_assets = db.query(Asset).filter(
+        Asset.asset_type.in_(["fund", "stock", "bond"]),
+        Asset.status == "active"
+    ).all()
+    investment_value = sum(a.balance for a in investment_accounts) + sum(a.current_value for a in investment_assets)
+
+    if investment_value > 50000:
+        experience_score = 3
+        experience_msg = "有丰富投资经验"
+    elif investment_value > 10000:
+        experience_score = 2
+        experience_msg = "有一定投资经验"
+    elif investment_value > 0:
+        experience_score = 1
+        experience_msg = "有少量投资经验"
+    else:
+        experience_score = 0
+        experience_msg = "无投资经验"
+
+    # --- 综合评分（满分12分）---
+    raw_score = stability_score + emergency_score + discipline_score + experience_score
+    # 归一化到 0-100
+    risk_score = round(raw_score / 12 * 100)
+
+    # --- 风险等级判定 ---
+    # 激进型：高纪律 + 高应急 + 有投资经验
+    if discipline_score >= 2 and emergency_score >= 2 and experience_score >= 2:
+        risk_level = "aggressive"
+        risk_label = "激进型"
+        risk_emoji = "🔥"
+        investment_horizon = "5年以上"
+        liquidity_need = "低（可长期锁定）"
+        allocation = {"fixed_income": 30, "mixed": 30, "equity": 40}
+        description = "消费自律、储备充足、有投资经验，可承受较高波动追求长期高收益"
+    # 稳健型：应急充足 + 消费稳定
+    elif emergency_score >= 2 and stability_score >= 2:
+        risk_level = "balanced"
+        risk_label = "稳健型"
+        risk_emoji = "⚖️"
+        investment_horizon = "3-5年"
+        liquidity_need = "中（保留部分灵活资金）"
+        allocation = {"fixed_income": 50, "mixed": 30, "equity": 20}
+        description = "消费稳定、有一定储备，适合平衡风险与收益"
+    # 保守型：应急不足 + 消费波动
+    elif emergency_score <= 1 or stability_score <= 1:
+        risk_level = "conservative"
+        risk_label = "保守型"
+        risk_emoji = "🛡️"
+        investment_horizon = "1-3年"
+        liquidity_need = "高（需保持流动性）"
+        allocation = {"fixed_income": 70, "mixed": 20, "equity": 10}
+        description = "应急储备不足或消费波动大，应优先保障流动性，谨慎投资"
+    # 默认：谨慎型
+    else:
+        risk_level = "cautious"
+        risk_label = "谨慎型"
+        risk_emoji = "🔍"
+        investment_horizon = "1-3年"
+        liquidity_need = "中高（逐步建立应急储备）"
+        allocation = {"fixed_income": 60, "mixed": 25, "equity": 15}
+        description = "财务状况中等，建议先完善应急储备再逐步增加投资"
+
+    # --- 优先行动建议 ---
+    actions = []
+    if emergency_score < 2:
+        actions.append("优先补充应急储备到 3-6 个月生活费")
+    if stability_score < 2:
+        actions.append("建立预算控制消费波动")
+    if discipline_score < 2:
+        actions.append("提高储蓄率，目标 ≥ 20%")
+    if experience_score < 2:
+        actions.append("从货币基金或指数基金开始积累投资经验")
+    if not actions:
+        actions.append("当前财务状况良好，可按计划执行投资策略")
+
+    return {
+        "as_of": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+        "risk_level": risk_level,
+        "risk_label": risk_label,
+        "risk_emoji": risk_emoji,
+        "risk_score": risk_score,
+        "investment_horizon": investment_horizon,
+        "liquidity_need": liquidity_need,
+        "description": description,
+        "allocation_suggestion": allocation,
+        "dimensions": {
+            "stability": {"score": stability_score, "max": 3, "message": stability_msg, "cv": round(cv, 2) if cv is not None else None},
+            "emergency": {"score": emergency_score, "max": 3, "message": emergency_msg, "coverage_months": round(coverage_months, 1)},
+            "discipline": {"score": discipline_score, "max": 3, "message": discipline_msg, "savings_rate": round(savings_rate * 100, 1)},
+            "experience": {"score": experience_score, "max": 3, "message": experience_msg, "investment_value": round(investment_value, 2)},
+        },
+        "action_items": actions,
+        "data_sources": {
+            "months_analyzed": n_months,
+            "total_transactions": len(transactions),
+            "avg_monthly_expense": round(avg_monthly_exp, 2),
+        },
+    }
+
+
+# ===== 资产配置建议（V2-018）=====
+
+# 风险等级对应的目标配置
+ALLOCATION_TARGETS = {
+    "aggressive": {"fixed_income": 30, "mixed": 30, "equity": 40},
+    "balanced": {"fixed_income": 50, "mixed": 30, "equity": 20},
+    "cautious": {"fixed_income": 60, "mixed": 25, "equity": 15},
+    "conservative": {"fixed_income": 70, "mixed": 20, "equity": 10},
+}
+
+# 资产类型到配置类别的映射
+ASSET_TO_ALLOCATION = {
+    "cash": "fixed_income",
+    "savings": "fixed_income",
+    "bond": "fixed_income",
+    "fund": "mixed",
+    "stock": "equity",
+    "property": "equity",
+    "other": "mixed",
+}
+
+
+@app.get("/investment/allocation")
+async def get_asset_allocation(db: Session = Depends(get_db)):
+    """
+    资产配置建议 + 实际配置追踪 + 再平衡提醒
+
+    功能：
+    1. 基于风险画像给出目标配置
+    2. 计算当前实际配置比例
+    3. 偏离度 > 5% 时发出再平衡提醒
+    """
+    # --- 1. 获取风险等级（简化版，复用逻辑）---
+    # 投资账户和资产
+    investment_accounts = db.query(Account).filter(
+        Account.purpose == "investment",
+        Account.status == "active"
+    ).all()
+    investment_assets = db.query(Asset).filter(
+        Asset.asset_type.in_(["fund", "stock", "bond", "cash", "savings"]),
+        Asset.status == "active"
+    ).all()
+
+    # 计算当前配置
+    allocation_map = {"fixed_income": 0, "mixed": 0, "equity": 0}
+
+    # 账户按类型归类
+    for acc in investment_accounts:
+        # 投资账户默认归入 mixed
+        allocation_map["mixed"] += acc.balance
+
+    # 资产按类型归类
+    for asset in investment_assets:
+        category = ASSET_TO_ALLOCATION.get(asset.asset_type, "mixed")
+        allocation_map[category] += asset.current_value
+
+    total_investment = sum(allocation_map.values())
+
+    if total_investment <= 0:
+        # 无投资数据，返回建议配置
+        return {
+            "has_investment": False,
+            "message": "暂无投资数据，请先建立投资账户和记录投资资产",
+            "suggested_allocation": ALLOCATION_TARGETS["balanced"],  # 默认稳健型
+            "current_allocation": {},
+            "deviation": {},
+            "rebalance_alerts": [],
+        }
+
+    # --- 2. 计算实际比例 ---
+    current_pct = {
+        k: round(v / total_investment * 100, 1)
+        for k, v in allocation_map.items()
+    }
+
+    # --- 3. 确定风险等级（简化判断）---
+    emergency_accounts = db.query(Account).filter(
+        Account.purpose == "emergency",
+        Account.status == "active"
+    ).all()
+    emergency_balance = sum(a.balance for a in emergency_accounts)
+
+    # 简单判断：有投资+有应急 → balanced，否则 conservative
+    if emergency_balance > 0 and len(investment_assets) >= 2:
+        risk_level = "balanced"
+    elif emergency_balance > 0:
+        risk_level = "cautious"
+    else:
+        risk_level = "conservative"
+
+    target = ALLOCATION_TARGETS[risk_level]
+
+    # --- 4. 计算偏离度 ---
+    deviation = {}
+    rebalance_alerts = []
+    for category in ["fixed_income", "mixed", "equity"]:
+        actual = current_pct.get(category, 0)
+        target_pct = target[category]
+        diff = actual - target_pct
+        deviation[category] = round(diff, 1)
+
+        if abs(diff) > 5:
+            direction = "超配" if diff > 0 else "低配"
+            cat_labels = {"fixed_income": "固收类", "mixed": "混合类", "equity": "权益类"}
+            cat_label = cat_labels[category]
+            rebalance_alerts.append({
+                "category": category,
+                "category_label": cat_label,
+                "target_pct": target_pct,
+                "actual_pct": actual,
+                "deviation": round(diff, 1),
+                "direction": direction,
+                "action": f"建议{direction}{cat_label} {abs(round(diff, 0))}%",
+            })
+
+    category_labels = {
+        "fixed_income": "固收类（现金/存款/债券）",
+        "mixed": "混合类（基金/理财）",
+        "equity": "权益类（股票/房产）",
+    }
+
+    return {
+        "has_investment": True,
+        "risk_level": risk_level,
+        "total_investment": round(total_investment, 2),
+        "target_allocation": {
+            k: {"pct": v, "label": category_labels[k]}
+            for k, v in target.items()
+        },
+        "current_allocation": {
+            k: {"pct": current_pct.get(k, 0), "amount": round(allocation_map[k], 2), "label": category_labels[k]}
+            for k in ["fixed_income", "mixed", "equity"]
+        },
+        "deviation": deviation,
+        "rebalance_alerts": rebalance_alerts,
+        "needs_rebalance": len(rebalance_alerts) > 0,
+        "suggestion": _get_allocation_suggestion(risk_level, deviation),
+    }
+
+
+def _get_allocation_suggestion(risk_level: str, deviation: dict) -> str:
+    """根据风险等级和偏离度给出建议"""
+    if not any(abs(v) > 5 for v in deviation.values()):
+        return "当前资产配置与目标基本一致，继续保持"
+
+    suggestions = []
+    if deviation.get("equity", 0) > 5:
+        suggestions.append("权益类超配，可适当减仓锁定收益")
+    elif deviation.get("equity", 0) < -5:
+        suggestions.append("权益类低配，可逐步增配提升长期收益")
+
+    if deviation.get("fixed_income", 0) > 5:
+        suggestions.append("固收类超配，收益偏低，可考虑部分转投混合类")
+    elif deviation.get("fixed_income", 0) < -5:
+        suggestions.append("固收类低配，建议补充货币基金或债券作为安全垫")
+
+    return "；".join(suggestions) if suggestions else "当前配置合理"
+
+
+# ===== 持仓管理（V2-019）=====
+
+from .database import Position, TradeRecord
+from pydantic import BaseModel as _BaseModel
+
+
+class PositionCreate(_BaseModel):
+    name: str
+    symbol: Optional[str] = None
+    position_type: str = "fund"  # stock/fund/bond/wealth_mgmt/other
+    quantity: float = 0
+    avg_cost: float = 0
+    current_price: float = 0
+    currency: str = "CNY"
+    account: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PositionUpdate(_BaseModel):
+    name: Optional[str] = None
+    symbol: Optional[str] = None
+    position_type: Optional[str] = None
+    quantity: Optional[float] = None
+    avg_cost: Optional[float] = None
+    current_price: Optional[float] = None
+    account: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TradeRecordCreate(_BaseModel):
+    position_id: int
+    trade_type: str  # buy/sell/dividend
+    quantity: float
+    price: float
+    trade_date: str  # YYYY-MM-DD
+    fee: float = 0
+    notes: Optional[str] = None
+
+
+@app.get("/positions")
+async def list_positions(status: str = "active", db: Session = Depends(get_db)):
+    """持仓列表"""
+    query = db.query(Position)
+    if status:
+        query = query.filter(Position.status == status)
+    positions = query.all()
+
+    result = []
+    for p in positions:
+        market_value = p.quantity * p.current_price
+        cost_value = p.quantity * p.avg_cost
+        profit = market_value - cost_value
+        profit_pct = profit / cost_value * 100 if cost_value > 0 else 0
+        result.append({
+            "id": p.id,
+            "name": p.name,
+            "symbol": p.symbol,
+            "position_type": p.position_type,
+            "quantity": p.quantity,
+            "avg_cost": round(p.avg_cost, 4),
+            "current_price": round(p.current_price, 4),
+            "market_value": round(market_value, 2),
+            "cost_value": round(cost_value, 2),
+            "profit": round(profit, 2),
+            "profit_pct": round(profit_pct, 2),
+            "account": p.account,
+            "status": p.status,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        })
+
+    total_value = sum(r["market_value"] for r in result)
+    total_cost = sum(r["cost_value"] for r in result)
+    total_profit = total_value - total_cost
+    total_profit_pct = total_profit / total_cost * 100 if total_cost > 0 else 0
+
+    return {
+        "positions": result,
+        "summary": {
+            "count": len(result),
+            "total_value": round(total_value, 2),
+            "total_cost": round(total_cost, 2),
+            "total_profit": round(total_profit, 2),
+            "total_profit_pct": round(total_profit_pct, 2),
+        }
+    }
+
+
+@app.post("/positions")
+async def create_position(pos: PositionCreate, db: Session = Depends(get_db)):
+    """创建持仓"""
+    position = Position(
+        name=pos.name,
+        symbol=pos.symbol,
+        position_type=pos.position_type,
+        quantity=pos.quantity,
+        avg_cost=pos.avg_cost,
+        current_price=pos.current_price,
+        account=pos.account,
+        notes=pos.notes,
+    )
+    db.add(position)
+    db.commit()
+    db.refresh(position)
+    return {"id": position.id, "name": position.name, "message": "持仓创建成功"}
+
+
+@app.put("/positions/{position_id}")
+async def update_position(position_id: int, pos: PositionUpdate, db: Session = Depends(get_db)):
+    """更新持仓（修改当前价格等）"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(status_code=404, detail="持仓不存在")
+
+    for field, value in pos.model_dump(exclude_unset=True).items():
+        setattr(position, field, value)
+    position.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "持仓更新成功", "id": position_id}
+
+
+@app.delete("/positions/{position_id}")
+async def close_position(position_id: int, db: Session = Depends(get_db)):
+    """关闭持仓（标记为 closed）"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(status_code=404, detail="持仓不存在")
+    position.status = "closed"
+    position.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "持仓已关闭", "id": position_id}
+
+
+@app.post("/positions/trades")
+async def add_trade(trade: TradeRecordCreate, db: Session = Depends(get_db)):
+    """记录买入/卖出交易，自动更新持仓"""
+    position = db.query(Position).filter(Position.id == trade.position_id).first()
+    if not position:
+        raise HTTPException(status_code=404, detail="持仓不存在")
+
+    amount = trade.quantity * trade.price
+    trade_date = datetime.strptime(trade.trade_date, "%Y-%m-%d").date()
+
+    record = TradeRecord(
+        position_id=trade.position_id,
+        trade_type=trade.trade_type,
+        quantity=trade.quantity,
+        price=trade.price,
+        amount=amount,
+        fee=trade.fee,
+        trade_date=trade_date,
+        notes=trade.notes,
+    )
+    db.add(record)
+
+    # 更新持仓
+    if trade.trade_type == "buy":
+        # 买入：增加数量，重算平均成本
+        total_cost = position.quantity * position.avg_cost + amount + trade.fee
+        position.quantity += trade.quantity
+        position.avg_cost = total_cost / position.quantity if position.quantity > 0 else 0
+    elif trade.trade_type == "sell":
+        # 卖出：减少数量
+        if trade.quantity > position.quantity:
+            raise HTTPException(status_code=400, detail="卖出数量超过持有数量")
+        position.quantity -= trade.quantity
+        if position.quantity <= 0:
+            position.status = "closed"
+
+    position.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "message": f"交易记录已添加（{trade.trade_type}）",
+        "position_id": trade.position_id,
+        "remaining_quantity": position.quantity,
+    }
+
+
+@app.get("/positions/{position_id}/trades")
+async def get_position_trades(position_id: int, db: Session = Depends(get_db)):
+    """获取持仓的交易历史"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(status_code=404, detail="持仓不存在")
+
+    trades = db.query(TradeRecord).filter(
+        TradeRecord.position_id == position_id
+    ).order_by(TradeRecord.trade_date.desc()).all()
+
+    return {
+        "position_id": position_id,
+        "position_name": position.name,
+        "trades": [
+            {
+                "id": t.id,
+                "trade_type": t.trade_type,
+                "quantity": t.quantity,
+                "price": t.price,
+                "amount": round(t.amount, 2),
+                "fee": t.fee,
+                "trade_date": t.trade_date.isoformat(),
+                "notes": t.notes,
+            }
+            for t in trades
+        ],
+        "total_trades": len(trades),
+    }
+
+
+# ===== 收益追踪（V2-020）=====
+
+import math
+
+
+def _calc_xirr(cashflows: list, dates: list, guess: float = 0.1) -> float:
+    """
+    XIRR 计算（牛顿迭代法）
+    cashflows: 现金流列表（正数=流入，负数=流出）
+    dates: 日期列表（datetime.date）
+    返回年化内部收益率
+    """
+    if len(cashflows) < 2:
+        return 0.0
+
+    # 简化牛顿法
+    x = guess
+    for _ in range(100):
+        try:
+            d0 = dates[0]
+            npv = sum(cf / (1 + x) ** ((d - d0).days / 365.0) for cf, d in zip(cashflows, dates))
+            dnpv = sum(-cf * (d - d0).days / 365.0 / (1 + x) ** ((d - d0).days / 365.0 + 1)
+                       for cf, d in zip(cashflows, dates))
+            if abs(dnpv) < 1e-10:
+                break
+            x_new = x - npv / dnpv
+            if abs(x_new - x) < 1e-6:
+                return x_new
+            x = x_new
+        except (ZeroDivisionError, OverflowError):
+            x *= 0.5
+
+    return x if abs(x) < 10 else 0.0
+
+
+@app.get("/investment/returns")
+async def get_investment_returns(position_id: int = None, db: Session = Depends(get_db)):
+    """
+    投资收益分析
+
+    返回：
+    - 绝对收益率
+    - 时间加权收益率（TWR）
+    - XIRR（内部收益率）
+    - 年化收益率
+
+    支持单持仓或全组合
+    """
+    if position_id:
+        # 单持仓分析
+        position = db.query(Position).filter(Position.id == position_id).first()
+        if not position:
+            raise HTTPException(status_code=404, detail="持仓不存在")
+
+        trades = db.query(TradeRecord).filter(
+            TradeRecord.position_id == position_id
+        ).order_by(TradeRecord.trade_date.asc()).all()
+
+        if not trades:
+            # 无交易记录，用持仓数据直接算
+            cost = position.quantity * position.avg_cost
+            value = position.quantity * position.current_price
+            if cost <= 0:
+                return {"position_id": position_id, "message": "无成本数据"}
+            abs_return = (value - cost) / cost
+            return {
+                "position_id": position_id,
+                "position_name": position.name,
+                "absolute_return": round(abs_return * 100, 2),
+                "profit": round(value - cost, 2),
+                "cost": round(cost, 2),
+                "current_value": round(value, 2),
+                "annualized_return": None,
+                "xirr": None,
+                "message": "无交易记录，仅计算当前盈亏",
+            }
+
+        # 有交易记录，计算各种收益率
+        return _calc_position_returns(position, trades)
+
+    else:
+        # 全组合分析
+        positions = db.query(Position).filter(Position.status == "active").all()
+        if not positions:
+            return {
+                "message": "无活跃持仓",
+                "total_value": 0,
+                "total_cost": 0,
+                "absolute_return": 0,
+            }
+
+        total_cost = sum(p.quantity * p.avg_cost for p in positions)
+        total_value = sum(p.quantity * p.current_price for p in positions)
+        abs_return = (total_value - total_cost) / total_cost if total_cost > 0 else 0
+
+        return {
+            "portfolio": True,
+            "total_cost": round(total_cost, 2),
+            "total_value": round(total_value, 2),
+            "total_profit": round(total_value - total_cost, 2),
+            "absolute_return": round(abs_return * 100, 2),
+            "position_count": len(positions),
+        }
+
+
+def _calc_position_returns(position, trades):
+    """计算单个持仓的各项收益率"""
+    # 构建现金流序列
+    cashflows = []
+    dates = []
+
+    for t in trades:
+        if t.trade_type == "buy":
+            cashflows.append(-(t.amount + t.fee))  # 买入=现金流出
+        elif t.trade_type == "sell":
+            cashflows.append(t.amount - t.fee)  # 卖出=现金流入
+        elif t.trade_type == "dividend":
+            cashflows.append(t.amount)  # 分红=现金流入
+        dates.append(t.trade_date)
+
+    # 当前市值作为最终价值（正现金流）
+    current_value = position.quantity * position.current_price
+    cashflows.append(current_value)
+    dates.append(datetime.utcnow().date())
+
+    # 1. 绝对收益率
+    total_invested = sum(-cf for cf in cashflows[:-1] if cf < 0)
+    total_returned = sum(cf for cf in cashflows[:-1] if cf > 0) + current_value
+    abs_return = (total_returned - total_invested) / total_invested if total_invested > 0 else 0
+
+    # 2. 时间加权收益率（简化版：首尾市值法）
+    if len(trades) > 0:
+        first_trade = trades[0]
+        initial_cost = first_trade.amount + first_trade.fee
+        # TWR ≈ 最终市值 / 总投入 - 1（简化）
+        twr = abs_return  # 简化为绝对收益率
+    else:
+        twr = 0
+
+    # 3. XIRR
+    xirr = _calc_xirr(cashflows, dates)
+
+    # 4. 年化收益率
+    if dates:
+        days = (dates[-1] - dates[0]).days
+        if days > 0:
+            annualized = (1 + abs_return) ** (365 / days) - 1
+        else:
+            annualized = 0
+    else:
+        annualized = 0
+        days = 0
+
+    return {
+        "position_id": position.id,
+        "position_name": position.name,
+        "cost": round(total_invested, 2),
+        "current_value": round(current_value, 2),
+        "profit": round(total_returned - total_invested, 2),
+        "absolute_return": round(abs_return * 100, 2),
+        "time_weighted_return": round(twr * 100, 2),
+        "xirr": round(xirr * 100, 2) if abs(xirr) < 10 else None,
+        "annualized_return": round(annualized * 100, 2),
+        "holding_days": days,
+        "trade_count": len(trades),
+    }

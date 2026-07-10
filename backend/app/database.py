@@ -129,6 +129,41 @@ class AnalysisResult(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class Position(Base):
+    """投资持仓：股票/基金/理财产品"""
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # 持仓名称（如“沪深300ETF”）
+    symbol = Column(String(20))  # 代码（如 510300）
+    position_type = Column(String(20), nullable=False)  # stock/fund/bond/wealth_mgmt/other
+    quantity = Column(Float, default=0)  # 持有份额/股数
+    avg_cost = Column(Float, default=0)  # 平均成本价
+    current_price = Column(Float, default=0)  # 当前价格/净值
+    currency = Column(String(10), default="CNY")
+    account = Column(String(100))  # 所属账户（证券账户等）
+    status = Column(String(20), default="active")  # active/closed
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TradeRecord(Base):
+    """投资交易记录：买入/卖出/分红"""
+    __tablename__ = "trade_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    position_id = Column(Integer, nullable=False, index=True)  # 关联持仓
+    trade_type = Column(String(20), nullable=False)  # buy/sell/dividend
+    quantity = Column(Float, nullable=False)  # 数量
+    price = Column(Float, nullable=False)  # 成交价
+    amount = Column(Float, nullable=False)  # 成交金额
+    fee = Column(Float, default=0)  # 手续费
+    trade_date = Column(Date, nullable=False)  # 交易日期
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
