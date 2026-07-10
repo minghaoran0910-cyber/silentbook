@@ -128,6 +128,8 @@ class LiabilityUpdate(BaseModel):
 class LiabilityResponse(LiabilityBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    monthly_payment: Optional[float] = Field(0, ge=0)
+    remaining_periods: Optional[int] = Field(0, ge=0)
     created_at: datetime
     updated_at: datetime
 
