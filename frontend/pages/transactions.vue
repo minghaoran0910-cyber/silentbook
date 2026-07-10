@@ -231,7 +231,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { fetchTransactions, createTransaction, updateTransaction, deleteTransaction } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
 
@@ -388,7 +388,9 @@ const handleDelete = async (id) => {
   }
 }
 
-onMounted(() => { clientReady.value = true; loadTransactions() })
+const init = () => { clientReady.value = true; loadTransactions() }
+onMounted(init)
+onActivated(init) // 客户端路由导航回来时也重新加载
 </script>
 
 <style scoped>

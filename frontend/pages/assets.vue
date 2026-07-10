@@ -241,7 +241,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, computed } from 'vue'
 import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, deleteLiability } from '~/utils/api'
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
@@ -386,6 +386,7 @@ const removeLiability = async (id) => {
 }
 
 onMounted(loadData)
+onActivated(loadData) // 客户端路由导航回来时也重新加载
 </script>
 
 <style scoped>

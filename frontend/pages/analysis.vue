@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, computed } from 'vue'
 import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
 
@@ -164,7 +164,7 @@ const formatTime = (t) => {
   return new Date(t).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-onMounted(async () => {
+const loadAll = async () => {
   try {
     const [data, hist] = await Promise.all([fetchLatestAnalysis(), fetchAnalysisHistory(10)])
     if (data && (data.consumption || data.investment)) {
@@ -188,7 +188,9 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载失败:', e)
   }
-})
+}
+onMounted(loadAll)
+onActivated(loadAll)
 </script>
 
 <style scoped>

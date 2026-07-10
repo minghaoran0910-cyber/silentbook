@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { getSources, updateSources, getAgentConfigs, updateAgentConfig } from '~/utils/api'
 
 const sources = ref([
@@ -172,7 +172,7 @@ const saveAgent = async (agent) => {
   await updateAgentConfig(agent.id, { is_active: agent.enabled })
 }
 
-onMounted(async () => {
+const loadAll = async () => {
   try {
     const srcMap = await getSources()
     sources.value.forEach(s => { s.enabled = srcMap[s.id] !== false })
@@ -193,7 +193,9 @@ onMounted(async () => {
   } catch {
     apiBase.value = ''
   }
-})
+}
+onMounted(loadAll)
+onActivated(loadAll)
 </script>
 
 <style scoped>

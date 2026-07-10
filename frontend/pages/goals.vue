@@ -149,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import {
   fetchGoalsSummary, createGoal, updateGoal, deleteGoal, contributeToGoal
 } from '~/utils/api'
@@ -259,6 +259,7 @@ async function handleContribute() {
 }
 
 onMounted(loadData)
+onActivated(loadData)
 </script>
 
 <style scoped>

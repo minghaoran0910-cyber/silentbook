@@ -268,7 +268,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, computed } from 'vue'
 import { marked } from 'marked'
 import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
@@ -403,7 +403,7 @@ const formatTime = (time) => {
   return date.toLocaleDateString('zh-CN')
 }
 
-onMounted(() => {
+const loadAll = () => {
   clientReady.value = true
   loadStats()
   loadAnalysis()
@@ -411,7 +411,10 @@ onMounted(() => {
   loadMonthly()
   loadRecentTransactions()
   loadAssets()
-})
+}
+
+onMounted(loadAll)
+onActivated(loadAll) // 客户端路由导航回来时也重新加载
 </script>
 
 <style scoped>
