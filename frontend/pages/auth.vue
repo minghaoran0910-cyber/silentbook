@@ -28,6 +28,7 @@
             v-model="regForm.email"
             type="email"
             placeholder="user@example.com"
+            autocomplete="email"
             :disabled="loading"
           >
           <span class="field-hint">或填手机号，至少填一个</span>
@@ -38,6 +39,7 @@
             v-model="regForm.phone"
             type="tel"
             placeholder="13800138000"
+            autocomplete="tel"
             :disabled="loading"
           >
         </div>
@@ -109,6 +111,7 @@
             type="text"
             required
             placeholder="user@example.com / 13800138000"
+            autocomplete="username"
             :disabled="loading"
             @input="clearError"
           >
