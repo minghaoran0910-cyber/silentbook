@@ -55,8 +55,12 @@ function getApiBase(): string {
   if (import.meta.server) {
     return process.env.NUXT_SSR_API_BASE || 'http://backend:8000'
   }
-  // 浏览器端：用环境变量（docker-compose 设置）或默认 /api
-  return process.env.NUXT_PUBLIC_API_BASE || '/api'
+  // 浏览器端：用 Nuxt runtimeConfig（NUXT_PUBLIC_* 在客户端只能通过 runtimeConfig 访问）
+  try {
+    const config = useRuntimeConfig()
+    if (config.public?.apiBase) return config.public.apiBase as string
+  } catch {}
+  return '/api'
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
