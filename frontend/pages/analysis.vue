@@ -90,7 +90,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
 import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
@@ -194,9 +194,10 @@ const loadAll = async () => {
     } catch (e) {
       console.error('加载分类统计失败:', e)
     }
-  } catch (e: any) {
+  } catch (e) {
     console.error('加载失败:', e)
-    if (e.message?.includes('登录已过期')) {
+    const msg = e?.message || ''
+    if (msg.includes('登录已过期')) {
       loadError.value = '登录已过期，请重新登录'
       return
     }

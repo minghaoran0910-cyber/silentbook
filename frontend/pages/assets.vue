@@ -254,7 +254,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
 import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, deleteLiability } from '~/utils/api'
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
@@ -357,11 +357,12 @@ const loadData = async () => {
     const [a, l] = await Promise.all([fetchAssets(), fetchLiabilities()])
     assets.value = a
     liabilities.value = l
-  } catch (e: any) {
+  } catch (e) {
     console.error('加载资产失败:', e)
-    loadError.value = e.message || '加载失败'
+    const msg = e?.message || ''
+    loadError.value = msg || '加载失败'
     // 如果是 401，跳转到登录页
-    if (e.message?.includes('登录已过期')) {
+    if (msg.includes('登录已过期')) {
       return
     }
   } finally {
