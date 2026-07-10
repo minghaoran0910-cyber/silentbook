@@ -60,6 +60,7 @@
               required
               minlength="6"
               placeholder="至少6位"
+              autocomplete="new-password"
               :disabled="loading"
               @input="clearError"
             >
@@ -80,6 +81,7 @@
               :type="showRegConfirm ? 'text' : 'password'"
               required
               placeholder="再次输入"
+              autocomplete="new-password"
               :disabled="loading"
               @input="clearError"
             >
@@ -119,6 +121,7 @@
               :type="showPassword ? 'text' : 'password'"
               required
               placeholder="输入密码"
+              autocomplete="current-password"
               :disabled="loading"
               @input="clearError"
               @keydown.enter="handleLogin"

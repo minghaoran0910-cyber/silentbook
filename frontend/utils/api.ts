@@ -78,13 +78,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   
   const response = await fetch(fullUrl, { ...options, headers })
   if (!response.ok) {
-    // 401 时清除过期 token 并跳转登录
+    // 401 时清除过期 token 并跳转登录（静默处理，不抛错）
     if (response.status === 401 && import.meta.client) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user_info')
       if (window.location.pathname !== '/auth') {
         window.location.href = '/auth'
       }
+      throw new Error('登录已过期，请重新登录')
     }
     const detail = await response.text().catch(() => '')
     throw new Error(`API error ${response.status}: ${detail}`)
