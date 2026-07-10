@@ -55,11 +55,8 @@ function getApiBase(): string {
   if (import.meta.server) {
     return process.env.NUXT_SSR_API_BASE || 'http://backend:8000'
   }
-  // 浏览器端：生产环境用 /api（nginx 代理），开发环境用 localhost
-  if (import.meta.env?.DEV) {
-    return 'http://localhost:8000'
-  }
-  return '/api'
+  // 浏览器端：用环境变量（docker-compose 设置）或默认 /api
+  return process.env.NUXT_PUBLIC_API_BASE || '/api'
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
