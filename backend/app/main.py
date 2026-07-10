@@ -1498,10 +1498,11 @@ async def get_latest_analysis(user: User = Depends(require_user), db: Session = 
 
     # 同一批次的记录创建时间相差在几秒内（微秒精度导致不完全一致）
     # 用 10 秒窗口匹配同一批次的所有类型
+    from datetime import timedelta
     batch_time = latest.created_at
     analyses = db.query(AnalysisResult).filter(
-        AnalysisResult.created_at >= batch_time - text("interval '5 seconds'"),
-        AnalysisResult.created_at <= batch_time + text("interval '5 seconds'")
+        AnalysisResult.created_at >= batch_time - timedelta(seconds=5),
+        AnalysisResult.created_at <= batch_time + timedelta(seconds=5)
     ).all()
 
     result = {}
