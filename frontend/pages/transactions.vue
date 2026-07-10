@@ -388,7 +388,7 @@ const handleDelete = async (id) => {
   }
 }
 
-const init = () => { clientReady.value = true; loadTransactions() }
+const init = () => { setTimeout(() => { clientReady.value = true }, 0); loadTransactions() }
 onMounted(init)
 onActivated(init) // 客户端路由导航回来时也重新加载
 </script>

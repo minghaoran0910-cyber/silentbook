@@ -404,7 +404,9 @@ const formatTime = (time) => {
 }
 
 const loadAll = () => {
-  clientReady.value = true
+  // 延迟设置 clientReady，避免 hydration mismatch
+  // SSR 和首次客户端渲染用相同格式（绝对日期），hydration 完成后再切换相对时间
+  setTimeout(() => { clientReady.value = true }, 0)
   loadStats()
   loadAnalysis()
   loadTrend()
