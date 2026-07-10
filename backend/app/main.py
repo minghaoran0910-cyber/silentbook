@@ -18,7 +18,7 @@ from .schemas import (
     RecurringTransactionCreate, RecurringTransactionUpdate, RecurringTransactionResponse,
     RecurringSummaryResponse, AutoDetectResponse
 )
-from .auth import router as auth_router
+from .auth import router as auth_router, require_user
 import httpx
 import os
 import logging
@@ -103,7 +103,7 @@ async def health():
 # ===== 交易管理 =====
 
 @app.post("/transactions", response_model=TransactionResponse)
-async def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
+async def create_transaction(transaction: TransactionCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """创建交易记录（手动或自动）"""
     db_transaction = Transaction(
         amount=transaction.amount,
@@ -128,6 +128,7 @@ async def list_transactions(
     account: Optional[str] = None,
     category: Optional[str] = None,
     transaction_type: Optional[str] = None,
+    user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """获取交易列表"""
@@ -142,7 +143,7 @@ async def list_transactions(
 
 
 @app.get("/transactions/{transaction_id}", response_model=TransactionResponse)
-async def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
+async def get_transaction(transaction_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单个交易"""
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
@@ -154,7 +155,7 @@ async def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
 async def update_transaction(
     transaction_id: int,
     transaction: TransactionUpdate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """更新交易记录"""
     db_transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
@@ -171,7 +172,7 @@ async def update_transaction(
 
 
 @app.delete("/transactions/{transaction_id}")
-async def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
+async def delete_transaction(transaction_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除交易"""
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
@@ -182,7 +183,7 @@ async def delete_transaction(transaction_id: int, db: Session = Depends(get_db))
 
 
 @app.delete("/transactions")
-async def delete_all_transactions(confirm: bool = Query(False), db: Session = Depends(get_db)):
+async def delete_all_transactions(confirm: bool = Query(False), user: User = Depends(require_user), db: Session = Depends(get_db)):
     """清空所有交易（需要确认）"""
     if not confirm:
         raise HTTPException(status_code=400, detail="需要确认参数 confirm=true")
@@ -396,8 +397,24 @@ async def check_abnormal_and_analyze(tx: Transaction, db: Session) -> dict:
 
 # ===== 统计 =====
 
+@app.get("/analysis/results")
+async def get_analysis_results(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """分析结果（兼容旧路径，等同于 /analysis/latest）"""
+    return await get_latest_analysis(db)
+
+
+@app.get("/agent/configs")
+async def get_agent_configs_alias(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Agent 配置（兼容旧路径，等同于 /settings/agents）"""
+    agents = db.query(AgentConfig).all()
+    return [{
+        "id": a.id, "name": a.name, "api_endpoint": a.api_endpoint,
+        "is_active": a.is_active, "system_prompt": a.system_prompt or ""
+    } for a in agents]
+
+
 @app.get("/stats/dashboard", response_model=DashboardStats)
-async def get_dashboard_stats(db: Session = Depends(get_db)):
+async def get_dashboard_stats(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取仪表盘统计数据"""
     now = datetime.utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -927,7 +944,7 @@ class BudgetResponse(BaseModel):
 
 # 预算存储在 Setting 表中（JSON 格式）
 @app.get("/budgets", response_model=List[dict])
-async def get_budgets(db: Session = Depends(get_db)):
+async def get_budgets(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取所有预算"""
     raw = db.query(Setting).filter(Setting.key == "budgets").first()
     if not raw or not raw.value:
@@ -1091,7 +1108,7 @@ async def get_budget_alerts(db: Session = Depends(get_db)):
 
 
 @app.post("/budgets")
-async def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
+async def create_budget(budget: BudgetCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """创建/更新预算"""
     import json
     raw = db.query(Setting).filter(Setting.key == "budgets").first()
@@ -1119,7 +1136,7 @@ async def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
 
 
 @app.delete("/budgets/{category}")
-async def delete_budget(category: str, db: Session = Depends(get_db)):
+async def delete_budget(category: str, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除预算"""
     import json
     raw = db.query(Setting).filter(Setting.key == "budgets").first()
@@ -1355,7 +1372,7 @@ async def verify_auth(data: dict, db: Session = Depends(get_db)):
 # ===== Agent 分析 =====
 
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze(db: Session = Depends(get_db)):
+async def analyze(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """调用 Agent 进行分析"""
     # 获取交易数据
     transactions = db.query(Transaction).order_by(Transaction.parsed_at.desc()).limit(100).all()
@@ -1424,7 +1441,7 @@ async def analyze(db: Session = Depends(get_db)):
 
 
 @app.get("/analysis/latest", response_model=AnalysisResponse)
-async def get_latest_analysis(db: Session = Depends(get_db)):
+async def get_latest_analysis(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取最新分析结果"""
     latest = db.query(AnalysisResult).order_by(AnalysisResult.created_at.desc()).first()
     if not latest:
@@ -1511,7 +1528,7 @@ async def trigger_job(job_id: str):
 async def list_accounts(
     purpose: Optional[str] = None,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取账户列表"""
     query = db.query(Account)
@@ -1523,7 +1540,7 @@ async def list_accounts(
 
 
 @app.post("/accounts", response_model=AccountResponse)
-async def create_account(account: AccountCreate, db: Session = Depends(get_db)):
+async def create_account(account: AccountCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """创建账户"""
     db_account = Account(**account.model_dump())
     db.add(db_account)
@@ -1595,7 +1612,7 @@ async def get_transfer(transfer_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/accounts/{account_id}", response_model=AccountResponse)
-async def get_account(account_id: int, db: Session = Depends(get_db)):
+async def get_account(account_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单个账户"""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
@@ -1607,7 +1624,7 @@ async def get_account(account_id: int, db: Session = Depends(get_db)):
 async def update_account(
     account_id: int,
     account_update: AccountUpdate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """更新账户"""
     db_account = db.query(Account).filter(Account.id == account_id).first()
@@ -1624,7 +1641,7 @@ async def update_account(
 
 
 @app.delete("/accounts/{account_id}")
-async def delete_account(account_id: int, db: Session = Depends(get_db)):
+async def delete_account(account_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除账户"""
     db_account = db.query(Account).filter(Account.id == account_id).first()
     if not db_account:
@@ -1699,7 +1716,7 @@ async def transfer_between_accounts(transfer: AccountTransfer, db: Session = Dep
 async def list_assets(
     asset_type: Optional[str] = None,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取资产列表"""
     query = db.query(Asset)
@@ -1711,7 +1728,7 @@ async def list_assets(
 
 
 @app.post("/assets", response_model=AssetResponse)
-async def create_asset(asset: AssetCreate, db: Session = Depends(get_db)):
+async def create_asset(asset: AssetCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """添加资产"""
     db_asset = Asset(**asset.model_dump())
     db.add(db_asset)
@@ -1724,7 +1741,7 @@ async def create_asset(asset: AssetCreate, db: Session = Depends(get_db)):
 async def update_asset(
     asset_id: int,
     asset_update: AssetUpdate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """更新资产"""
     db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
@@ -1741,7 +1758,7 @@ async def update_asset(
 
 
 @app.delete("/assets/{asset_id}")
-async def delete_asset(asset_id: int, db: Session = Depends(get_db)):
+async def delete_asset(asset_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除资产"""
     db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
     if not db_asset:
@@ -1757,7 +1774,7 @@ async def delete_asset(asset_id: int, db: Session = Depends(get_db)):
 async def list_liabilities(
     liability_type: Optional[str] = None,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取负债列表"""
     query = db.query(Liability)
@@ -1769,7 +1786,7 @@ async def list_liabilities(
 
 
 @app.post("/liabilities", response_model=LiabilityResponse)
-async def create_liability(liability: LiabilityCreate, db: Session = Depends(get_db)):
+async def create_liability(liability: LiabilityCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """添加负债"""
     db_liability = Liability(**liability.model_dump())
     db.add(db_liability)
@@ -1782,7 +1799,7 @@ async def create_liability(liability: LiabilityCreate, db: Session = Depends(get
 async def update_liability(
     liability_id: int,
     liability_update: LiabilityUpdate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """更新负债"""
     db_liability = db.query(Liability).filter(Liability.id == liability_id).first()
@@ -1799,7 +1816,7 @@ async def update_liability(
 
 
 @app.delete("/liabilities/{liability_id}")
-async def delete_liability(liability_id: int, db: Session = Depends(get_db)):
+async def delete_liability(liability_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除负债"""
     db_liability = db.query(Liability).filter(Liability.id == liability_id).first()
     if not db_liability:
@@ -2050,14 +2067,16 @@ async def get_repayment_plan(liability_id: int, db: Session = Depends(get_db)):
 # ===== 设置 =====
 
 @app.get("/settings")
-async def get_settings(db: Session = Depends(get_db)):
-    """获取所有设置"""
+async def get_settings(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """获取所有设置（过滤敏感字段）"""
     settings = db.query(Setting).all()
-    return {s.key: s.value for s in settings}
+    # 过滤掉密码哈希等敏感字段
+    SENSITIVE_KEYS = {"auth_password", "auth_secret", "jwt_secret"}
+    return {s.key: s.value for s in settings if s.key not in SENSITIVE_KEYS}
 
 
 @app.put("/settings")
-async def update_settings(items: dict, db: Session = Depends(get_db)):
+async def update_settings(items: dict, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """批量更新设置"""
     for key, value in items.items():
         existing = db.query(Setting).filter(Setting.key == key).first()
@@ -2070,7 +2089,7 @@ async def update_settings(items: dict, db: Session = Depends(get_db)):
 
 
 @app.get("/settings/sources")
-async def get_sources(db: Session = Depends(get_db)):
+async def get_sources(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取通知源配置"""
     raw = db.query(Setting).filter(Setting.key == "notification_sources").first()
     if not raw or not raw.value:
@@ -2081,7 +2100,7 @@ async def get_sources(db: Session = Depends(get_db)):
 
 
 @app.put("/settings/sources")
-async def update_sources(sources: dict, db: Session = Depends(get_db)):
+async def update_sources(sources: dict, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """更新通知源配置"""
     import json
     existing = db.query(Setting).filter(Setting.key == "notification_sources").first()
@@ -2094,7 +2113,7 @@ async def update_sources(sources: dict, db: Session = Depends(get_db)):
 
 
 @app.get("/settings/agents")
-async def get_agent_configs(db: Session = Depends(get_db)):
+async def get_agent_configs(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取 Agent 配置"""
     agents = db.query(AgentConfig).all()
     return [{
@@ -2104,7 +2123,7 @@ async def get_agent_configs(db: Session = Depends(get_db)):
 
 
 @app.put("/settings/agents/{agent_id}")
-async def update_agent_config(agent_id: int, data: dict, db: Session = Depends(get_db)):
+async def update_agent_config(agent_id: int, data: dict, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """更新 Agent 配置"""
     agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
     if not agent:

@@ -231,6 +231,35 @@ def reset_password(data: PasswordResetConfirm, db: Session = Depends(get_db)):
     return {"message": "密码重置成功，请使用新密码登录"}
 
 
+@router.post("/dev-reset-password")
+def dev_reset_password(data: dict, db: Session = Depends(get_db)):
+    """开发模式：重置密码（仅当 SILENTBOOK_MODE=auto 或 development 时可用）"""
+    import os
+    mode = os.getenv("SILENTBOOK_MODE", "auto")
+    if mode not in ("auto", "development", "dev"):
+        raise HTTPException(status_code=403, detail="仅限开发模式使用")
+    
+    account = data.get("account", "").strip()
+    new_password = data.get("password", "")
+    if not account or not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="需要提供 account 和 password(>=6位)")
+    
+    # 查找用户
+    if re.match(r"^1[3-9]\d{9}$", account):
+        user = db.query(User).filter(User.phone == account).first()
+    elif "@" in account:
+        user = db.query(User).filter(User.email == account.lower()).first()
+    else:
+        user = db.query(User).filter((User.email == account) | (User.phone == account)).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user.password_hash = hash_password(new_password)
+    db.commit()
+    return {"message": f"用户 {user.email or user.phone} 密码已重置"}
+
+
 def _send_reset_email(to_email: str, reset_token: str, smtp_host: str):
     """通过 SMTP 发送密码重置邮件"""
     import smtplib

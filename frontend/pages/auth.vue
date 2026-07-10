@@ -1,5 +1,6 @@
 <template>
   <div class="auth-container">
+    <ClientOnly>
     <div class="auth-card">
       <div class="auth-header">
         <h1>🔐 SilentBook</h1>
@@ -151,6 +152,13 @@
       </div>
       <div v-if="success" class="success-message">{{ success }}</div>
     </div>
+    <template #fallback>
+      <div class="auth-card" style="text-align:center;padding:3rem;">
+        <h1 style="color:#b45309;font-size:2rem;margin-bottom:1rem;">🔐 SilentBook</h1>
+        <p style="color:#888;">加载中...</p>
+      </div>
+    </template>
+    </ClientOnly>
   </div>
 </template>
 
