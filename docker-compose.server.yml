@@ -1,10 +1,12 @@
-
 # 服务器模式：前端 + 后端
 # 用于混合部署，数据库和 Agent 在本地
 
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NUXT_PUBLIC_API_BASE: /api
     ports:
       - "3000:3000"
     environment:

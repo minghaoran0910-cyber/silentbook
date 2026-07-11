@@ -9,6 +9,10 @@ RUN npm install
 # Copy application code
 COPY . .
 
+# Build-time env: API base for browser-side fetches (default: /api via nginx proxy)
+ARG NUXT_PUBLIC_API_BASE=/api
+ENV NUXT_PUBLIC_API_BASE=${NUXT_PUBLIC_API_BASE}
+
 # Expose port
 EXPOSE 3000
 

@@ -57,7 +57,7 @@
       
       <div class="setting-row">
         <span>API 地址</span>
-        <input type="text" v-model="apiBase" class="input" placeholder="http://localhost:8000">
+        <input type="text" v-model="apiBase" class="input" placeholder="/api">
       </div>
       
       <div class="setting-row">
