@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -297,9 +297,31 @@ class WebhookRequest(BaseModel):
     source: str = "webhook"
     timestamp: Optional[str] = None
 
+async def _background_push_and_analyze(tx_id: int, tx_data: dict):
+    """后台执行推送和分析，不阻塞 webhook 响应"""
+    from .database import SessionLocal
+    db = SessionLocal()
+    try:
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+        if not tx:
+            return
+        # 推送通知
+        try:
+            await pusher.push_transaction(tx_data)
+        except Exception as e:
+            logger.warning(f"后台推送失败: {e}")
+        # 异常检测 + 分析
+        try:
+            await check_abnormal_and_analyze(tx, db)
+        except Exception as e:
+            logger.warning(f"后台分析失败: {e}")
+    finally:
+        db.close()
+
+
 @app.post("/webhook/notify")
-async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
-    """接收通知 webhook，自动解析并存入交易记录"""
+async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """接收通知 webhook，自动解析并存入交易记录。推送和分析在后台异步执行。"""
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
@@ -329,15 +351,16 @@ async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(db_tx)
             
-            # 实时推送到微信/飞书
-            push_result = await pusher.push_transaction({
+            # 后台异步执行推送和分析
+            tx_data = {
                 "amount": db_tx.amount,
                 "category": db_tx.category,
                 "account": db_tx.account,
                 "transaction_type": db_tx.transaction_type,
                 "description": db_tx.description,
                 "parsed_at": db_tx.parsed_at
-            })
+            }
+            background_tasks.add_task(_background_push_and_analyze, db_tx.id, tx_data)
             
             return {
                 "status": "created",
@@ -346,8 +369,7 @@ async def webhook_notify(req: WebhookRequest, db: Session = Depends(get_db)):
                 "category": db_tx.category,
                 "type": db_tx.transaction_type,
                 "confidence": db_tx.confidence,
-                "push_result": push_result,
-                "abnormal_alert": await check_abnormal_and_analyze(db_tx, db)
+                "message": "记账成功，分析和推送在后台执行"
             }
         except httpx.RequestError:
             return {"status": "error", "reason": "通知解析器不可用"}
