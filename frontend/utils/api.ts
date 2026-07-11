@@ -471,3 +471,29 @@ export async function contributeToGoal(goalId: number, amount: number, descripti
 export async function fetchGoalContributions(goalId: number): Promise<GoalContribution[]> {
   return request<GoalContribution[]>(`/goals/${goalId}/contributions`)
 }
+
+// ===== 资产同步 =====
+export interface SyncResult {
+  message: string
+  updated: number
+  failed: number
+  skipped: number
+  total: number
+  error?: boolean
+  details?: any[]
+  synced_at?: string
+}
+
+export interface SyncStatus {
+  recent_syncs: any[]
+  last_sync: string | null
+  last_status: string | null
+}
+
+export async function triggerAssetSync(): Promise<SyncResult> {
+  return request<SyncResult>('/sync/assets', { method: 'POST' })
+}
+
+export async function fetchSyncStatus(): Promise<SyncStatus> {
+  return request<SyncStatus>('/sync/status')
+}

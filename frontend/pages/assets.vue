@@ -2,9 +2,25 @@
   <div class="container">
     <div class="header">
       <h1>资产管理</h1>
-      <button @click="toggleAddForm" class="btn btn-primary">
-        {{ showAddForm ? '取消' : '+ 添加资产' }}
-      </button>
+      <div class="header-actions">
+        <button @click="syncAssets" class="btn btn-sync" :disabled="syncing">
+          {{ syncing ? '同步中...' : '🔄 同步持仓' }}
+        </button>
+        <button @click="toggleAddForm" class="btn btn-primary">
+          {{ showAddForm ? '取消' : '+ 添加资产' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 同步状态 -->
+    <div v-if="syncResult" class="sync-result" :class="syncResult.error ? 'error' : 'success'">
+      <span>{{ syncResult.message }}</span>
+      <span v-if="syncResult.updated">更新 {{ syncResult.updated }} 个</span>
+      <span v-if="syncResult.failed">失败 {{ syncResult.failed }} 个</span>
+      <button @click="syncResult = null" class="close-btn">×</button>
+    </div>
+    <div v-if="lastSyncInfo" class="sync-info">
+      上次同步：{{ lastSyncInfo }}
     </div>
 
     <!-- 加载中 -->
@@ -263,7 +279,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
-import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, updateLiability, deleteLiability } from '~/utils/api'
+import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, updateLiability, deleteLiability, triggerAssetSync, fetchSyncStatus } from '~/utils/api'
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const assets = ref([])
@@ -378,6 +394,46 @@ const loadData = async () => {
   }
 }
 
+// 资产同步
+const syncing = ref(false)
+const syncResult = ref(null)
+const lastSyncInfo = ref('')
+
+const syncAssets = async () => {
+  syncing.value = true
+  syncResult.value = null
+  try {
+    const res = await triggerAssetSync()
+    syncResult.value = {
+      message: res.message || '同步完成',
+      updated: res.updated || 0,
+      failed: res.failed || 0,
+      error: res.error || false,
+    }
+    if (!res.error) {
+      await loadData()
+      await loadSyncStatus()
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知错误'
+    syncResult.value = { message: '同步失败: ' + msg, error: true }
+  } finally {
+    syncing.value = false
+  }
+}
+
+const loadSyncStatus = async () => {
+  try {
+    const res = await fetchSyncStatus()
+    if (res.last_sync) {
+      const d = new Date(res.last_sync)
+      lastSyncInfo.value = `${d.toLocaleDateString()} ${d.toLocaleTimeString()} (${res.last_status || ''})`
+    }
+  } catch (e) {
+    // 静默失败，不影响主流程
+  }
+}
+
 const handleSubmit = async () => {
   try {
     if (editingId.value) {
@@ -451,7 +507,7 @@ const cancelLiabilityEdit = () => {
   showAddLiabilityForm.value = false
 }
 
-onMounted(loadData)
+onMounted(() => { loadData(); loadSyncStatus() })
 onActivated(loadData) // 客户端路由导航回来时也重新加载
 </script>
 
@@ -462,6 +518,15 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 @keyframes spin { to { transform: rotate(360deg); } }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 .header h1 { color: var(--accent); }
+.header-actions { display: flex; gap: 0.5rem; }
+.btn-sync { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+.btn-sync:hover:not(:disabled) { background: var(--accent); color: white; }
+.btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
+.sync-result { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; }
+.sync-result.success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10B981; }
+.sync-result.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #EF4444; }
+.sync-result .close-btn { margin-left: auto; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: inherit; }
+.sync-info { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; }
 .overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
 .overview-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; text-align: center; }
 .overview-card.highlight { border-color: var(--accent); box-shadow: 0 0 20px rgba(180,83,9,0.1); }

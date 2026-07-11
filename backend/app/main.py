@@ -20,6 +20,7 @@ from .schemas import (
 )
 from .auth import router as auth_router, require_user, get_current_user
 import httpx
+import json
 import os
 import logging
 import time
@@ -4777,6 +4778,73 @@ async def get_position_trades(position_id: int, user: User = Depends(require_use
             for t in trades
         ],
         "total_trades": len(trades),
+    }
+
+
+# ===== 资产同步 =====
+from .database import SyncLog
+from .asset_sync import sync_all_positions
+
+
+@app.post("/sync/assets")
+async def trigger_asset_sync(
+    sync_type: str = "manual",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """手动触发资产同步"""
+    # 创建同步日志
+    log = SyncLog(sync_type=sync_type, status="running")
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+
+    try:
+        result = await sync_all_positions(db)
+        log.status = "completed"
+        log.total_count = result.get("total", 0)
+        log.updated_count = result.get("updated", 0)
+        log.failed_count = result.get("failed", 0)
+        log.skipped_count = result.get("skipped", 0)
+        log.details = json.dumps(result.get("details", []), ensure_ascii=False)
+        log.completed_at = datetime.utcnow()
+        db.commit()
+        return {"message": "同步完成", "log_id": log.id, **result}
+    except Exception as e:
+        log.status = "failed"
+        log.error_message = str(e)
+        log.completed_at = datetime.utcnow()
+        db.commit()
+        return {"message": f"同步失败: {e}", "log_id": log.id, "error": True}
+
+
+@app.get("/sync/status")
+async def get_sync_status(
+    user: User = Depends(require_user), db: Session = Depends(get_db)
+):
+    """获取最近同步状态"""
+    recent = (
+        db.query(SyncLog)
+        .order_by(SyncLog.started_at.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        "recent_syncs": [
+            {
+                "id": s.id,
+                "type": s.sync_type,
+                "status": s.status,
+                "total": s.total_count,
+                "updated": s.updated_count,
+                "failed": s.failed_count,
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+            }
+            for s in recent
+        ],
+        "last_sync": recent[0].started_at.isoformat() if recent else None,
+        "last_status": recent[0].status if recent else None,
     }
 
 

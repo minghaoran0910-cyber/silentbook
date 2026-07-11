@@ -236,6 +236,23 @@ class RecurringTransaction(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SyncLog(Base):
+    """资产同步日志"""
+    __tablename__ = "sync_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sync_type = Column(String(20), nullable=False, default="auto")  # auto(定时)/manual(手动)
+    status = Column(String(20), nullable=False, default="running")  # running/completed/failed
+    total_count = Column(Integer, default=0)  # 总持仓数
+    updated_count = Column(Integer, default=0)  # 成功更新数
+    failed_count = Column(Integer, default=0)  # 失败数
+    skipped_count = Column(Integer, default=0)  # 跳过数
+    details = Column(Text)  # JSON: 同步详情
+    error_message = Column(Text)  # 失败原因
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+
 class BackupRecord(Base):
     """增量备份记录"""
     __tablename__ = "backup_records"

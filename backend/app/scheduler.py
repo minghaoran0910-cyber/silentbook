@@ -228,6 +228,55 @@ async def scheduled_full_backup():
     await _run_backup("full")
 
 
+async def scheduled_asset_sync():
+    """每日15:30同步持仓实时价格"""
+    import json
+    from .database import SyncLog
+    from .asset_sync import sync_all_positions
+
+    db: Session = SessionLocal()
+    try:
+        # 检查今天是否已经同步过
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_syncs = db.query(SyncLog).filter(
+            SyncLog.started_at >= today_start,
+            SyncLog.status == "completed"
+        ).count()
+
+        if today_syncs > 0:
+            logger.info("今天已完成资产同步，跳过")
+            return
+
+        # 创建同步日志
+        log = SyncLog(sync_type="auto", status="running")
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+
+        try:
+            result = await sync_all_positions(db)
+            log.status = "completed"
+            log.total_count = result.get("total", 0)
+            log.updated_count = result.get("updated", 0)
+            log.failed_count = result.get("failed", 0)
+            log.skipped_count = result.get("skipped", 0)
+            log.details = json.dumps(result.get("details", []), ensure_ascii=False)
+            log.completed_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"资产同步完成: 更新{result.get('updated', 0)}个, 失败{result.get('failed', 0)}个")
+        except Exception as e:
+            log.status = "failed"
+            log.error_message = str(e)
+            log.completed_at = datetime.utcnow()
+            db.commit()
+            logger.error(f"资产同步失败: {e}")
+    except Exception as e:
+        logger.error(f"资产同步任务异常: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """创建并配置调度器"""
     scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
@@ -265,6 +314,15 @@ def create_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="sun", hour=4, minute=0, timezone="Asia/Shanghai"),
         id="full_backup",
         name="每周日04:00全量备份",
+        replace_existing=True
+    )
+
+    # 资产同步：每天15:30（北京时间，收盘后）
+    scheduler.add_job(
+        scheduled_asset_sync,
+        trigger=CronTrigger(hour=15, minute=30, timezone="Asia/Shanghai"),
+        id="asset_sync",
+        name="每日15:30资产同步",
         replace_existing=True
     )
 
