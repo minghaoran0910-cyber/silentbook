@@ -386,6 +386,8 @@ const editAsset = (asset) => {
   editingId.value = asset.id
   form.value = { ...asset }
   showAddForm.value = true
+  // 滚动到顶部让用户看到编辑表单
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const removeAsset = async (id) => {
@@ -441,8 +443,8 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .form-group input, .form-group select { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; color: var(--text-primary); }
 .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
 .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.section { margin-bottom: 2rem; }
-.section h2 { color: var(--text-primary); margin-bottom: 1rem; }
+.section { margin-top: 2rem; margin-bottom: 2rem; }
+.section h2 { color: var(--text-primary); margin-bottom: 1rem; font-size: 1.25rem; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .empty { color: var(--text-secondary); text-align: center; padding: 2rem; }
 .asset-list, .liability-list { display: flex; flex-direction: column; gap: 0.75rem; }
