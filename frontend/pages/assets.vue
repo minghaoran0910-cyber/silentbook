@@ -215,7 +215,8 @@
             </div>
           </div>
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary">添加</button>
+            <button type="submit" class="btn btn-primary">{{ editingLiabilityId ? '保存' : '添加' }}</button>
+            <button type="button" @click="cancelLiabilityEdit" class="btn">取消</button>
           </div>
         </form>
       </div>
@@ -235,9 +236,9 @@
             </div>
             <div class="repay-progress" v-if="liab.total_amount > 0">
               <div class="repay-bar-bg">
-                <div class="repay-bar-fill" :style="{ width: ((liab.total_amount - liab.current_amount) / liab.total_amount * 100) + '%' }"></div>
+                <div class="repay-bar-fill remaining" :style="{ width: (liab.current_amount / liab.total_amount * 100) + '%' }"></div>
               </div>
-              <span class="repay-text">已还 ¥{{ (liab.total_amount - liab.current_amount).toFixed(2) }} / ¥{{ liab.total_amount.toFixed(2) }} ({{ ((liab.total_amount - liab.current_amount) / liab.total_amount * 100).toFixed(1) }}%)</span>
+              <span class="repay-text">待还 ¥{{ liab.current_amount.toFixed(2) }} / ¥{{ liab.total_amount.toFixed(2) }} ({{ (liab.current_amount / liab.total_amount * 100).toFixed(1) }}%)</span>
             </div>
           </div>
           <div class="asset-value">
@@ -245,6 +246,7 @@
             <div class="initial">总额: ¥{{ liab.total_amount.toFixed(2) }}</div>
           </div>
           <div class="asset-actions">
+            <button @click="editLiability(liab)" class="btn-icon" title="编辑">✏️</button>
             <button @click="removeLiability(liab.id)" class="btn-icon danger" title="删除">🗑</button>
           </div>
         </div>
@@ -256,7 +258,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
-import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, deleteLiability } from '~/utils/api'
+import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, updateLiability, deleteLiability } from '~/utils/api'
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const assets = ref([])
@@ -272,6 +274,7 @@ const form = ref({
 const liabilityForm = ref({
   name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: ''
 })
+const editingLiabilityId = ref(null)
 
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
@@ -403,8 +406,13 @@ const resetForm = () => {
 
 const handleLiabilitySubmit = async () => {
   try {
-    await createLiability(liabilityForm.value)
+    if (editingLiabilityId.value) {
+      await updateLiability(editingLiabilityId.value, liabilityForm.value)
+    } else {
+      await createLiability(liabilityForm.value)
+    }
     liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '' }
+    editingLiabilityId.value = null
     showAddLiabilityForm.value = false
     await loadData()
   } catch (e) { console.error(e) }
@@ -414,6 +422,19 @@ const removeLiability = async (id) => {
   if (!confirm('确认删除？')) return
   await deleteLiability(id)
   await loadData()
+}
+
+const editLiability = (liab) => {
+  editingLiabilityId.value = liab.id
+  liabilityForm.value = { ...liab }
+  showAddLiabilityForm.value = true
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const cancelLiabilityEdit = () => {
+  editingLiabilityId.value = null
+  liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '' }
+  showAddLiabilityForm.value = false
 }
 
 onMounted(loadData)
@@ -477,6 +498,7 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .repay-progress { margin-top: 0.5rem; }
 .repay-bar-bg { height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
 .repay-bar-fill { height: 100%; background: var(--success); border-radius: 3px; transition: width 0.3s; }
+.repay-bar-fill.remaining { background: var(--danger); }
 .repay-text { color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.2rem; display: block; }
 
 /* 图表区 */
