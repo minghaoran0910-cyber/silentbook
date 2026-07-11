@@ -2,7 +2,7 @@
   <div class="container">
     <div class="header">
       <h1>资产管理</h1>
-      <button @click="showAddForm = !showAddForm" class="btn btn-primary">
+      <button @click="toggleAddForm" class="btn btn-primary">
         {{ showAddForm ? '取消' : '+ 添加资产' }}
       </button>
     </div>
@@ -144,7 +144,7 @@
     <div class="section">
       <div class="section-header">
         <h2>📊 资产列表</h2>
-        <button @click="showAddForm = !showAddForm" class="btn btn-small">
+        <button @click="toggleAddForm" class="btn btn-small">
           {{ showAddForm ? '取消' : '+ 添加资产' }}
         </button>
       </div>
@@ -388,6 +388,15 @@ const handleSubmit = async () => {
     resetForm()
     await loadData()
   } catch (e) { console.error(e) }
+}
+
+const toggleAddForm = () => {
+  showAddForm.value = !showAddForm.value
+  if (showAddForm.value) {
+    // 打开表单时重置为添加模式
+    editingId.value = null
+    resetForm()
+  }
 }
 
 const editAsset = (asset) => {
