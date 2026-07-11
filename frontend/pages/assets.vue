@@ -142,7 +142,12 @@
 
     <!-- 资产列表 -->
     <div class="section">
-      <h2>📊 资产列表</h2>
+      <div class="section-header">
+        <h2>📊 资产列表</h2>
+        <button @click="showAddForm = !showAddForm" class="btn btn-small">
+          {{ showAddForm ? '取消' : '+ 添加资产' }}
+        </button>
+      </div>
       <div v-if="assets.length === 0" class="empty">暂无资产，点击右上角添加</div>
       <div v-else class="asset-list">
         <div v-for="asset in assets" :key="asset.id" class="asset-card">
