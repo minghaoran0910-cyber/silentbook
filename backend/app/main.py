@@ -7,7 +7,7 @@ from sqlalchemy import func, case, text
 from typing import List, Optional
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel, Field
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, Account, Transfer, BackupRecord, FinancialGoal, GoalContribution, RecurringTransaction, init_db
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, Account, Transfer, BackupRecord, FinancialGoal, GoalContribution, RecurringTransaction, init_db, InvestmentAsset, SyncLog
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats,
