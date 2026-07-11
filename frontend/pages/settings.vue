@@ -35,6 +35,71 @@
         </div>
       </div>
       
+      <!-- 用户自定义 AI 配置 -->
+      <div class="ai-config-section">
+        <h3>🧠 自定义模型配置</h3>
+        <p class="config-desc">填写你自己的 API 参数，分析时将使用此模型</p>
+        
+        <div class="config-form">
+          <div class="form-row">
+            <label>API Base URL</label>
+            <input type="text" v-model="aiConfig.api_base" class="input full-width" 
+                   placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+          </div>
+          <div class="form-row">
+            <label>API Key</label>
+            <div class="input-with-action">
+              <input :type="showApiKey ? 'text' : 'password'" v-model="aiConfig.api_key" class="input full-width" 
+                     :placeholder="aiConfig.api_key_masked || 'sk-...'">
+              <button @click="showApiKey = !showApiKey" class="btn-icon" title="显示/隐藏">
+                {{ showApiKey ? '🙈' : '👁️' }}
+              </button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>模型名称</label>
+            <input type="text" v-model="aiConfig.model_name" class="input full-width" 
+                   placeholder="qwen-plus / gpt-4o-mini / glm-4-flash">
+          </div>
+          <div class="form-actions">
+            <button @click="saveAiConfig" class="btn-primary" :disabled="savingAiConfig">
+              {{ savingAiConfig ? '保存中...' : '💾 保存配置' }}
+            </button>
+            <button @click="testAiConfig" class="btn-secondary" :disabled="testingAiConfig">
+              {{ testingAiConfig ? '测试中...' : '🔌 测试连接' }}
+            </button>
+          </div>
+          <div v-if="aiConfigMessage" class="config-message" :class="aiConfigMessageType">
+            {{ aiConfigMessage }}
+          </div>
+        </div>
+      </div>
+      
+      <!-- OpenClaw 绑定 -->
+      <div class="openclaw-bindding-section">
+        <h3>🔗 OpenClaw 绑定</h3>
+        <p class="config-desc">绑定后分析结果可推送到对应的 OpenClaw Agent</p>
+        
+        <div v-if="openclawBinding.bound" class="binding-status bound">
+          <span>✅ 已绑定: {{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})</span>
+          <button @click="unbindOpenClaw" class="btn-small btn-danger">解除绑定</button>
+        </div>
+        <div v-else>
+          <div class="form-actions">
+            <button @click="fetchOpenClawAgents" class="btn-secondary" :disabled="fetchingAgents">
+              {{ fetchingAgents ? '获取中...' : '🔍 获取 Agent 清单' }}
+            </button>
+          </div>
+          <div v-if="openclawAgents.length > 0" class="agent-select-list">
+            <div v-for="a in openclawAgents" :key="a.id" class="agent-select-item" @click="bindOpenClaw(a)">
+              <span>{{ a.label || a.id }}</span>
+              <span class="agent-id">{{ a.id }}</span>
+            </div>
+          </div>
+          <div v-if="openclawFetchError" class="config-message error">{{ openclawFetchError }}</div>
+        </div>
+      </div>
+      
       <div class="agent-list">
         <div v-for="agent in agents" :key="agent.id" class="agent-item">
           <div class="agent-info">
@@ -81,7 +146,12 @@
           <span>📤</span> 导入 CSV
           <input type="file" accept=".csv" @change="importData" style="display: none">
         </label>
+        <label class="btn-action import-btn">
+          <span>📄</span> 导入 PDF 流水
+          <input type="file" accept=".pdf" @change="importPdf" style="display: none">
+        </label>
       </div>
+      <p class="pdf-hint">支持招商银行标准格式 PDF 流水</p>
       
       <div v-if="importResult" class="import-result" :class="importResult.success ? 'success' : 'error'">
         {{ importResult.message }}
@@ -112,6 +182,14 @@ const agentMode = ref('auto')
 const apiBase = ref('/api')
 const autoAnalyze = ref(false)
 const importResult = ref(null)
+
+// AI 配置
+const aiConfig = ref({ api_base: '', api_key: '', api_key_masked: '', model_name: '' })
+const showApiKey = ref(false)
+const savingAiConfig = ref(false)
+const testingAiConfig = ref(false)
+const aiConfigMessage = ref('')
+const aiConfigMessageType = ref('')
 
 const exportData = async () => {
   try {
@@ -151,6 +229,37 @@ const importData = async (event) => {
   reader.readAsText(file)
 }
 
+const importPdf = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  importResult.value = { success: true, message: '正在解析 PDF...' }
+  
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await fetch(`${apiBase.value}/import/pdf`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+      },
+      body: formData
+    })
+    const result = await response.json()
+    
+    if (result.status === 'ok') {
+      importResult.value = { success: true, message: `✅ ${result.bank} | 成功导入 ${result.imported} 条记录` }
+    } else if (result.status === 'warning') {
+      importResult.value = { success: false, message: `⚠️ ${result.message}` }
+    } else {
+      importResult.value = { success: false, message: `❌ ${result.detail || '导入失败'}` }
+    }
+  } catch (err) {
+    importResult.value = { success: false, message: 'PDF 导入失败: ' + err.message }
+  }
+}
+
 const saveAgentMode = async () => {
   try {
     await $fetch(`${apiBase.value}/settings`, {
@@ -170,6 +279,119 @@ const saveSource = async (source) => {
 
 const saveAgent = async (agent) => {
   await updateAgentConfig(agent.id, { is_active: agent.enabled })
+}
+
+const saveAiConfig = async () => {
+  savingAiConfig.value = true
+  aiConfigMessage.value = ''
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/ai-config`, {
+      method: 'PUT',
+      body: {
+        api_base: aiConfig.value.api_base,
+        api_key: aiConfig.value.api_key || undefined,
+        model_name: aiConfig.value.model_name
+      }
+    })
+    aiConfigMessage.value = '✅ 配置已保存'
+    aiConfigMessageType.value = 'success'
+    if (resp.api_key_masked) aiConfig.value.api_key_masked = resp.api_key_masked
+    aiConfig.value.api_key = ''  // 清空输入框
+  } catch (e) {
+    aiConfigMessage.value = '❌ 保存失败: ' + (e.message || e)
+    aiConfigMessageType.value = 'error'
+  } finally {
+    savingAiConfig.value = false
+    setTimeout(() => { aiConfigMessage.value = '' }, 5000)
+  }
+}
+
+const testAiConfig = async () => {
+  testingAiConfig.value = true
+  aiConfigMessage.value = ''
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/ai-config/test`, { method: 'POST' })
+    if (resp.status === 'ok') {
+      aiConfigMessage.value = '✅ ' + resp.message
+      aiConfigMessageType.value = 'success'
+    } else {
+      aiConfigMessage.value = '❌ ' + resp.message
+      aiConfigMessageType.value = 'error'
+    }
+  } catch (e) {
+    aiConfigMessage.value = '❌ 测试失败: ' + (e.message || e)
+    aiConfigMessageType.value = 'error'
+  } finally {
+    testingAiConfig.value = false
+    setTimeout(() => { aiConfigMessage.value = '' }, 8000)
+  }
+}
+
+const loadAiConfig = async () => {
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/ai-config`)
+    aiConfig.value = { ...resp, api_key: '' }
+  } catch (e) {
+    console.error('加载 AI 配置失败:', e)
+  }
+}
+
+// OpenClaw 绑定
+const openclawBinding = ref({ bound: false, agent_id: '', agent_label: '' })
+const openclawAgents = ref([])
+const fetchingAgents = ref(false)
+const openclawFetchError = ref('')
+
+const fetchOpenClawAgents = async () => {
+  fetchingAgents.value = true
+  openclawFetchError.value = ''
+  openclawAgents.value = []
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/openclaw-agents`)
+    if (resp.status === 'ok') {
+      openclawAgents.value = resp.agents || []
+      if (openclawAgents.value.length === 0) {
+        openclawFetchError.value = 'Gateway 没有返回可用 Agent'
+      }
+    } else {
+      openclawFetchError.value = resp.message || '获取失败'
+    }
+  } catch (e) {
+    openclawFetchError.value = '连接失败: ' + (e.message || e)
+  } finally {
+    fetchingAgents.value = false
+  }
+}
+
+const bindOpenClaw = async (agent) => {
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/openclaw-bindding`, {
+      method: 'POST',
+      body: { agent_id: agent.id, agent_label: agent.label || agent.id }
+    })
+    openclawBinding.value = resp
+    openclawAgents.value = []
+  } catch (e) {
+    openclawFetchError.value = '绑定失败: ' + (e.message || e)
+  }
+}
+
+const unbindOpenClaw = async () => {
+  try {
+    await $fetch(`${apiBase.value}/settings/openclaw-bindding`, { method: 'DELETE' })
+    openclawBinding.value = { bound: false, agent_id: '', agent_label: '' }
+  } catch (e) {
+    console.error('解除绑定失败:', e)
+  }
+}
+
+const loadOpenClawBinding = async () => {
+  try {
+    const resp = await $fetch(`${apiBase.value}/settings/openclaw-bindding`)
+    openclawBinding.value = resp
+  } catch (e) {
+    console.error('加载 OpenClaw 绑定失败:', e)
+  }
 }
 
 const loadAll = async () => {
@@ -193,6 +415,11 @@ const loadAll = async () => {
   } catch {
     apiBase.value = ''
   }
+  
+  // 加载 AI 配置
+  await loadAiConfig()
+  // 加载 OpenClaw 绑定
+  await loadOpenClawBinding()
 }
 onMounted(loadAll)
 onActivated(loadAll)
@@ -411,6 +638,189 @@ h1 {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
   border: 1px solid var(--danger);
+}
+
+/* AI 配置区域 */
+.ai-config-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.ai-config-section h3 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.config-desc {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.config-form .form-row {
+  margin-bottom: 0.75rem;
+}
+
+.config-form label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.input.full-width {
+  width: 100%;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-action .input {
+  flex: 1;
+}
+
+.btn-icon {
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.btn-primary {
+  padding: 0.6rem 1.2rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 0.6rem 1.2rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.config-message {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.config-message.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+}
+
+.config-message.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+/* OpenClaw 绑定 */
+.openclaw-bindding-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.openclaw-bindding-section h3 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.binding-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.binding-status.bound {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.btn-small {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.agent-select-list {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agent-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-select-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.agent-id {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-family: monospace;
+}
+
+.pdf-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
 }
 </style>
 

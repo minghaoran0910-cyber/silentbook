@@ -5,7 +5,7 @@
 
 ---
 
-## 一、当前状态（14:13 更新）
+## 一、当前状态（15:13 更新）
 
 ### ✅ 已完成
 
@@ -16,17 +16,15 @@
 | P0-3 本地全流程验证 | ✅ | 12 条交易写入，Dashboard 正常 |
 | P1-1 清理旧目录 | ✅ | finance-system 已归档到 .archive/ |
 | P1-2 代码同步 | ✅ | git push + 服务器 rebuild，全部 healthy |
-
-### ⏳ 待完成
-
-| 任务 | 状态 | 说明 |
-|------|------|------|
 | P2-1 Agent 分析超时 | ✅ | 响应时间 3-5 秒，可接受 |
 | S1 服务器账户初始化 | ✅ | 4 个账户创建成功 |
 | S2 服务器真实数据导入 | ✅ | 7 条交易记录写入 |
 | S3 服务器全流程验证 | ✅ | AI 分析功能正常 |
 | S4 前端页面数据验证 | ✅ | Dashboard 数据正确 |
 | S5 协作接口验证 | ✅ | 3 个接口全部可用 |
+| **AI Agent 用户自定义配置** | ✅ | 后端 API + 前端设置页 + Agent 服务读取用户配置 |
+| **OpenClaw 绑定功能** | ✅ | 获取 agent 清单 + 绑定/解绑 + 前端 UI |
+| **PDF 导入功能** | ✅ | 招商银行 PDF 解析器 + 上传接口 + 前端按钮 |
 
 ---
 
@@ -225,6 +223,19 @@ time curl -s -X POST http://localhost:8000/webhook/notify \
 - **P2-1 Agent 分析超时优化**：当前响应时间可接受（3-5 秒），标记为后续优化项
 
 **验收结论：** ✅ 系统可正式投入使用
+
+### 15:13 - 新功能开发完成 ✅
+- **AI Agent 用户自定义配置**：
+  - 后端：`GET/PUT /settings/ai-config` + `POST /settings/ai-config/test`（测试连接）
+  - 前端：设置页新增“自定义模型配置”区域（API Base URL / API Key / 模型名称 / 保存 / 测试）
+  - Agent：`call_llm()` 优先读取用户配置，支持任意 OpenAI 兼容 API
+- **OpenClaw 绑定功能**：
+  - 后端：`GET /settings/openclaw-agents`（获取 agent 清单）+ `GET/POST/DELETE /settings/openclaw-bindding`
+  - 前端：设置页新增“OpenClaw 绑定”区域（获取清单 → 选择绑定 → 显示状态 → 解除绑定）
+- **PDF 导入功能**：
+  - 后端：`POST /import/pdf`（UploadFile 接口）
+  - 解析器：`pdf_parser.py`（pdfplumber 表格提取 + 正则兑底，支持招行标准格式）
+  - 前端：设置页数据管理区新增“导入 PDF 流水”按钮
 
 ---
 

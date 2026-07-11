@@ -71,13 +71,41 @@ async def root():
 async def health():
     return {"status": "ok", "mode": AGENT_MODE}
 
+# ===== 用户自定义 AI 配置读取 =====
+BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
+
+async def get_user_ai_config() -> dict:
+    """从后端读取用户自定义 AI 配置"""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{BACKEND_API_URL}/settings/ai-config")
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return {}
+
 # ===== 本地 LLM 调用（fallback） =====
-async def call_llm(prompt: str, system_prompt: str = "") -> str:
-    if not DASHSCOPE_API_KEY:
-        return "⚠️ 未配置 DASHSCOPE_API_KEY，无法进行分析。"
+async def call_llm(prompt: str, system_prompt: str = "", user_config: dict = None) -> str:
+    """调用 LLM。优先使用用户自定义配置，否则用环境变量默认配置。"""
+    # 确定使用哪套配置
+    api_key = DASHSCOPE_API_KEY
+    base_url = DASHSCOPE_BASE_URL
+    model = MODEL_NAME
+    
+    if user_config:
+        if user_config.get("api_key"):
+            api_key = user_config["api_key"]
+        if user_config.get("api_base"):
+            base_url = user_config["api_base"]
+        if user_config.get("model_name"):
+            model = user_config["model_name"]
+    
+    if not api_key:
+        return "⚠️ 未配置 API Key，请在设置页配置 AI Agent 参数。"
     
     headers = {
-        "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     
@@ -88,7 +116,7 @@ async def call_llm(prompt: str, system_prompt: str = "") -> str:
     
     # 使用 OpenAI 兼容接口
     payload = {
-        "model": MODEL_NAME,
+        "model": model,
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 2000
@@ -97,7 +125,7 @@ async def call_llm(prompt: str, system_prompt: str = "") -> str:
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             response = await client.post(
-                f"{DASHSCOPE_BASE_URL}/chat/completions",
+                f"{base_url}/chat/completions",
                 headers=headers,
                 json=payload
             )
@@ -111,7 +139,7 @@ async def call_llm(prompt: str, system_prompt: str = "") -> str:
                 return reasoning
             return content or reasoning or "（模型未返回内容）"
         except Exception as e:
-            return f"本地 LLM 调用失败: {str(e)}"
+            return f"LLM 调用失败: {str(e)}"
 
 # ===== OpenClaw subagent 调用 =====
 async def call_openclaw_agent(agent_id: str, task: str, timeout: int = 60) -> str:
@@ -291,6 +319,9 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
             consumption = ""
             investment = ""
     
+    # 读取用户自定义 AI 配置
+    user_config = await get_user_ai_config()
+    
     if not consumption or not investment:
         # 本地 LLM 分析
         mode_used = "local"
@@ -298,13 +329,15 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
         if not consumption:
             consumption = await call_llm(
                 f"分析以下交易数据，给出消费分析（200字以内）：\n{tx_text}\n\n负债：\n{liab_text}",
-                "你是 SilentBook 的消费分析 Agent。"
+                "你是 SilentBook 的消费分析 Agent。",
+                user_config=user_config
             )
         
         if not investment:
             investment = await call_llm(
                 f"分析以下资产和交易数据，给出投资分析（200字以内）：\n资产：\n{assets_text}\n\n交易：\n{tx_text}",
-                "你是 SilentBook 的投资分析 Agent。"
+                "你是 SilentBook 的投资分析 Agent。",
+                user_config=user_config
             )
     
     # 综合建议 — 老油条 agent 或本地 fallback
@@ -328,9 +361,9 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
         )
         # 如果失败，fallback 到本地
         if "无法连接" in suggestion or "失败" in suggestion or "超时" in suggestion:
-            suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。")
+            suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。", user_config=user_config)
     else:
-        suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。")
+        suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。", user_config=user_config)
     
     return AnalysisResponse(
         consumption=consumption,
