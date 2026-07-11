@@ -34,8 +34,7 @@
     </div>
 
     <!-- AI 洞察 -->
-    <ClientOnly>
-    <div class="ai-section">
+    <div class="ai-section" v-if="mounted">
       <div class="section-header">
         <h2>🤖 AI 洞察</h2>
         <button @click="analyze" class="btn btn-primary" :disabled="analyzing">
@@ -70,11 +69,8 @@
       </div>
     </div>
 
-    </ClientOnly>
-
     <!-- 资产概览 -->
-    <ClientOnly>
-    <div class="asset-section" v-if="assets.length > 0 || liabilities.length > 0">
+    <div class="asset-section" v-if="mounted && (assets.length > 0 || liabilities.length > 0)">
       <div class="section-header">
         <h2>🏦 资产概览</h2>
         <NuxtLink to="/assets" class="view-all">管理资产 →</NuxtLink>
@@ -123,11 +119,8 @@
       </div>
     </div>
 
-    </ClientOnly>
-
     <!-- 最近交易 -->
-    <ClientOnly>
-    <div class="recent-section" v-if="recentTransactions.length > 0">
+    <div class="recent-section" v-if="mounted && recentTransactions.length > 0">
       <div class="section-header">
         <h2>💸 最近交易</h2>
         <NuxtLink to="/transactions" class="view-all">查看全部 →</NuxtLink>
@@ -152,11 +145,8 @@
       </div>
     </div>
 
-    </ClientOnly>
-
     <!-- 消费趋势图 -->
-    <ClientOnly>
-    <div class="trend-section">
+    <div class="trend-section" v-if="mounted">
       <div class="section-header">
         <h2>📊 消费趋势</h2>
         <span class="trend-summary">近{{ trendDays }}天支出 ¥{{ trend.total_expense.toFixed(2) }} · 收入 ¥{{ trend.total_income.toFixed(2) }}</span>
@@ -176,11 +166,8 @@
       <div v-else class="empty-trend">暂无交易数据</div>
     </div>
 
-    </ClientOnly>
-
     <!-- 消费分类 -->
-    <ClientOnly>
-    <div class="category-section" v-if="trend.categories.length > 0">
+    <div class="category-section" v-if="mounted && trend.categories.length > 0">
       <div class="section-header">
         <h2>🏷 消费分类</h2>
       </div>
@@ -197,11 +184,8 @@
       </div>
     </div>
 
-    </ClientOnly>
-
     <!-- 月度报表 -->
-    <ClientOnly>
-    <div class="monthly-section" v-if="monthly">
+    <div class="monthly-section" v-if="mounted && monthly">
       <div class="section-header">
         <h2>📋 {{ monthly.year }}年{{ monthly.month }}月报表</h2>
       </div>
@@ -246,8 +230,6 @@
         </div>
       </div>
     </div>
-
-    </ClientOnly>
 
     <!-- 功能特性 -->
     <div class="features">
@@ -295,7 +277,7 @@ const renderedAnalysis = computed(() => ({
 }))
 
 const analyzing = ref(false)
-const clientReady = ref(false)
+const mounted = ref(false)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
 const recentTransactions = ref([])
@@ -393,7 +375,7 @@ const getAccountName = (account) => {
 
 const formatTime = (time) => {
   const date = new Date(time)
-  if (!clientReady.value) return date.toLocaleDateString('zh-CN')
+  if (!mounted.value) return date.toLocaleDateString('zh-CN')
   const now = new Date()
   const diff = now - date
   if (diff < 60000) return '刚刚'
@@ -404,9 +386,7 @@ const formatTime = (time) => {
 }
 
 const loadAll = () => {
-  // 延迟设置 clientReady，避免 hydration mismatch
-  // SSR 和首次客户端渲染用相同格式（绝对日期），hydration 完成后再切换相对时间
-  setTimeout(() => { clientReady.value = true }, 0)
+  mounted.value = true
   loadStats()
   loadAnalysis()
   loadTrend()
@@ -768,7 +748,6 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .feature-card p {
   color: var(--text-secondary);
 }
-</style>
 
 /* 响应式适配 */
 @media (max-width: 768px) {
@@ -784,3 +763,4 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
     grid-template-columns: 1fr;
   }
 }
+</style>
