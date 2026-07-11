@@ -16,9 +16,9 @@ ENV NUXT_PUBLIC_API_BASE=${NUXT_PUBLIC_API_BASE}
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
+# Health check - use 0.0.0.0 to avoid IPv6 resolution issue in Alpine
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://0.0.0.0:3000/ || exit 1
 
 # Build for production and run preview
 RUN npm run build
