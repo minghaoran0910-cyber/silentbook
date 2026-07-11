@@ -1,16 +1,25 @@
 services:
   frontend:
     build: ./frontend
+    restart: always
     ports:
       - "3000:3000"
     environment:
       - NUXT_PUBLIC_API_BASE=/api
       - NUXT_SSR_API_BASE=http://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   backend:
     build: ./backend
+    restart: always
     ports:
       - "8000:8000"
     environment:
@@ -18,17 +27,30 @@ services:
       - AGENT_API_URL=http://agent:5000
       - PARSER_API_URL=http://notification-parser:6000
     depends_on:
-      - db
-      - agent
-      - notification-parser
+      db:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   notification-parser:
     build: ./notification-parser
+    restart: always
     ports:
       - "6000:6000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:6000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   agent:
     build: ./agent
+    restart: always
     ports:
       - "5000:5000"
     extra_hosts:
@@ -38,15 +60,28 @@ services:
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - SILENTBOOK_MODE=${SILENTBOOK_MODE:-auto}
       - OPENCLAW_GATEWAY_URL=${OPENCLAW_GATEWAY_URL:-http://host.docker.internal:18789}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   db:
     image: docker.io/library/postgres:15-alpine
+    restart: always
     environment:
       - POSTGRES_USER=silentbook
       - POSTGRES_PASSWORD=silentbook
       - POSTGRES_DB=silentbook
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U silentbook"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres_data:
