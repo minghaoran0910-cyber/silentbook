@@ -512,7 +512,7 @@ async def get_dashboard_stats(user: User = Depends(require_user), db: Session = 
 
 
 @app.get("/stats/trend")
-async def get_trend(days: int = 30, db: Session = Depends(get_db)):
+async def get_trend(days: int = 30, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取最近 N 天的消费趋势"""
     start_date = datetime.utcnow() - timedelta(days=days)
     
@@ -564,7 +564,7 @@ async def get_trend(days: int = 30, db: Session = Depends(get_db)):
 
 
 @app.get("/stats/monthly")
-async def get_monthly_report(year: int = None, month: int = None, db: Session = Depends(get_db)):
+async def get_monthly_report(year: int = None, month: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """月度收支汇总报表"""
     now = datetime.utcnow()
     y = year or now.year
@@ -629,7 +629,7 @@ async def get_monthly_report(year: int = None, month: int = None, db: Session = 
 # ===== 报表 API =====
 
 @app.get("/stats/daily")
-async def get_daily_report(date: str = None, db: Session = Depends(get_db)):
+async def get_daily_report(date: str = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """日报：每日消费汇总"""
     if date:
         target = datetime.strptime(date, "%Y-%m-%d")
@@ -665,7 +665,7 @@ async def get_daily_report(date: str = None, db: Session = Depends(get_db)):
 
 
 @app.get("/stats/weekly")
-async def get_weekly_report(week_offset: int = 0, db: Session = Depends(get_db)):
+async def get_weekly_report(week_offset: int = 0, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """周报：趋势分析"""
     now = datetime.utcnow()
     # 本周一
@@ -716,7 +716,7 @@ async def get_weekly_report(week_offset: int = 0, db: Session = Depends(get_db))
 
 
 @app.get("/stats/yearly")
-async def get_yearly_report(year: int = None, db: Session = Depends(get_db)):
+async def get_yearly_report(year: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """年报：年度总结"""
     now = datetime.utcnow()
     y = year or now.year
@@ -765,7 +765,7 @@ async def get_yearly_report(year: int = None, db: Session = Depends(get_db)):
 
 
 @app.get("/stats/asset-curve")
-async def get_asset_curve(months: int = 12, db: Session = Depends(get_db)):
+async def get_asset_curve(months: int = 12, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """资产变化曲线数据"""
     now = datetime.utcnow()
     start = now - timedelta(days=months * 30)
@@ -824,7 +824,7 @@ def total_income_so_far(db, end_date):
 # ===== 数据导入导出 =====
 
 @app.get("/export/csv")
-async def export_csv(db: Session = Depends(get_db)):
+async def export_csv(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """导出交易记录为 CSV"""
     import csv
     import io
@@ -855,7 +855,7 @@ async def export_csv(db: Session = Depends(get_db)):
 
 
 @app.post("/import/csv")
-async def import_csv(file: dict, db: Session = Depends(get_db)):
+async def import_csv(file: dict, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """导入 CSV 交易记录"""
     import csv
     import io
@@ -1026,7 +1026,7 @@ async def get_budgets(user: User = Depends(require_user), db: Session = Depends(
 
 
 @app.get("/budgets/levels")
-async def get_budgets_by_level(db: Session = Depends(get_db)):
+async def get_budgets_by_level(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """三级分类预算汇总：L1必要/L2改善/L3非必要"""
     import json
     raw = db.query(Setting).filter(Setting.key == "budgets").first()
@@ -1106,7 +1106,7 @@ async def get_budgets_by_level(db: Session = Depends(get_db)):
 
 
 @app.get("/budgets/alerts")
-async def get_budget_alerts(db: Session = Depends(get_db)):
+async def get_budget_alerts(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """五级预警状态：返回每个预算的预警级别"""
     import json
     raw = db.query(Setting).filter(Setting.key == "budgets").first()
@@ -1270,7 +1270,7 @@ BUDGET_TEMPLATES = {
 
 
 @app.get("/budgets/templates")
-async def list_budget_templates():
+async def list_budget_templates(user: User = Depends(require_user)):
     """列出所有预算模板"""
     result = []
     for key, tpl in BUDGET_TEMPLATES.items():
@@ -1289,7 +1289,7 @@ async def list_budget_templates():
 
 
 @app.get("/budgets/templates/{template_key}")
-async def get_budget_template(template_key: str):
+async def get_budget_template(template_key: str, user: User = Depends(require_user)):
     """获取某个预算模板的详情"""
     if template_key not in BUDGET_TEMPLATES:
         raise HTTPException(status_code=404, detail=f"模板 '{template_key}' 不存在，可选: {', '.join(BUDGET_TEMPLATES.keys())}")
@@ -1304,7 +1304,7 @@ async def get_budget_template(template_key: str):
 
 
 @app.post("/budgets/templates/{template_key}/apply")
-async def apply_budget_template(template_key: str, db: Session = Depends(get_db)):
+async def apply_budget_template(template_key: str, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """应用预算模板 — 替换现有所有预算"""
     import json
     if template_key not in BUDGET_TEMPLATES:
@@ -1518,7 +1518,7 @@ async def get_latest_analysis(user: User = Depends(require_user), db: Session = 
 
 
 @app.get("/analysis/history")
-async def get_analysis_history(limit: int = 20, db: Session = Depends(get_db)):
+async def get_analysis_history(limit: int = 20, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取历史分析列表"""
     records = db.query(AnalysisResult).order_by(
         AnalysisResult.created_at.desc()
@@ -1546,7 +1546,7 @@ async def get_analysis_history(limit: int = 20, db: Session = Depends(get_db)):
 # ===== 调度器状态 =====
 
 @app.get("/scheduler/status")
-async def scheduler_status():
+async def scheduler_status(user: User = Depends(require_user)):
     """获取调度器状态"""
     jobs = []
     for job in _scheduler.get_jobs():
@@ -1559,7 +1559,7 @@ async def scheduler_status():
 
 
 @app.post("/scheduler/trigger/{job_id}")
-async def trigger_job(job_id: str):
+async def trigger_job(job_id: str, user: User = Depends(require_user)):
     """手动触发定时任务"""
     from .scheduler import cleanup_old_notifications, scheduled_daily_analysis
     job_map = {
@@ -1600,7 +1600,7 @@ async def create_account(account: AccountCreate, user: User = Depends(require_us
 
 
 @app.get("/accounts/summary")
-async def get_accounts_summary(db: Session = Depends(get_db)):
+async def get_accounts_summary(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """四账户体系汇总：按 purpose 分组统计"""
     accounts = db.query(Account).filter(Account.status == "active").all()
     
@@ -1641,7 +1641,7 @@ async def list_transfers(
     account_id: Optional[int] = None,
     skip: int = 0,
     limit: int = Query(default=50, le=200),
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取转账历史列表"""
     query = db.query(Transfer)
@@ -1653,7 +1653,7 @@ async def list_transfers(
 
 
 @app.get("/accounts/transfers/{transfer_id}", response_model=TransferResponse)
-async def get_transfer(transfer_id: int, db: Session = Depends(get_db)):
+async def get_transfer(transfer_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单条转账记录"""
     transfer = db.query(Transfer).filter(Transfer.id == transfer_id).first()
     if not transfer:
@@ -1702,7 +1702,7 @@ async def delete_account(account_id: int, user: User = Depends(require_user), db
 
 
 @app.post("/accounts/transfer")
-async def transfer_between_accounts(transfer: AccountTransfer, db: Session = Depends(get_db)):
+async def transfer_between_accounts(transfer: AccountTransfer, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """账户间转账：扣减余额 + 增加余额 + 记录转账历史"""
     from_acc = db.query(Account).filter(Account.id == transfer.from_account_id).first()
     to_acc = db.query(Account).filter(Account.id == transfer.to_account_id).first()
@@ -1898,7 +1898,7 @@ LIABILITY_TYPE_ORDER = [
 
 
 @app.get("/liabilities/summary")
-async def get_liabilities_summary(db: Session = Depends(get_db)):
+async def get_liabilities_summary(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """负债清单汇总：按类型分组统计 + 总体概览"""
     liabilities = db.query(Liability).all()
     
@@ -1965,7 +1965,7 @@ async def get_liabilities_summary(db: Session = Depends(get_db)):
 
 
 @app.get("/liabilities/debt-ratio")
-async def get_debt_ratio(db: Session = Depends(get_db)):
+async def get_debt_ratio(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """负债率监控：月还款额 / 月收入，超过 40% 预警"""
     now = datetime.utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -2038,7 +2038,7 @@ def _add_months(dt: datetime, months: int) -> datetime:
 
 
 @app.get("/liabilities/{liability_id}/repayment-plan")
-async def get_repayment_plan(liability_id: int, db: Session = Depends(get_db)):
+async def get_repayment_plan(liability_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """还款计划：每期金额/利息/本金/余额 + 总利息 + 预计还清日期"""
     liability = db.query(Liability).filter(Liability.id == liability_id).first()
     if not liability:
@@ -2197,7 +2197,7 @@ async def get_cashflow_calendar(
     year: Optional[int] = None,
     month: Optional[int] = None,
     account: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """现金流日历：按日展示某月的收入/支出/净现金流
     
@@ -2293,7 +2293,7 @@ async def get_cashflow_forecast(
     days: int = 30,
     history_days: int = 90,
     account: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """现金流预测：基于历史数据预测未来 N 天收支
     
@@ -2493,7 +2493,7 @@ async def get_cashflow_forecast(
 async def get_next_month_forecast(
     lookback_months: int = 6,
     account: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """下月支出预测：基于历史月度趋势预测下月各类别支出
     
@@ -2760,7 +2760,7 @@ async def get_next_month_forecast(
 # ===== 基础报表（V2-013）=====
 
 @app.get("/reports/monthly-summary")
-async def get_monthly_summary(year: int = None, month: int = None, db: Session = Depends(get_db)):
+async def get_monthly_summary(year: int = None, month: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """月度财务摘要：收入/支出/结余/储蓄率/净资产变化/账户概览/预算执行/负债概览"""
     now = datetime.utcnow()
     y = year or now.year
@@ -2888,7 +2888,7 @@ async def get_cashflow_report(
     year: int = None,
     month: int = None,
     account: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """现金流报表：现金流入/流出/净现金流/趋势/环比/按账户分解"""
     now = datetime.utcnow()
@@ -3035,7 +3035,7 @@ ASSET_TYPE_LABELS = {
 
 
 @app.get("/reports/balance-sheet")
-async def get_balance_sheet(db: Session = Depends(get_db)):
+async def get_balance_sheet(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """资产负债表：资产/负债/净资产/资产负债率/分类明细"""
     # --- 资产 ---
     assets = db.query(Asset).filter(Asset.status == "active").all()
@@ -3125,7 +3125,7 @@ async def get_budget_execution_report(
     year: int = None,
     month: int = None,
     months: int = 3,
-    db: Session = Depends(get_db),
+    user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     """预算执行报表：各分类预算vs实际/偏差率/按级别汇总/趋势/预警"""
     import json as _json
@@ -3419,7 +3419,7 @@ async def get_expense_structure(
     year: int = None,
     month: int = None,
     months: int = 3,
-    db: Session = Depends(get_db),
+    user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     """V2-022 支出结构报表：L1/L2/L3占比 + 分类明细 + 趋势 + 健康度评估"""
     import json as _json
@@ -3835,7 +3835,7 @@ def _score_investment_growth(db: Session) -> dict:
 
 
 @app.get("/reports/health-score")
-async def get_health_score(year: int = None, month: int = None, db: Session = Depends(get_db)):
+async def get_health_score(year: int = None, month: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """
     财务健康评分（五维度模型，满分100分）
 
@@ -3969,7 +3969,7 @@ async def get_health_score(year: int = None, month: int = None, db: Session = De
 # ===== 风险画像推断（V2-017）=====
 
 @app.get("/investment/risk-profile")
-async def get_risk_profile(year: int = None, month: int = None, db: Session = Depends(get_db)):
+async def get_risk_profile(year: int = None, month: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """
     基于消费习惯推断投资风险承受能力
 
@@ -4199,7 +4199,7 @@ ASSET_TO_ALLOCATION = {
 
 
 @app.get("/investment/allocation")
-async def get_asset_allocation(db: Session = Depends(get_db)):
+async def get_asset_allocation(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """
     资产配置建议 + 实际配置追踪 + 再平衡提醒
 
@@ -4376,7 +4376,7 @@ class TradeRecordCreate(_BaseModel):
 
 
 @app.get("/positions")
-async def list_positions(status: str = "active", db: Session = Depends(get_db)):
+async def list_positions(status: str = "active", user: User = Depends(require_user), db: Session = Depends(get_db)):
     """持仓列表"""
     query = db.query(Position)
     if status:
@@ -4424,7 +4424,7 @@ async def list_positions(status: str = "active", db: Session = Depends(get_db)):
 
 
 @app.post("/positions")
-async def create_position(pos: PositionCreate, db: Session = Depends(get_db)):
+async def create_position(pos: PositionCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """创建持仓"""
     position = Position(
         name=pos.name,
@@ -4443,7 +4443,7 @@ async def create_position(pos: PositionCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/positions/{position_id}")
-async def update_position(position_id: int, pos: PositionUpdate, db: Session = Depends(get_db)):
+async def update_position(position_id: int, pos: PositionUpdate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """更新持仓（修改当前价格等）"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
@@ -4457,7 +4457,7 @@ async def update_position(position_id: int, pos: PositionUpdate, db: Session = D
 
 
 @app.delete("/positions/{position_id}")
-async def close_position(position_id: int, db: Session = Depends(get_db)):
+async def close_position(position_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """关闭持仓（标记为 closed）"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
@@ -4469,7 +4469,7 @@ async def close_position(position_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/positions/trades")
-async def add_trade(trade: TradeRecordCreate, db: Session = Depends(get_db)):
+async def add_trade(trade: TradeRecordCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """记录买入/卖出交易，自动更新持仓"""
     position = db.query(Position).filter(Position.id == trade.position_id).first()
     if not position:
@@ -4515,7 +4515,7 @@ async def add_trade(trade: TradeRecordCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/positions/{position_id}/trades")
-async def get_position_trades(position_id: int, db: Session = Depends(get_db)):
+async def get_position_trades(position_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取持仓的交易历史"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
@@ -4581,7 +4581,7 @@ def _calc_xirr(cashflows: list, dates: list, guess: float = 0.1) -> float:
 
 
 @app.get("/investment/returns")
-async def get_investment_returns(position_id: int = None, db: Session = Depends(get_db)):
+async def get_investment_returns(position_id: int = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """
     投资收益分析
 
@@ -4934,7 +4934,7 @@ def _calc_annualized_return_simple(returns):
 async def get_performance_analysis(
     days: int = Query(default=365, ge=7, le=1825, description="回溯天数(7-1825)"),
     risk_free_rate: float = Query(default=0.02, ge=0, le=0.2, description="年化无风险利率"),
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """
     V2-023 高级收益率分析（组合绩效分析）
@@ -5362,7 +5362,7 @@ async def get_risk_analysis(
     days: int = Query(default=365, ge=30, le=1825, description="回溯天数(30-1825)"),
     confidence: float = Query(default=0.95, ge=0.90, le=0.99, description="VaR置信度(0.90-0.99)"),
     risk_free_rate: float = Query(default=0.02, ge=0, le=0.2, description="年化无风险利率"),
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """
     V2-024 深度风险分析
@@ -5621,7 +5621,7 @@ def _backup_table_incremental(db: Session, model, since: Optional[datetime]) -> 
 async def create_backup(
     backup_type: str = "incremental",
     tables: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """创建增量备份
     
@@ -5737,7 +5737,7 @@ async def create_backup(
 async def list_backups(
     limit: int = 20,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """列出备份记录"""
     query = db.query(BackupRecord).order_by(BackupRecord.created_at.desc())
@@ -5767,7 +5767,7 @@ async def list_backups(
 
 
 @app.get("/backup/status")
-async def get_backup_status(db: Session = Depends(get_db)):
+async def get_backup_status(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取备份状态概览"""
     last = db.query(BackupRecord).filter(
         BackupRecord.status == "completed"
@@ -5795,7 +5795,7 @@ async def get_backup_status(db: Session = Depends(get_db)):
 
 
 @app.get("/backup/{backup_id}")
-async def get_backup_detail(backup_id: int, db: Session = Depends(get_db)):
+async def get_backup_detail(backup_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单个备份详情"""
     record = db.query(BackupRecord).filter(BackupRecord.id == backup_id).first()
     if not record:
@@ -5839,7 +5839,7 @@ async def restore_backup(
     backup_id: int,
     tables: Optional[str] = None,
     dry_run: bool = True,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """从备份恢复数据
     
@@ -5955,7 +5955,7 @@ def _goal_to_response(goal: FinancialGoal) -> GoalResponse:
 
 
 @app.get("/goals/summary", response_model=GoalSummaryResponse)
-async def get_goals_summary(db: Session = Depends(get_db)):
+async def get_goals_summary(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取所有目标的汇总概览"""
     goals = db.query(FinancialGoal).order_by(
         # 优先级排序：high > medium > low，然后按进度升序
@@ -5987,7 +5987,7 @@ async def list_goals(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     goal_type: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取目标列表，支持筛选"""
     query = db.query(FinancialGoal)
@@ -6009,7 +6009,7 @@ async def list_goals(
 
 
 @app.post("/goals", response_model=GoalResponse, status_code=201)
-async def create_goal(goal: GoalCreate, db: Session = Depends(get_db)):
+async def create_goal(goal: GoalCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """创建新目标"""
     # 解析 deadline
     deadline_date = None
@@ -6037,7 +6037,7 @@ async def create_goal(goal: GoalCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/goals/{goal_id}", response_model=GoalResponse)
-async def get_goal(goal_id: int, db: Session = Depends(get_db)):
+async def get_goal(goal_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单个目标详情"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
     if not goal:
@@ -6046,7 +6046,7 @@ async def get_goal(goal_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/goals/{goal_id}", response_model=GoalResponse)
-async def update_goal(goal_id: int, updates: GoalUpdate, db: Session = Depends(get_db)):
+async def update_goal(goal_id: int, updates: GoalUpdate, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """更新目标"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
     if not goal:
@@ -6077,7 +6077,7 @@ async def update_goal(goal_id: int, updates: GoalUpdate, db: Session = Depends(g
 
 
 @app.delete("/goals/{goal_id}")
-async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
+async def delete_goal(goal_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除目标（同时删除投入记录）"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
     if not goal:
@@ -6094,7 +6094,7 @@ async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
 async def contribute_to_goal(
     goal_id: int,
     contribution: GoalContributionCreate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """向目标投入资金"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
@@ -6124,7 +6124,7 @@ async def contribute_to_goal(
 
 
 @app.get("/goals/{goal_id}/contributions", response_model=List[GoalContributionResponse])
-async def list_contributions(goal_id: int, db: Session = Depends(get_db)):
+async def list_contributions(goal_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取目标的投入记录"""
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
     if not goal:
@@ -6181,7 +6181,7 @@ async def list_recurring_transactions(
     is_active: Optional[bool] = None,
     transaction_type: Optional[str] = None,
     frequency: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """获取固定收支列表，支持按状态/类型/频率筛选"""
     query = db.query(RecurringTransaction)
@@ -6200,7 +6200,7 @@ async def list_recurring_transactions(
 @app.post("/recurring", response_model=RecurringTransactionResponse, status_code=201)
 async def create_recurring_transaction(
     data: RecurringTransactionCreate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """创建固定收支"""
     # 日期解析验证
@@ -6242,7 +6242,7 @@ async def create_recurring_transaction(
 
 
 @app.get("/recurring/summary", response_model=RecurringSummaryResponse)
-async def get_recurring_summary(db: Session = Depends(get_db)):
+async def get_recurring_summary(user: User = Depends(require_user), db: Session = Depends(get_db)):
     """固定收支月度汇总：所有启用项折算为月度金额"""
     items = db.query(RecurringTransaction).filter(
         RecurringTransaction.is_active == True
@@ -6277,7 +6277,7 @@ async def get_recurring_summary(db: Session = Depends(get_db)):
 async def auto_detect_recurring(
     history_days: int = 90,
     import_detected: bool = False,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """从历史交易自动检测固定收支
     
@@ -6394,7 +6394,7 @@ async def auto_detect_recurring(
 
 
 @app.get("/recurring/{recurring_id}", response_model=RecurringTransactionResponse)
-async def get_recurring_transaction(recurring_id: int, db: Session = Depends(get_db)):
+async def get_recurring_transaction(recurring_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """获取单个固定收支详情"""
     rt = db.query(RecurringTransaction).filter(RecurringTransaction.id == recurring_id).first()
     if not rt:
@@ -6406,7 +6406,7 @@ async def get_recurring_transaction(recurring_id: int, db: Session = Depends(get
 async def update_recurring_transaction(
     recurring_id: int,
     data: RecurringTransactionUpdate,
-    db: Session = Depends(get_db)
+    user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """更新固定收支"""
     rt = db.query(RecurringTransaction).filter(RecurringTransaction.id == recurring_id).first()
@@ -6450,7 +6450,7 @@ async def update_recurring_transaction(
 
 
 @app.delete("/recurring/{recurring_id}")
-async def delete_recurring_transaction(recurring_id: int, db: Session = Depends(get_db)):
+async def delete_recurring_transaction(recurring_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """删除固定收支"""
     rt = db.query(RecurringTransaction).filter(RecurringTransaction.id == recurring_id).first()
     if not rt:
