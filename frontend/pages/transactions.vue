@@ -96,6 +96,11 @@
 
     <!-- 筛选 -->
     <div class="filters">
+      <label class="noise-filter-toggle">
+        <input type="checkbox" v-model="hideNoise" @change="loadTransactions">
+        <span class="toggle-label">仅显示真实交易</span>
+      </label>
+
       <select v-model="filterAccount" @change="loadTransactions">
         <option value="">全部账户</option>
         <option value="cmb">招商银行</option>
@@ -251,6 +256,7 @@ const filterAccount = ref('')
 const filterCategory = ref('')
 const filterType = ref('')
 const filterDateRange = ref('')
+const hideNoise = ref(true)  // 默认隐藏0元垃圾通知
 
 // 汇总
 const summaryIncome = computed(() => 
@@ -283,6 +289,7 @@ const loadTransactions = async () => {
     if (filterAccount.value) params.account = filterAccount.value
     if (filterCategory.value) params.category = filterCategory.value
     if (filterType.value) params.transaction_type = filterType.value
+    if (hideNoise.value) params.hide_noise = true
     params.limit = 500
     const all = await fetchTransactions(params)
     
@@ -563,6 +570,37 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   border-radius: 8px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+/* Noise filter toggle */
+.noise-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  user-select: none;
+}
+
+.noise-filter-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toggle-label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.noise-filter-toggle:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
 }
 
 /* Skeleton loading */

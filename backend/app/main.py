@@ -174,6 +174,7 @@ async def list_transactions(
     account: Optional[str] = None,
     category: Optional[str] = None,
     transaction_type: Optional[str] = None,
+    hide_noise: bool = Query(False, description="隐藏0元非财务通知"),
     user: User = Depends(require_user),
     db: Session = Depends(get_db)
 ):
@@ -185,6 +186,8 @@ async def list_transactions(
         query = query.filter(Transaction.category == category)
     if transaction_type:
         query = query.filter(Transaction.transaction_type == transaction_type)
+    if hide_noise:
+        query = query.filter(Transaction.amount > 0)
     return query.order_by(Transaction.parsed_at.desc()).offset(skip).limit(limit).all()
 
 

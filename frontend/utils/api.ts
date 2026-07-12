@@ -115,12 +115,14 @@ export async function fetchTransactions(params?: {
   category?: string
   transaction_type?: string
   limit?: number
+  hide_noise?: boolean
 }): Promise<Transaction[]> {
   const searchParams = new URLSearchParams()
   if (params?.account) searchParams.append('account', params.account)
   if (params?.category) searchParams.append('category', params.category)
   if (params?.transaction_type) searchParams.append('transaction_type', params.transaction_type)
   if (params?.limit) searchParams.append('limit', params.limit.toString())
+  if (params?.hide_noise) searchParams.append('hide_noise', 'true')
 
   return request<Transaction[]>(`/transactions?${searchParams}`)
 }
