@@ -537,8 +537,8 @@ async def get_dashboard_stats(user: User = Depends(require_user), db: Session = 
         Liability.status == "active"
     ).scalar() or 0.0
 
-    # 净资产 = 交易净额 + 资产 - 负债
-    net_assets = (total_income - total_expenses) + total_assets - total_liabilities
+    # 净资产 = 总资产 - 总负债（交易已体现在资产值中，不应重复计算）
+    net_assets = total_assets - total_liabilities
 
     # 交易笔数
     transaction_count = db.query(Transaction).count()
