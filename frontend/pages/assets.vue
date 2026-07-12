@@ -323,7 +323,7 @@ const totalAssets = computed(() => assets.value.filter(a => a.status === 'active
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
 
 const pieColors = ['#b45309', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
-const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', property: '房产', other: '其他' }
+const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', gold: '黄金', pension: '养老金', property: '房产', other: '其他' }
 
 const pieData = computed(() => {
   const active = assets.value.filter(a => a.status === 'active')
