@@ -5,7 +5,14 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://silentbook:silentbook@localhost:5432/silentbook")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,  # 回收超过30分钟的空闲连接，防止 stale connection
+    pool_pre_ping=True,  # 每次取连接前 ping 一下，避免 EOF 错误
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

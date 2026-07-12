@@ -10,12 +10,14 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      agent:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
 
   backend:
     build: ./backend
@@ -28,13 +30,13 @@ services:
       - PARSER_API_URL=http://notification-parser:6000
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
   notification-parser:
     build: ./notification-parser
