@@ -27,7 +27,7 @@
             <h2>消费分析</h2>
             <span v-if="analysisMode === 'openclaw'" class="agent-badge">墨砚</span>
           </div>
-          <div class="card-content">{{ analysis.consumption }}</div>
+          <div class="card-content markdown-body" v-html="renderMd(analysis.consumption)"></div>
         </div>
 
         <div class="analysis-card">
@@ -36,7 +36,7 @@
             <h2>投资分析</h2>
             <span v-if="analysisMode === 'openclaw'" class="agent-badge">远瞻</span>
           </div>
-          <div class="card-content">{{ analysis.investment }}</div>
+          <div class="card-content markdown-body" v-html="renderMd(analysis.investment)"></div>
         </div>
 
         <div class="analysis-card">
@@ -44,7 +44,7 @@
             <span class="card-icon">💡</span>
             <h2>综合建议</h2>
           </div>
-          <div class="card-content">{{ analysis.suggestion }}</div>
+          <div class="card-content markdown-body" v-html="renderMd(analysis.suggestion)"></div>
         </div>
       </div>
 
@@ -75,7 +75,7 @@
             <div class="history-items">
               <div v-for="item in batch.items" :key="item.id" class="history-item" @click="loadHistory(item)">
                 <span class="history-type">{{ typeLabels[item.analysis_type] || item.analysis_type }}</span>
-                <span class="history-preview">{{ item.content.substring(0, 80) }}...</span>
+                <span class="history-preview">{{ stripMd(item.content).substring(0, 80) }}...</span>
               </div>
             </div>
           </div>
@@ -92,8 +92,25 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
+import { marked } from 'marked'
 import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory, fetchMonthlyStats } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
+
+// 配置 marked
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
+
+const renderMd = (text: string) => {
+  if (!text) return ''
+  return marked.parse(text) as string
+}
+
+const stripMd = (text: string) => {
+  if (!text) return ''
+  return text.replace(/[#*_`~\[\]()>]/g, '').replace(/\n+/g, ' ').trim()
+}
 
 const analyzing = ref(false)
 const analysisMode = ref('')
@@ -229,7 +246,7 @@ onActivated(() => { clientReady.value = true; loadAll() })
 .card-icon { font-size: 1.5rem; }
 .card-header h2 { font-size: 1.2rem; color: var(--text-primary); flex: 1; }
 .agent-badge { background: rgba(180,83,9,0.15); color: var(--accent); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
-.card-content { color: var(--text-secondary); line-height: 1.7; white-space: pre-wrap; }
+.card-content { color: var(--text-secondary); line-height: 1.7; }
 .history-section h2 { color: var(--text-primary); margin-bottom: 1rem; }
 .history-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .history-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; display: flex; gap: 1rem; cursor: pointer; transition: all 0.15s; }
@@ -250,6 +267,25 @@ onActivated(() => { clientReady.value = true; loadAll() })
 .legend-name { color: var(--text-primary); font-size: 0.85rem; min-width: 60px; }
 .legend-value { color: var(--text-primary); font-size: 0.85rem; font-weight: 500; }
 .legend-pct { color: var(--text-secondary); font-size: 0.8rem; }
+
+/* Markdown 渲染样式 */
+.markdown-body :deep(h1) { font-size: 1.4rem; color: var(--text-primary); margin: 1rem 0 0.5rem; font-weight: 600; }
+.markdown-body :deep(h2) { font-size: 1.2rem; color: var(--text-primary); margin: 0.8rem 0 0.4rem; font-weight: 600; }
+.markdown-body :deep(h3) { font-size: 1.05rem; color: var(--text-primary); margin: 0.6rem 0 0.3rem; font-weight: 600; }
+.markdown-body :deep(p) { margin: 0.4rem 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 1.5rem; margin: 0.4rem 0; }
+.markdown-body :deep(li) { margin: 0.2rem 0; }
+.markdown-body :deep(strong) { color: var(--text-primary); font-weight: 600; }
+.markdown-body :deep(em) { font-style: italic; }
+.markdown-body :deep(code) { background: rgba(180,83,9,0.1); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+.markdown-body :deep(pre) { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0.5rem 0; }
+.markdown-body :deep(pre code) { background: none; padding: 0; }
+.markdown-body :deep(blockquote) { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 0.5rem 0; color: var(--text-secondary); }
+.markdown-body :deep(table) { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--border); padding: 0.4rem 0.75rem; text-align: left; }
+.markdown-body :deep(th) { background: var(--bg-primary); font-weight: 600; color: var(--text-primary); }
+.markdown-body :deep(hr) { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+.markdown-body :deep(a) { color: var(--accent); text-decoration: underline; }
 </style>
 
 /* 响应式适配 */
