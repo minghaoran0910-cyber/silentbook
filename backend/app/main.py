@@ -254,6 +254,14 @@ async def parse_notification(notification: dict):
             response.raise_for_status()
             parsed = response.json()
 
+            # V2-038: 检查是否被过滤器过滤（非财务通知）
+            if parsed.get("filtered"):
+                return {
+                    "message": "Notification filtered as non-financial",
+                    "filtered": True,
+                    "reason": parsed.get("filter_reason", ""),
+                }
+
             # 验证必要字段
             required_fields = ["amount", "category", "account", "transaction_type"]
             for field in required_fields:
@@ -332,6 +340,14 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
             )
             response.raise_for_status()
             parsed = response.json()
+            
+            # V2-038: 检查是否被过滤器过滤（非财务通知）
+            if parsed.get("filtered"):
+                return {
+                    "status": "filtered",
+                    "reason": parsed.get("filter_reason", ""),
+                    "message": "非财务通知，已过滤",
+                }
             
             required = ["amount", "category", "account", "transaction_type"]
             for field in required:

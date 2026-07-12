@@ -3,8 +3,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import re
 from datetime import datetime
+from .notification_filter import is_financial_notification
 
-app = FastAPI(title="SilentBook Notification Parser", version="0.2.0")
+app = FastAPI(title="SilentBook Notification Parser", version="0.3.0")
 
 
 class NotificationRequest(BaseModel):
@@ -315,10 +316,35 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/parse", response_model=ParsedTransaction)
+@app.post("/parse")
 async def parse_notification(notification: NotificationRequest):
-    """解析银行/支付通知，提取交易信息"""
+    """解析银行/支付通知，提取交易信息。
+
+    V2-038: 增加前置过滤，非财务通知直接返回 filtered 结果，不创建交易。
+    """
     text = f"{notification.title} {notification.body}"
+
+    # V2-038: 前置过滤非财务通知
+    filter_result = is_financial_notification(
+        notification.title, notification.body, notification.source
+    )
+    if not filter_result.is_financial:
+        return {
+            "filtered": True,
+            "filter_reason": filter_result.reason,
+            "filter_confidence": filter_result.confidence,
+            "amount": 0.0,
+            "category": "其他",
+            "account": "unknown",
+            "transaction_type": "expense",
+            "description": "",
+            "raw_text": text.strip(),
+            "confidence": 0.0,
+            "parsed_at": datetime.now().isoformat(),
+            "bank_card": None,
+            "balance": None,
+            "merchant": None,
+        }
 
     platform = detect_platform(text, notification.source)
     amount = extract_amount(text, platform)
@@ -330,29 +356,40 @@ async def parse_notification(notification: NotificationRequest):
     balance = extract_balance(text)
     merchant = extract_merchant(text, platform)
 
-    return ParsedTransaction(
-        amount=amount,
-        category=category,
-        account=platform,
-        description=description,
-        transaction_type=tx_type,
-        raw_text=text.strip(),
-        confidence=confidence,
-        parsed_at=datetime.now().isoformat(),
-        bank_card=bank_card,
-        balance=balance,
-        merchant=merchant,
-    )
+    return {
+        "filtered": False,
+        "filter_reason": filter_result.reason,
+        "filter_confidence": filter_result.confidence,
+        "amount": amount,
+        "category": category,
+        "account": platform,
+        "description": description,
+        "transaction_type": tx_type,
+        "raw_text": text.strip(),
+        "confidence": confidence,
+        "parsed_at": datetime.now().isoformat(),
+        "bank_card": bank_card,
+        "balance": balance,
+        "merchant": merchant,
+    }
 
 
 @app.post("/parse/batch")
 async def parse_batch(notifications: List[NotificationRequest]):
     """批量解析通知"""
     results = []
+    filtered_count = 0
     for notification in notifications:
         result = await parse_notification(notification)
         results.append(result)
-    return {"count": len(results), "transactions": results}
+        if result.get("filtered"):
+            filtered_count += 1
+    return {
+        "count": len(results),
+        "filtered_count": filtered_count,
+        "financial_count": len(results) - filtered_count,
+        "transactions": results,
+    }
 
 
 @app.get("/platforms")
