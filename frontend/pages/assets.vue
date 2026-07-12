@@ -79,13 +79,32 @@
             <label>所属机构</label>
             <input v-model="form.account" type="text" placeholder="如：招商银行" />
           </div>
+
+          <!-- 黄金专属字段 -->
+          <template v-if="form.asset_type === 'gold'">
+            <div class="form-group">
+              <label>实时金价</label>
+              <div class="gold-price-display">
+                <span v-if="goldPrice">🥇 {{ goldPrice }} 元/克</span>
+                <span v-else>加载中...</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>克数</label>
+              <input v-model.number="form.goldGrams" type="number" step="0.01" placeholder="0.00" @input="calcGoldValue" />
+            </div>
+            <div class="form-group">
+              <label>成本克价</label>
+              <input v-model.number="form.goldCostPerGram" type="number" step="0.01" placeholder="0.00" @input="calcGoldValue" />
+            </div>
+          </template>
           <div class="form-group">
-            <label>当前价值</label>
-            <input v-model="form.current_value" type="number" step="0.01" required placeholder="0.00" />
+            <label>当前价值 <span v-if="form.asset_type === 'gold'" class="auto-label">(自动计算)</span></label>
+            <input v-model="form.current_value" type="number" step="0.01" required placeholder="0.00" :readonly="form.asset_type === 'gold' && form.goldGrams > 0" />
           </div>
           <div class="form-group">
-            <label>初始投入</label>
-            <input v-model="form.initial_value" type="number" step="0.01" placeholder="0.00" />
+            <label>初始投入 <span v-if="form.asset_type === 'gold'" class="auto-label">(自动计算)</span></label>
+            <input v-model="form.initial_value" type="number" step="0.01" placeholder="0.00" :readonly="form.asset_type === 'gold' && form.goldGrams > 0" />
           </div>
           <div class="form-group">
             <label>流动性</label>
@@ -473,7 +492,7 @@ const removeAsset = async (id) => {
 
 const resetForm = () => {
   editingId.value = null
-  form.value = { name: '', asset_type: 'savings', account: '', current_value: 0, initial_value: 0, liquidity: 'medium', notes: '' }
+  form.value = { name: '', asset_type: 'savings', account: '', current_value: 0, initial_value: 0, liquidity: 'medium', notes: '', goldGrams: 0, goldCostPerGram: 0 }
 }
 
 const handleLiabilitySubmit = async () => {
@@ -507,6 +526,28 @@ const cancelLiabilityEdit = () => {
   editingLiabilityId.value = null
   liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '' }
   showAddLiabilityForm.value = false
+}
+
+
+const calcGoldValue = () => {
+  if (form.value.asset_type === 'gold' && form.value.goldGrams > 0) {
+    form.value.current_value = Math.round(form.value.goldGrams * goldPrice.value * 100) / 100
+    if (form.value.goldCostPerGram > 0) {
+      form.value.initial_value = Math.round(form.value.goldGrams * form.value.goldCostPerGram * 100) / 100
+    }
+  }
+}
+
+const fetchGoldPrice = async () => {
+  try {
+    const resp = await fetch('/api/gold-price')
+    if (resp.ok) {
+      const data = await resp.json()
+      goldPrice.value = data.price
+    }
+  } catch (e) {
+    console.error('获取金价失败:', e)
+  }
 }
 
 onMounted(() => { loadData(); loadSyncStatus() })
@@ -615,4 +656,7 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .trend-change { font-size: 0.75rem; font-weight: 600; }
 .trend-change.positive { color: var(--success); }
 .trend-change.negative { color: var(--danger); }
+
+.gold-price-display { padding: 0.5rem; background: linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%); color: white; border-radius: 6px; font-weight: 600; text-align: center; }
+.auto-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; }
 </style>
