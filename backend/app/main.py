@@ -4850,14 +4850,24 @@ async def update_position(position_id: int, pos: PositionUpdate, user: User = De
 
 @app.delete("/positions/{position_id}")
 async def close_position(position_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """关闭持仓（标记为 closed）"""
+    """关闭持仓（标记为 closed），同时关闭资产表中的对应条目"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
         raise HTTPException(status_code=404, detail="持仓不存在")
     position.status = "closed"
     position.updated_at = datetime.utcnow()
+    
+    # 同步关闭资产表中的对应条目
+    linked_asset = db.query(Asset).filter(
+        Asset.name == f"[持仓] {position.name}",
+        Asset.status == "active"
+    ).first()
+    if linked_asset:
+        linked_asset.status = "closed"
+        linked_asset.updated_at = datetime.utcnow()
+    
     db.commit()
-    return {"message": "持仓已关闭", "id": position_id}
+    return {"message": "持仓已关闭，资产已同步", "id": position_id}
 
 
 @app.post("/positions/trades")
@@ -4897,6 +4907,20 @@ async def add_trade(trade: TradeRecordCreate, user: User = Depends(require_user)
             position.status = "closed"
 
     position.updated_at = datetime.utcnow()
+    
+    # 同步更新资产表
+    market_value = position.quantity * position.current_price
+    linked_asset = db.query(Asset).filter(
+        Asset.name == f"[持仓] {position.name}",
+    ).first()
+    if linked_asset:
+        if position.quantity <= 0:
+            linked_asset.status = "closed"
+        else:
+            linked_asset.current_value = market_value
+            linked_asset.initial_value = position.quantity * position.avg_cost
+        linked_asset.updated_at = datetime.utcnow()
+    
     db.commit()
 
     return {
