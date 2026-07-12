@@ -2117,6 +2117,67 @@ async def delete_asset(asset_id: int, user: User = Depends(require_user), db: Se
     return {"message": "已删除"}
 
 
+
+# ===== 黄金实时价格 =====
+
+@app.get("/gold-price")
+async def get_gold_price():
+    """获取实时黄金价格（元/克），数据来自上海金交所"""
+    import time as _time
+    
+    # 缓存 5 分钟
+    cache_key = "_gold_price_cache"
+    now = _time.time()
+    if hasattr(app, cache_key):
+        cached = getattr(app, cache_key)
+        if now - cached["ts"] < 300:
+            return cached["data"]
+    
+    price = None
+    source = ""
+    
+    # 数据源1: 新浪财经（上海金交所 Au99.99）
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                "https://hq.sinajs.cn/?list=au0",
+                headers={"Referer": "https://finance.sina.com.cn"}
+            )
+            text = resp.text.strip()
+            if "=" in text:
+                data_part = text.split("=")[1].strip('"').split(",")
+                if len(data_part) > 3:
+                    price = float(data_part[3])
+                    source = "上海金交所 Au99.99"
+    except Exception:
+        pass
+    
+    # 数据源2: 国际金价换算（备用）
+    if not price:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get("https://api.gold-api.com/price/XAU")
+                data = resp.json()
+                if "price" in data:
+                    usd_per_oz = data["price"]
+                    # 盎司转克，美元转人民币（近似汇率）
+                    price = round(usd_per_oz / 31.1035 * 7.2, 2)
+                    source = "国际金价(换算)"
+        except Exception:
+            pass
+    
+    if price:
+        result = {
+            "price": price,
+            "unit": "元/克",
+            "source": source,
+            "updated_at": datetime.now().isoformat()
+        }
+        setattr(app, cache_key, {"data": result, "ts": now})
+        return result
+    
+    raise HTTPException(status_code=503, detail="暂时无法获取金价，请稍后重试")
+
 # ===== 负债管理 =====
 
 @app.get("/liabilities", response_model=List[LiabilityResponse])
