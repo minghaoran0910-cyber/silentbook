@@ -309,6 +309,7 @@ const showAddForm = ref(false)
 const showAddLiabilityForm = ref(false)
 const editingId = ref(null)
 
+const goldPrice = ref(0)
 const form = ref({
   name: '', asset_type: 'savings', account: '', current_value: 0, initial_value: 0, liquidity: 'medium', notes: ''
 })
