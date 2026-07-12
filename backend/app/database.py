@@ -69,6 +69,8 @@ class Liability(Base):
     monthly_payment = Column(Float, default=0)  # 月还款额
     remaining_periods = Column(Integer, default=0)  # 剩余期数（月）
     due_date = Column(Date)  # 到期日
+    min_payment = Column(Float, default=0)  # 最低还款/本期应还
+    billing_day = Column(Integer, default=1)  # 账单日（每月几号）
     status = Column(String(20), default="active", index=True)  # active/paid/overdue
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

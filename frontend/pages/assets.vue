@@ -247,6 +247,23 @@
               <label>当前待还</label>
               <input v-model="liabilityForm.current_amount" type="number" step="0.01" required placeholder="0.00" />
             </div>
+            <!-- 信用卡专属字段 -->
+            <template v-if="liabilityForm.liability_type === 'credit_card'">
+              <div class="form-group">
+                <label>本期应还</label>
+                <input v-model="liabilityForm.min_payment" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="form-group">
+                <label>账单日</label>
+                <select v-model="liabilityForm.billing_day">
+                  <option v-for="d in 28" :key="d" :value="d">{{ d }}号</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>最后还款日</label>
+                <input v-model="liabilityForm.due_date" type="date" />
+              </div>
+            </template>
             <div class="form-group">
               <label>年利率(%)</label>
               <input v-model="liabilityForm.interest_rate" type="number" step="0.01" placeholder="0" />
@@ -315,7 +332,8 @@ const form = ref({
 })
 
 const liabilityForm = ref({
-  name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: ''
+  name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '',
+  min_payment: 0, bill_date: '', billing_day: 1
 })
 const editingLiabilityId = ref(null)
 
@@ -503,7 +521,7 @@ const handleLiabilitySubmit = async () => {
     } else {
       await createLiability(liabilityForm.value)
     }
-    liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '' }
+    liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '', min_payment: 0, bill_date: '', billing_day: 1 }
     editingLiabilityId.value = null
     showAddLiabilityForm.value = false
     await loadData()
@@ -525,7 +543,7 @@ const editLiability = (liab) => {
 
 const cancelLiabilityEdit = () => {
   editingLiabilityId.value = null
-  liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '' }
+  liabilityForm.value = { name: '', liability_type: 'credit_card', total_amount: 0, current_amount: 0, interest_rate: 0, due_date: '', min_payment: 0, bill_date: '', billing_day: 1 }
   showAddLiabilityForm.value = false
 }
 
