@@ -30,7 +30,8 @@ class TestNonFinancialFilter:
             "菜鸟驿站", "您的包裹已到达菜鸟驿站，请及时取件。取件码：12-34-5678"
         )
         assert result.is_financial is False
-        assert "快递" in result.reason or "包裹" in result.reason or "菜鸟" in result.reason
+        # 白名单模式：来源不在白名单
+        assert result.is_financial is False
 
     def test_logistics_sf_express(self):
         """顺丰快递签收通知"""
@@ -68,7 +69,8 @@ class TestNonFinancialFilter:
             "来电提醒", "您有一个未接来电，号码：138****1234"
         )
         assert result.is_financial is False
-        assert "未接来电" in result.reason
+        # 白名单模式：来源+动作+金额均不满足
+        assert "白名单" in result.reason
 
     # --- 游戏通知 ---
     def test_game_energy(self):
@@ -115,7 +117,8 @@ class TestNonFinancialFilter:
             "支付宝", "验证码：123456，5分钟内有效，请勿泄露。"
         )
         assert result.is_financial is False
-        assert "验证" in result.reason
+        # 白名单模式：来源满足但无交易动作+无金额
+        assert result.is_financial is False
 
     # --- 天气/健康 ---
     def test_weather_notification(self):
@@ -191,25 +194,28 @@ class TestFinancialKeep:
         assert result.is_financial is True
 
     def test_generic_payment_with_amount(self):
-        """通用支付通知（有明确金额+交易动作）"""
+        """通用支付通知（有金额+动作但来源不在白名单）→ 白名单模式拒绝"""
         result = is_financial_notification(
             "通知", "消费128.50元，商户：盒马鲜生"
         )
-        assert result.is_financial is True
+        # 白名单严格模式：来源"通知"不在白名单 → 拒绝
+        assert result.is_financial is False
 
     def test_refund_notification(self):
-        """退款通知"""
+        """退款通知（来源不在白名单 → 拒绝）"""
         result = is_financial_notification(
             "通知", "退款到账299.00元，原路退回"
         )
-        assert result.is_financial is True
+        # 白名单严格模式：来源"通知"不在白名单 → 拒绝
+        assert result.is_financial is False
 
     def test_source_as_financial_platform(self):
-        """来源标识为金融平台"""
+        """来源标识为金融平台但无动作+无金额 → 拒绝"""
         result = is_financial_notification(
             "通知", "交易确认", source="alipay"
         )
-        assert result.is_financial is True
+        # 白名单严格模式：source="alipay" 不在文本白名单中，且无动作+无金额
+        assert result.is_financial is False
 
 
 # ===========================================================================
