@@ -91,7 +91,7 @@
             </div>
             <div class="form-group">
               <label>克数</label>
-              <input v-model.number="form.goldGrams" type="number" step="0.01" placeholder="0.00" @input="calcGoldValue" />
+              <input v-model.number="form.goldGrams" type="number" step="0.0001" placeholder="0.00" @input="calcGoldValue" />
             </div>
             <div class="form-group">
               <label>成本克价</label>
@@ -550,7 +550,7 @@ const fetchGoldPrice = async () => {
   }
 }
 
-onMounted(() => { loadData(); loadSyncStatus() })
+onMounted(() => { loadData(); loadSyncStatus(); fetchGoldPrice() })
 onActivated(loadData) // 客户端路由导航回来时也重新加载
 </script>
 
