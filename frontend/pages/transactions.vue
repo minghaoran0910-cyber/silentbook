@@ -169,9 +169,7 @@
             <span class="tx-account">{{ getAccountName(tx.account) }}</span>
             <span class="tx-category">{{ tx.category }}</span>
             <span class="tx-time">{{ formatTime(tx.parsed_at) }}</span>
-            <span v-if="tx.confidence < 1" class="tx-confidence" :title="`置信度: ${(tx.confidence * 100).toFixed(0)}%`">
-              {{ (tx.confidence * 100).toFixed(0) }}%
-            </span>
+
           </div>
         </div>
         <div class="tx-amount" :class="tx.transaction_type">
@@ -730,14 +728,6 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   color: var(--text-secondary);
   align-items: center;
   flex-wrap: wrap;
-}
-
-.tx-confidence {
-  background: rgba(245, 158, 11, 0.2);
-  color: #F59E0B;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
 }
 
 .tx-amount {

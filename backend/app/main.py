@@ -148,9 +148,25 @@ async def health():
 
 # ===== 交易管理 =====
 
+def _update_account_balance(db: Session, account_name: str, transaction_type: str, amount: float, reverse: bool = False):
+    """联动更新账户余额。reverse=True 表示回滚（删除/更新时先用）。"""
+    if not account_name:
+        return
+    account = db.query(Account).filter(Account.name == account_name).first()
+    if not account:
+        return
+    delta = amount
+    if transaction_type == 'expense':
+        delta = -amount
+    if reverse:
+        delta = -delta
+    account.balance = (account.balance or 0) + delta
+    account.updated_at = datetime.utcnow()
+
+
 @app.post("/transactions", response_model=TransactionResponse)
 async def create_transaction(transaction: TransactionCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """创建交易记录（手动或自动）"""
+    """创建交易记录（手动或自动），同时联动账户余额"""
     db_transaction = Transaction(
         amount=transaction.amount,
         category=transaction.category,
@@ -162,6 +178,11 @@ async def create_transaction(transaction: TransactionCreate, user: User = Depend
         parsed_at=datetime.utcnow()
     )
     db.add(db_transaction)
+    db.flush()  # 获取 ID 但不提交
+    
+    # 联动账户余额
+    _update_account_balance(db, transaction.account, transaction.transaction_type, transaction.amount)
+    
     db.commit()
     db.refresh(db_transaction)
     return db_transaction
@@ -206,14 +227,20 @@ async def update_transaction(
     transaction: TransactionUpdate,
     user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
-    """更新交易记录"""
+    """更新交易记录，同时联动账户余额"""
     db_transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not db_transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    # 先回滚旧交易的余额影响
+    _update_account_balance(db, db_transaction.account, db_transaction.transaction_type, db_transaction.amount, reverse=True)
+
     update_data = transaction.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_transaction, field, value)
+
+    # 应用新交易的余额影响
+    _update_account_balance(db, db_transaction.account, db_transaction.transaction_type, db_transaction.amount)
 
     db.commit()
     db.refresh(db_transaction)
@@ -222,10 +249,12 @@ async def update_transaction(
 
 @app.delete("/transactions/{transaction_id}")
 async def delete_transaction(transaction_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """删除交易"""
+    """删除交易，同时回滚账户余额"""
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    # 回滚余额
+    _update_account_balance(db, transaction.account, transaction.transaction_type, transaction.amount, reverse=True)
     db.delete(transaction)
     db.commit()
     return {"message": "Transaction deleted"}
@@ -285,6 +314,9 @@ async def parse_notification(notification: dict):
                     parsed_at=datetime.utcnow()
                 )
                 db.add(db_transaction)
+                db.flush()
+                # 联动账户余额
+                _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
                 db.commit()
                 db.refresh(db_transaction)
                 return {"message": "Transaction created", "id": db_transaction.id}
@@ -368,6 +400,9 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
                 parsed_at=datetime.utcnow()
             )
             db.add(db_tx)
+            db.flush()
+            # 联动账户余额
+            _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
             db.commit()
             db.refresh(db_tx)
             
@@ -4680,7 +4715,7 @@ async def list_positions(status: str = "active", user: User = Depends(require_us
 
 @app.post("/positions")
 async def create_position(pos: PositionCreate, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """创建持仓"""
+    """创建持仓，同时同步到资产表"""
     position = Position(
         name=pos.name,
         symbol=pos.symbol,
@@ -4692,14 +4727,35 @@ async def create_position(pos: PositionCreate, user: User = Depends(require_user
         notes=pos.notes,
     )
     db.add(position)
+    db.flush()
+    
+    # 同步到资产表
+    market_value = pos.quantity * pos.current_price
+    asset_type_map = {
+        "stock": "stock", "fund": "fund", "bond": "bond",
+        "wealth_mgmt": "other", "other": "other",
+    }
+    asset = Asset(
+        name=f"[持仓] {pos.name}",
+        asset_type=asset_type_map.get(pos.position_type, "other"),
+        account=pos.account or "",
+        current_value=market_value,
+        initial_value=pos.quantity * pos.avg_cost,
+        currency=pos.currency,
+        liquidity="low" if pos.position_type in ["stock", "fund"] else "medium",
+        status="active",
+        notes=f"关联持仓ID={position.id}, 代码={pos.symbol or 'N/A'}",
+    )
+    db.add(asset)
+    
     db.commit()
     db.refresh(position)
-    return {"id": position.id, "name": position.name, "message": "持仓创建成功"}
+    return {"id": position.id, "name": position.name, "asset_id": asset.id, "message": "持仓创建成功，已同步到资产表"}
 
 
 @app.put("/positions/{position_id}")
 async def update_position(position_id: int, pos: PositionUpdate, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """更新持仓（修改当前价格等）"""
+    """更新持仓（修改当前价格等），同时同步资产表"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
         raise HTTPException(status_code=404, detail="持仓不存在")
@@ -4707,8 +4763,19 @@ async def update_position(position_id: int, pos: PositionUpdate, user: User = De
     for field, value in pos.model_dump(exclude_unset=True).items():
         setattr(position, field, value)
     position.updated_at = datetime.utcnow()
+    
+    # 同步更新资产表中的对应条目
+    market_value = position.quantity * position.current_price
+    linked_asset = db.query(Asset).filter(
+        Asset.name == f"[持仓] {position.name}",
+        Asset.status == "active"
+    ).first()
+    if linked_asset:
+        linked_asset.current_value = market_value
+        linked_asset.updated_at = datetime.utcnow()
+    
     db.commit()
-    return {"message": "持仓更新成功", "id": position_id}
+    return {"message": "持仓更新成功，资产已同步", "id": position_id}
 
 
 @app.delete("/positions/{position_id}")
