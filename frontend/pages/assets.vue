@@ -185,9 +185,35 @@
           {{ showAddForm ? '取消' : '+ 添加资产' }}
         </button>
       </div>
-      <div v-if="assets.length === 0" class="empty">暂无资产，点击右上角添加</div>
+      
+      <!-- 筛选栏 -->
+      <div class="filters">
+        <input v-model="assetSearch" type="text" placeholder="搜索名称/机构..." class="filter-search" />
+        <select v-model="assetTypeFilter" class="filter-select">
+          <option value="">全部类型</option>
+          <option value="cash">现金</option>
+          <option value="savings">存款</option>
+          <option value="fund">基金</option>
+          <option value="stock">股票</option>
+          <option value="bond">债券</option>
+          <option value="gold">黄金</option>
+          <option value="pension">养老金</option>
+          <option value="property">房产</option>
+          <option value="other">其他</option>
+        </select>
+        <select v-model="assetStatusFilter" class="filter-select">
+          <option value="">全部状态</option>
+          <option value="active">活跃</option>
+          <option value="frozen">冻结</option>
+          <option value="closed">已关闭</option>
+        </select>
+      </div>
+      
+      <div v-if="filteredAssets.length === 0" class="empty">
+        {{ assets.length === 0 ? '暂无资产，点击右上角添加' : '没有匹配的资产' }}
+      </div>
       <div v-else class="asset-list">
-        <div v-for="asset in assets" :key="asset.id" class="asset-card">
+        <div v-for="asset in filteredAssets" :key="asset.id" class="asset-card">
           <div class="asset-icon" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
             <span class="icon-emoji">{{ getAssetIcon(asset.asset_type).icon }}</span>
           </div>
@@ -321,6 +347,24 @@ import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, c
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const assets = ref([])
+const assetSearch = ref('')
+const assetTypeFilter = ref('')
+const assetStatusFilter = ref('')
+
+const filteredAssets = computed(() => {
+  return assets.value.filter(a => {
+    if (assetSearch.value) {
+      const search = assetSearch.value.toLowerCase()
+      if (!a.name.toLowerCase().includes(search) && 
+          !(a.account && a.account.toLowerCase().includes(search))) {
+        return false
+      }
+    }
+    if (assetTypeFilter.value && a.asset_type !== assetTypeFilter.value) return false
+    if (assetStatusFilter.value && a.status !== assetStatusFilter.value) return false
+    return true
+  })
+})
 const liabilities = ref([])
 const showAddForm = ref(false)
 const showAddLiabilityForm = ref(false)
@@ -678,4 +722,10 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 
 .gold-price-display { padding: 0.5rem; background: linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%); color: white; border-radius: 6px; font-weight: 600; text-align: center; }
 .auto-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; }
+
+.filters { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }
+.filter-search { flex: 1; min-width: 150px; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
+.filter-search:focus { outline: none; border-color: var(--accent); }
+.filter-select { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; }
+.filter-select:focus { outline: none; border-color: var(--accent); }
 </style>

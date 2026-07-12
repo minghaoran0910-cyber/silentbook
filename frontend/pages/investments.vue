@@ -106,13 +106,36 @@
 
     <!-- 持仓列表 -->
     <div v-if="!loading && !loadError" class="section">
-      <h2>持仓明细 ({{ positions.length }})</h2>
-      <div v-if="positions.length === 0" class="empty-state">
+      <h2>持仓明细 ({{ filteredPositions.length }}/{{ positions.length }})</h2>
+      
+      <!-- 筛选栏 -->
+      <div class="filters">
+        <input v-model="positionSearch" type="text" placeholder="搜索名称/代码..." class="filter-search" />
+        <select v-model="positionTypeFilter" class="filter-select">
+          <option value="">全部类型</option>
+          <option value="stock">股票</option>
+          <option value="fund">基金</option>
+          <option value="bond">债券</option>
+          <option value="wealth_mgmt">银行理财</option>
+          <option value="other">其他</option>
+        </select>
+        <select v-model="positionAccountFilter" class="filter-select">
+          <option value="">全部账户</option>
+          <option v-for="acc in uniqueAccounts" :key="acc" :value="acc">{{ acc }}</option>
+        </select>
+        <select v-model="positionStatusFilter" class="filter-select">
+          <option value="">全部状态</option>
+          <option value="active">活跃</option>
+          <option value="closed">已关闭</option>
+        </select>
+      </div>
+      
+      <div v-if="filteredPositions.length === 0" class="empty-state">
         <p>暂无投资持仓</p>
         <p class="hint">点击"添加持仓"开始记录你的投资</p>
       </div>
       <div v-else class="position-list">
-        <div v-for="pos in positions" :key="pos.id" class="position-card" :class="{ closed: pos.status === 'closed' }">
+        <div v-for="pos in filteredPositions" :key="pos.id" class="position-card" :class="{ closed: pos.status === 'closed' }">
           <div class="position-header">
             <div class="position-name">
               <span class="type-badge" :class="pos.position_type">{{ typeLabel(pos.position_type) }}</span>
@@ -191,6 +214,31 @@ interface Position {
 const loading = ref(true)
 const loadError = ref('')
 const positions = ref<Position[]>([])
+const positionSearch = ref('')
+const positionTypeFilter = ref('')
+const positionAccountFilter = ref('')
+const positionStatusFilter = ref('')
+
+const uniqueAccounts = computed(() => {
+  const accounts = new Set(positions.value.map(p => p.account).filter(Boolean))
+  return Array.from(accounts).sort()
+})
+
+const filteredPositions = computed(() => {
+  return positions.value.filter(p => {
+    if (positionSearch.value) {
+      const search = positionSearch.value.toLowerCase()
+      if (!p.name.toLowerCase().includes(search) && 
+          !(p.symbol && p.symbol.toLowerCase().includes(search))) {
+        return false
+      }
+    }
+    if (positionTypeFilter.value && p.position_type !== positionTypeFilter.value) return false
+    if (positionAccountFilter.value && p.account !== positionAccountFilter.value) return false
+    if (positionStatusFilter.value && p.status !== positionStatusFilter.value) return false
+    return true
+  })
+})
 const summary = ref({ count: 0, total_value: 0, total_cost: 0, total_profit: 0, total_profit_pct: 0 })
 
 const syncing = ref(false)
@@ -684,4 +732,10 @@ onMounted(loadData)
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.filters { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }
+.filter-search { flex: 1; min-width: 150px; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
+.filter-search:focus { outline: none; border-color: var(--accent); }
+.filter-select { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; }
+.filter-select:focus { outline: none; border-color: var(--accent); }
 </style>
