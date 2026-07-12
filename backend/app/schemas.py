@@ -106,7 +106,7 @@ class LiabilityBase(BaseModel):
     interest_rate: float = Field(0, ge=0)
     monthly_payment: Optional[float] = Field(0, ge=0)  # 月还款额（允许NULL）
     remaining_periods: Optional[int] = Field(0, ge=0)  # 剩余期数（允许NULL）
-    due_date: Optional[str] = None
+    due_date: Optional[date] = None
     min_payment: Optional[float] = Field(0, ge=0)
     billing_day: Optional[int] = Field(1, ge=1, le=28)
     status: str = Field("active", pattern="^(active|paid|overdue)$")
@@ -123,7 +123,7 @@ class LiabilityUpdate(BaseModel):
     interest_rate: Optional[float] = Field(None, ge=0)
     monthly_payment: Optional[float] = Field(None, ge=0)
     remaining_periods: Optional[int] = Field(None, ge=0)
-    due_date: Optional[str] = None
+    due_date: Optional[date] = None
     min_payment: Optional[float] = Field(0, ge=0)
     billing_day: Optional[int] = Field(1, ge=1, le=28)
     status: Optional[str] = None
