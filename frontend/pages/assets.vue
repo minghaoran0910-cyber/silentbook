@@ -69,6 +69,7 @@
               <option value="fund">基金</option>
               <option value="stock">股票</option>
               <option value="bond">债券</option>
+              <option value="pension">养老金</option>
               <option value="gold">黄金</option>
               <option value="property">房产</option>
               <option value="other">其他</option>

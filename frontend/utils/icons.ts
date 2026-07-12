@@ -11,6 +11,7 @@ export const assetTypeIcons: Record<string, { icon: string; label: string; color
   stock:    { icon: '📊', label: '股票',   color: '#EF4444' },
   bond:     { icon: '📄', label: '债券',   color: '#8B5CF6' },
   property: { icon: '🏠', label: '房产',   color: '#F59E0B' },
+  pension: { icon: '👴', label: '养老金', color: '#059669' },
   gold:    { icon: '🥇', label: '黄金',   color: '#D4AF37' },
   other:    { icon: '📦', label: '其他',   color: '#6B7280' },
 }

@@ -67,7 +67,7 @@ class DashboardStats(BaseModel):
 
 class AssetBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    asset_type: str = Field(..., pattern="^(cash|savings|fund|stock|bond|gold|property|other)$")
+    asset_type: str = Field(..., pattern="^(cash|savings|fund|stock|bond|gold|pension|property|other)$")
     account: Optional[str] = Field(None, max_length=100)
     current_value: float = Field(0, ge=0)
     initial_value: float = Field(0, ge=0)

@@ -45,7 +45,7 @@ class Asset(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    asset_type = Column(String(30), nullable=False, index=True)  # cash/savings/fund/stock/bond/gold/property/other
+    asset_type = Column(String(30), nullable=False, index=True)  # cash/savings/fund/stock/bond/gold/pension/property/other
     account = Column(String(100))  # 所属机构
     current_value = Column(Float, nullable=False, default=0)  # 当前价值
     initial_value = Column(Float, default=0)  # 初始投入
