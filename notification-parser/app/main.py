@@ -356,13 +356,20 @@ async def parse_notification(notification: NotificationRequest):
     balance = extract_balance(text)
     merchant = extract_merchant(text, platform)
 
+    # 平台标识 → 账户中文名映射（与后端 Account 表一致）
+    PLATFORM_ACCOUNT_NAME = {
+        "cmb": "招商银行", "icbc": "工商银行", "ccb": "建设银行",
+        "alipay": "支付宝", "wechat_pay": "微信",
+    }
+    account_name = PLATFORM_ACCOUNT_NAME.get(platform, platform)
+
     return {
         "filtered": False,
         "filter_reason": filter_result.reason,
         "filter_confidence": filter_result.confidence,
         "amount": amount,
         "category": category,
-        "account": platform,
+        "account": account_name,
         "description": description,
         "transaction_type": tx_type,
         "raw_text": text.strip(),

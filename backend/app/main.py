@@ -148,11 +148,20 @@ async def health():
 
 # ===== 交易管理 =====
 
+# 解析器平台标识 → 账户表名称映射
+PLATFORM_ACCOUNT_MAP = {
+    "cmb": "招商银行", "icbc": "工商银行", "ccb": "建设银行",
+    "abc": "农业银行", "boc": "中国银行",
+    "alipay": "支付宝", "wechat_pay": "微信", "wechat": "微信",
+}
+
 def _update_account_balance(db: Session, account_name: str, transaction_type: str, amount: float, reverse: bool = False):
     """联动更新账户余额。reverse=True 表示回滚（删除/更新时先用）。"""
     if not account_name:
         return
-    account = db.query(Account).filter(Account.name == account_name).first()
+    # 规范化：解析器返回的平台标识映射到账户表中文名
+    normalized = PLATFORM_ACCOUNT_MAP.get(account_name, account_name)
+    account = db.query(Account).filter(Account.name == normalized).first()
     if not account:
         return
     delta = amount
