@@ -162,7 +162,7 @@
 
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
-import { getSources, updateSources, getAgentConfigs, updateAgentConfig } from '~/utils/api'
+import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi } from '~/utils/api'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: '🏦', enabled: true },
@@ -262,10 +262,7 @@ const importPdf = async (event) => {
 
 const saveAgentMode = async () => {
   try {
-    await $fetch(`${apiBase.value}/settings`, {
-      method: 'PUT',
-      body: { agent_mode: agentMode.value }
-    })
+    await updateSettingsApi({ agent_mode: agentMode.value })
   } catch (e) {
     console.error('保存分析模式失败:', e)
   }
@@ -285,13 +282,10 @@ const saveAiConfig = async () => {
   savingAiConfig.value = true
   aiConfigMessage.value = ''
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/ai-config`, {
-      method: 'PUT',
-      body: {
-        api_base: aiConfig.value.api_base,
-        api_key: aiConfig.value.api_key || undefined,
-        model_name: aiConfig.value.model_name
-      }
+    const resp = await updateAiConfig({
+      api_base: aiConfig.value.api_base,
+      api_key: aiConfig.value.api_key || undefined,
+      model_name: aiConfig.value.model_name
     })
     aiConfigMessage.value = '✅ 配置已保存'
     aiConfigMessageType.value = 'success'
@@ -310,7 +304,7 @@ const testAiConfig = async () => {
   testingAiConfig.value = true
   aiConfigMessage.value = ''
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/ai-config/test`, { method: 'POST' })
+    const resp = await testAiConfigConnection()
     if (resp.status === 'ok') {
       aiConfigMessage.value = '✅ ' + resp.message
       aiConfigMessageType.value = 'success'
@@ -329,7 +323,7 @@ const testAiConfig = async () => {
 
 const loadAiConfig = async () => {
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/ai-config`)
+    const resp = await fetchAiConfig()
     aiConfig.value = { ...resp, api_key: '' }
   } catch (e) {
     console.error('加载 AI 配置失败:', e)
@@ -347,7 +341,7 @@ const fetchOpenClawAgents = async () => {
   openclawFetchError.value = ''
   openclawAgents.value = []
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/openclaw-agents`)
+    const resp = await fetchOpenClawAgentsApi()
     if (resp.status === 'ok') {
       openclawAgents.value = resp.agents || []
       if (openclawAgents.value.length === 0) {
@@ -365,10 +359,7 @@ const fetchOpenClawAgents = async () => {
 
 const bindOpenClaw = async (agent) => {
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/openclaw-bindding`, {
-      method: 'POST',
-      body: { agent_id: agent.id, agent_label: agent.label || agent.id }
-    })
+    const resp = await bindOpenClawAgent(agent.id, agent.label || agent.id)
     openclawBinding.value = resp
     openclawAgents.value = []
   } catch (e) {
@@ -378,7 +369,7 @@ const bindOpenClaw = async (agent) => {
 
 const unbindOpenClaw = async () => {
   try {
-    await $fetch(`${apiBase.value}/settings/openclaw-bindding`, { method: 'DELETE' })
+    await unbindOpenClawAgent()
     openclawBinding.value = { bound: false, agent_id: '', agent_label: '' }
   } catch (e) {
     console.error('解除绑定失败:', e)
@@ -387,7 +378,7 @@ const unbindOpenClaw = async () => {
 
 const loadOpenClawBinding = async () => {
   try {
-    const resp = await $fetch(`${apiBase.value}/settings/openclaw-bindding`)
+    const resp = await fetchOpenClawBinding()
     openclawBinding.value = resp
   } catch (e) {
     console.error('加载 OpenClaw 绑定失败:', e)

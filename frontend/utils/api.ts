@@ -499,3 +499,50 @@ export async function triggerAssetSync(): Promise<SyncResult> {
 export async function fetchSyncStatus(): Promise<SyncStatus> {
   return request<SyncStatus>('/sync/status')
 }
+
+// ===== AI 配置 =====
+export async function fetchAiConfig(): Promise<any> {
+  return request('/settings/ai-config')
+}
+
+export async function updateAiConfig(data: { api_base?: string; api_key?: string; model_name?: string }): Promise<any> {
+  return request('/settings/ai-config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function testAiConfigConnection(): Promise<any> {
+  return request('/settings/ai-config/test', { method: 'POST' })
+}
+
+// ===== OpenClaw 绑定 =====
+export async function fetchOpenClawAgents(): Promise<any> {
+  return request('/settings/openclaw-agents')
+}
+
+export async function fetchOpenClawBinding(): Promise<any> {
+  return request('/settings/openclaw-bindding')
+}
+
+export async function bindOpenClawAgent(agentId: string, agentLabel?: string): Promise<any> {
+  return request('/settings/openclaw-bindding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_id: agentId, agent_label: agentLabel })
+  })
+}
+
+export async function unbindOpenClawAgent(): Promise<any> {
+  return request('/settings/openclaw-bindding', { method: 'DELETE' })
+}
+
+// ===== 月度统计（分析页用）=====
+export async function fetchMonthlyStats(year?: number, month?: number): Promise<any> {
+  const params = new URLSearchParams()
+  if (year) params.append('year', String(year))
+  if (month) params.append('month', String(month))
+  const q = params.toString() ? `?${params.toString()}` : ''
+  return request(`/stats/monthly${q}`)
+}

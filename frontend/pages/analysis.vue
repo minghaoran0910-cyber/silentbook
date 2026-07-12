@@ -92,7 +92,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
-import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory } from '~/utils/api'
+import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory, fetchMonthlyStats } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
 
 const analyzing = ref(false)
@@ -170,42 +170,41 @@ const formatTime = (t) => {
 const loadError = ref('')
 
 const loadAll = async () => {
+  // 仅在客户端加载（SSR 没有 auth token）
+  if (import.meta.server) return
   loadError.value = ''
+  
+  // 独立加载每个数据源，避免一个失败影响其他
   try {
-    const [data, hist] = await Promise.all([fetchLatestAnalysis(), fetchAnalysisHistory(10)])
+    const data = await fetchLatestAnalysis()
     if (data && (data.consumption || data.investment)) {
       analysis.value = data
       analysisMode.value = data.mode || 'local'
     }
+  } catch (e) {
+    console.error('加载分析数据失败:', e)
+  }
+  
+  try {
+    const hist = await fetchAnalysisHistory(10)
     if (hist) history.value = hist
-    
-    // 加载分类统计
-    try {
-      const config = useRuntimeConfig()
-      const apiBase = config.public?.apiBase || '/api'
-      const token = localStorage.getItem('auth_token')
-      const monthly = await $fetch(`${apiBase}/stats/monthly`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      })
-      if (monthly && monthly.expense_categories) {
-        categoryStats.value = monthly.expense_categories
-        totalExpense.value = monthly.total_expense || 0
-      }
-    } catch (e) {
-      console.error('加载分类统计失败:', e)
+  } catch (e) {
+    console.error('加载历史失败:', e)
+  }
+  
+  // 加载分类统计
+  try {
+    const monthly = await fetchMonthlyStats()
+    if (monthly && monthly.expense_categories) {
+      categoryStats.value = monthly.expense_categories
+      totalExpense.value = monthly.total_expense || 0
     }
   } catch (e) {
-    console.error('加载失败:', e)
-    const msg = e?.message || ''
-    if (msg.includes('登录已过期')) {
-      loadError.value = '登录已过期，请重新登录'
-      return
-    }
-    loadError.value = '加载分析数据失败，请稍后重试'
+    console.error('加载分类统计失败:', e)
   }
 }
-onMounted(() => { setTimeout(() => { clientReady.value = true }, 0); loadAll() })
-onActivated(() => { setTimeout(() => { clientReady.value = true }, 0); loadAll() })
+onMounted(() => { clientReady.value = true; loadAll() })
+onActivated(() => { clientReady.value = true; loadAll() })
 </script>
 
 <style scoped>
