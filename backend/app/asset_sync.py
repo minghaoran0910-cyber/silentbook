@@ -310,11 +310,41 @@ async def sync_all_positions(db: Session) -> Dict:
     
     db.commit()
     
+    # 同步更新资产表中的持仓对应条目
+    from .database import Asset
+    assets_updated = 0
+    for pos in positions:
+        if pos.status != "active":
+            continue
+        market_value = pos.quantity * pos.current_price
+        # 通过持仓ID精确匹配资产
+        linked_asset = db.query(Asset).filter(
+            Asset.notes == f"关联持仓ID={pos.id}, 代码={pos.symbol or 'N/A'}",
+            Asset.status == "active"
+        ).first()
+        if not linked_asset:
+            # fallback: 按名称匹配
+            linked_asset = db.query(Asset).filter(
+                Asset.name == f"[持仓] {pos.name}",
+                Asset.status == "active"
+            ).first()
+        if linked_asset:
+            old_value = linked_asset.current_value
+            linked_asset.current_value = market_value
+            linked_asset.updated_at = datetime.utcnow()
+            if abs(old_value - market_value) > 0.01:
+                assets_updated += 1
+    
+    if assets_updated > 0:
+        db.commit()
+        logger.info(f"资产表同步更新: {assets_updated} 条")
+    
     return {
         "updated": updated,
         "failed": failed,
         "skipped": len(others),
         "total": len(positions),
+        "assets_synced": assets_updated,
         "details": results,
         "synced_at": datetime.utcnow().isoformat(),
     }

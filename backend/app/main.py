@@ -4834,12 +4834,18 @@ async def update_position(position_id: int, pos: PositionUpdate, user: User = De
         setattr(position, field, value)
     position.updated_at = datetime.utcnow()
     
-    # 同步更新资产表中的对应条目
+    # 同步更新资产表中的对应条目（通过持仓ID精确匹配，避免同名持仓冲突）
     market_value = position.quantity * position.current_price
     linked_asset = db.query(Asset).filter(
-        Asset.name == f"[持仓] {position.name}",
+        Asset.notes == f"关联持仓ID={position.id}, 代码={position.symbol or 'N/A'}",
         Asset.status == "active"
     ).first()
+    if not linked_asset:
+        # fallback: 按名称匹配（兼容旧数据）
+        linked_asset = db.query(Asset).filter(
+            Asset.name == f"[持仓] {position.name}",
+            Asset.status == "active"
+        ).first()
     if linked_asset:
         linked_asset.current_value = market_value
         linked_asset.updated_at = datetime.utcnow()
@@ -4857,11 +4863,17 @@ async def close_position(position_id: int, user: User = Depends(require_user), d
     position.status = "closed"
     position.updated_at = datetime.utcnow()
     
-    # 同步关闭资产表中的对应条目
+    # 同步关闭资产表中的对应条目（通过持仓ID精确匹配）
     linked_asset = db.query(Asset).filter(
-        Asset.name == f"[持仓] {position.name}",
+        Asset.notes == f"关联持仓ID={position.id}, 代码={position.symbol or 'N/A'}",
         Asset.status == "active"
     ).first()
+    if not linked_asset:
+        # fallback: 按名称匹配（兼容旧数据）
+        linked_asset = db.query(Asset).filter(
+            Asset.name == f"[持仓] {position.name}",
+            Asset.status == "active"
+        ).first()
     if linked_asset:
         linked_asset.status = "closed"
         linked_asset.updated_at = datetime.utcnow()
@@ -4908,11 +4920,15 @@ async def add_trade(trade: TradeRecordCreate, user: User = Depends(require_user)
 
     position.updated_at = datetime.utcnow()
     
-    # 同步更新资产表
+    # 同步更新资产表（通过持仓ID精确匹配）
     market_value = position.quantity * position.current_price
     linked_asset = db.query(Asset).filter(
-        Asset.name == f"[持仓] {position.name}",
+        Asset.notes == f"关联持仓ID={position.id}, 代码={position.symbol or 'N/A'}",
     ).first()
+    if not linked_asset:
+        linked_asset = db.query(Asset).filter(
+            Asset.name == f"[持仓] {position.name}",
+        ).first()
     if linked_asset:
         if position.quantity <= 0:
             linked_asset.status = "closed"
