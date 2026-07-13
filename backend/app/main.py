@@ -499,11 +499,11 @@ async def check_abnormal_and_analyze(tx: Transaction, db: Session) -> dict:
             "description": t.description, "parsed_at": str(t.parsed_at or "")
         } for t in recent_txs]
         
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
                 f"{AGENT_API_URL}/analyze",
                 json={"transactions": tx_data},
-                timeout=90.0
+                timeout=120.0
             )
             if resp.status_code == 200:
                 result = resp.json()
@@ -1547,7 +1547,7 @@ async def analyze(user: User = Depends(require_user), db: Session = Depends(get_
                         for l in liabilities
                     ]
                 },
-                timeout=90.0
+                timeout=120.0
             )
             result = response.json()
         except Exception as e:

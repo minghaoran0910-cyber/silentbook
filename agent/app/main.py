@@ -302,10 +302,10 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
         
         # 综合建议 — 同时启动两个 agent
         consumption_task_coro = call_openclaw_agent(
-            AGENT_MAP["consumption"], consumption_task, timeout=60
+            AGENT_MAP["consumption"], consumption_task, timeout=120
         )
         investment_task_coro = call_openclaw_agent(
-            AGENT_MAP["investment"], investment_task, timeout=60
+            AGENT_MAP["investment"], investment_task, timeout=120
         )
         
         results = await asyncio.gather(consumption_task_coro, investment_task_coro, return_exceptions=True)
@@ -357,7 +357,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
     if use_openclaw and mode_used in ("openclaw", "openclaw"):
         # 尝试调用老油条 agent
         suggestion = await call_openclaw_agent(
-            AGENT_MAP["suggestion"], suggestion_prompt, timeout=60
+            AGENT_MAP["suggestion"], suggestion_prompt, timeout=120
         )
         # 如果失败，fallback 到本地
         if "无法连接" in suggestion or "失败" in suggestion or "超时" in suggestion:

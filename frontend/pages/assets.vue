@@ -465,7 +465,7 @@ const updateDueDate = () => {
   const y = dueDate.getFullYear()
   const m = String(dueDate.getMonth() + 1).padStart(2, '0')
   const d = String(dueDate.getDate()).padStart(2, '0')
-  liabilityForm.value.due_date = 
+  liabilityForm.value.due_date = `${y}-${m}-${d}`
 }
 
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
