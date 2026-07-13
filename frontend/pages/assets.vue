@@ -260,8 +260,12 @@
               <label>类型</label>
               <select v-model="liabilityForm.liability_type" required>
                 <option value="credit_card">信用卡</option>
-                <option value="loan">贷款</option>
+                <option value="credit_card_installment">信用卡分期</option>
+                <option value="huabei">花呗</option>
+                <option value="baitiao">白条</option>
+                <option value="car_loan">车贷</option>
                 <option value="mortgage">房贷</option>
+                <option value="loan">贷款</option>
                 <option value="other">其他</option>
               </select>
             </div>
@@ -280,14 +284,33 @@
                 <input v-model="liabilityForm.min_payment" type="number" step="0.01" placeholder="0.00" />
               </div>
               <div class="form-group">
+                <label>发卡银行</label>
+                <select v-model="selectedBank" @change="onBankChange">
+                  <option value="">手动设置</option>
+                  <option value="cmb">招商银行</option>
+                  <option value="icbc">工商银行</option>
+                  <option value="ccb">建设银行</option>
+                  <option value="abc">农业银行</option>
+                  <option value="boc">中国银行</option>
+                  <option value="cmbc">民生银行</option>
+                  <option value="cib">兴业银行</option>
+                  <option value="spdb">浦发银行</option>
+                  <option value="citic">中信银行</option>
+                  <option value="gdb">广发银行</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label>账单日</label>
-                <select v-model="liabilityForm.billing_day">
+                <select v-model="liabilityForm.billing_day" @change="onBillingDayChange">
                   <option v-for="d in 28" :key="d" :value="d">{{ d }}号</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>最后还款日</label>
+                <label>还款日</label>
                 <input v-model="liabilityForm.due_date" type="date" />
+                <small style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem; display: block;">
+                  账单日后 {{ repaymentDaysOffset }} 天
+                </small>
               </div>
             </template>
             <div class="form-group">
@@ -380,6 +403,70 @@ const liabilityForm = ref({
   min_payment: 0, bill_date: '', billing_day: 1
 })
 const editingLiabilityId = ref(null)
+const selectedBank = ref('')
+const repaymentDaysOffset = ref(20)  // 默认账单日后 20 天还款
+
+// 主流银行信用卡账单日/还款日规则
+const bankRules = {
+  cmb: { name: '招商银行', billingDays: [5, 7, 10, 12, 15, 17, 20, 22, 25], repaymentOffset: 18 },
+  icbc: { name: '工商银行', billingDays: [1, 5, 10, 12, 15, 20, 25, 28], repaymentOffset: 25 },
+  ccb: { name: '建设银行', billingDays: [2, 5, 7, 10, 12, 15, 17, 20, 22, 25, 27], repaymentOffset: 20 },
+  abc: { name: '农业银行', billingDays: [5, 10, 15, 20, 25], repaymentOffset: 20 },
+  boc: { name: '中国银行', billingDays: [1, 3, 5, 8, 10, 12, 15, 20, 22, 25, 28], repaymentOffset: 20 },
+  cmbc: { name: '民生银行', billingDays: [1, 5, 10, 15, 20, 25, 28], repaymentOffset: 20 },
+  cib: { name: '兴业银行', billingDays: [5, 10, 15, 20, 25], repaymentOffset: 20 },
+  spdb: { name: '浦发银行', billingDays: [5, 10, 15, 20, 25], repaymentOffset: 20 },
+  citic: { name: '中信银行', billingDays: [1, 5, 10, 15, 20, 25, 28], repaymentOffset: 20 },
+  gdb: { name: '广发银行', billingDays: [5, 10, 15, 20, 25], repaymentOffset: 20 },
+}
+
+// 选择银行时自动填充账单日和还款日偏移
+const onBankChange = () => {
+  if (selectedBank.value && bankRules[selectedBank.value]) {
+    const rule = bankRules[selectedBank.value]
+    // 自动选择该银行支持的最近账单日
+    const today = new Date().getDate()
+    const availableDays = rule.billingDays.filter(d => d >= today)
+    const suggestedDay = availableDays.length > 0 ? availableDays[0] : rule.billingDays[0]
+    liabilityForm.value.billing_day = suggestedDay
+    repaymentDaysOffset.value = rule.repaymentOffset
+    // 自动计算还款日（当前月份）
+    updateDueDate()
+  }
+}
+
+// 账单日变化时更新还款日
+const onBillingDayChange = () => {
+  updateDueDate()
+}
+
+// 根据账单日和还款日偏移计算还款日
+const updateDueDate = () => {
+  const billingDay = liabilityForm.value.billing_day
+  if (!billingDay) return
+  
+  const today = new Date()
+  const currentMonth = today.getMonth()
+  const currentYear = today.getFullYear()
+  
+  // 计算本月账单日
+  const billDate = new Date(currentYear, currentMonth, billingDay)
+  
+  // 如果今天已经过了本月账单日，用下月账单日
+  if (today > billDate) {
+    billDate.setMonth(currentMonth + 1)
+  }
+  
+  // 还款日 = 账单日 + 偏移天数
+  const dueDate = new Date(billDate)
+  dueDate.setDate(dueDate.getDate() + repaymentDaysOffset.value)
+  
+  // 格式化为 YYYY-MM-DD
+  const y = dueDate.getFullYear()
+  const m = String(dueDate.getMonth() + 1).padStart(2, '0')
+  const d = String(dueDate.getDate()).padStart(2, '0')
+  liabilityForm.value.due_date = 
+}
 
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
