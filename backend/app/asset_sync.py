@@ -304,10 +304,21 @@ async def sync_all_positions(db: Session) -> Dict:
                 "error": "获取净值失败",
             })
     
-    # 3. 同步黄金
-    if gold_positions:
+    # 3. 同步黄金（positions 表 + assets 表）
+    from .database import Asset
+    
+    # 也查找 assets 表中的黄金
+    gold_assets = db.query(Asset).filter(
+        Asset.asset_type == "gold",
+        Asset.status == "active"
+    ).all()
+    
+    all_gold = gold_positions + gold_assets
+    
+    if all_gold:
         gold_data = await fetch_gold_price()
         if gold_data:
+            # 更新 positions 表中的黄金
             for pos in gold_positions:
                 old_price = pos.current_price
                 pos.current_price = gold_data["price"]
@@ -321,12 +332,58 @@ async def sync_all_positions(db: Session) -> Dict:
                     "change_pct": gold_data.get("change_pct", 0),
                     "unit": gold_data.get("unit", "元/克"),
                 })
+            
+            # 更新 assets 表中的黄金
+            for asset in gold_assets:
+                # 尝试从 notes 解析克数，格式: "克数:50" 或 "50克"
+                grams = None
+                if asset.notes:
+                    import re
+                    match = re.search(r'(\d+\.?\d*)\s*[克g]', asset.notes, re.IGNORECASE)
+                    if match:
+                        grams = float(match.group(1))
+                
+                if grams and grams > 0:
+                    old_value = asset.current_value
+                    new_value = grams * gold_data["price"]
+                    asset.current_value = new_value
+                    asset.updated_at = datetime.utcnow()
+                    updated += 1
+                    results.append({
+                        "name": asset.name,
+                        "type": "gold",
+                        "table": "assets",
+                        "grams": grams,
+                        "old_value": old_value,
+                        "new_value": round(new_value, 2),
+                        "gold_price": gold_data["price"],
+                        "unit": gold_data.get("unit", "元/克"),
+                    })
+                else:
+                    # 没有克数信息，只记录金价参考
+                    asset.updated_at = datetime.utcnow()
+                    results.append({
+                        "name": asset.name,
+                        "type": "gold",
+                        "table": "assets",
+                        "gold_price": gold_data["price"],
+                        "unit": gold_data.get("unit", "元/克"),
+                        "note": f"当前金价{gold_data['price']}元/克，请在notes中设置克数（如：克数:50）以自动更新市值",
+                    })
         else:
             for pos in gold_positions:
                 failed += 1
                 results.append({
                     "name": pos.name,
                     "type": "gold",
+                    "error": "获取金价失败",
+                })
+            for asset in gold_assets:
+                failed += 1
+                results.append({
+                    "name": asset.name,
+                    "type": "gold",
+                    "table": "assets",
                     "error": "获取金价失败",
                 })
     
