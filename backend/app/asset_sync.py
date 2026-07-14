@@ -335,11 +335,15 @@ async def sync_all_positions(db: Session) -> Dict:
             
             # 更新 assets 表中的黄金
             for asset in gold_assets:
-                # 尝试从 notes 解析克数，格式: "克数:50" 或 "50克"
+                # 尝试从 notes 解析克数，格式: "克数:50" 或 "50克" 或 "50g"
                 grams = None
                 if asset.notes:
                     import re
-                    match = re.search(r'(\d+\.?\d*)\s*[克g]', asset.notes, re.IGNORECASE)
+                    # 匹配 "克数:5.19" 或 "克数：5.19"
+                    match = re.search(r'克数[:：]\s*(\d+\.?\d*)', asset.notes)
+                    if not match:
+                        # 匹配 "5.19克" 或 "5g"
+                        match = re.search(r'(\d+\.?\d*)\s*[克g]', asset.notes, re.IGNORECASE)
                     if match:
                         grams = float(match.group(1))
                 
