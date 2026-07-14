@@ -175,7 +175,8 @@ async def sync_all_positions(db: Session) -> Dict:
     
     # 按类型分组，减少 API 调用
     stocks = [p for p in positions if p.position_type == "stock" and p.symbol]
-    funds = [p for p in positions if p.position_type == "fund" and p.symbol]
+    # fund 和 bond 都走天天基金 API
+    funds = [p for p in positions if p.position_type in ("fund", "bond") and p.symbol]
     gold_positions = [p for p in positions if "黄金" in p.name or "gold" in p.name.lower()]
     others = [p for p in positions if p not in stocks + funds + gold_positions]
     
@@ -258,7 +259,7 @@ async def sync_all_positions(db: Session) -> Dict:
             results.append({
                 "name": pos.name or nav_data.get("name", pos.name),
                 "symbol": pos.symbol,
-                "type": "fund",
+                "type": pos.position_type,
                 "old_price": old_price,
                 "new_price": nav_data["nav"],
                 "change_pct": nav_data.get("change_pct", 0),
