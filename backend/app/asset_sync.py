@@ -29,11 +29,14 @@ HEADERS = {
 
 
 # ===== 基金净值 =====
+FUND_HISTORY_API = "https://api.fund.eastmoney.com/f10/lsjz?callback=jQuery&fundCode={code}&pageIndex=1&pageSize=1"
+
 async def fetch_fund_nav(code: str) -> Optional[Dict]:
     """
     获取基金实时估值/净值
     返回: {"nav": 净值, "nav_date": 日期, "estimated": 估值, "change_pct": 涨跌幅}
     """
+    # 1. 先尝试实时估值 API（大部分基金支持）
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -41,23 +44,49 @@ async def fetch_fund_nav(code: str) -> Optional[Dict]:
                 headers=HEADERS,
             )
             text = resp.text
-            # 解析 JSONP: jsonpgz({"fundcode":"110011","name":"...","jzrq":"2026-07-10","dwjz":"1.2345","gsz":"1.2400","gszzl":"0.45",...});
+            # 解析 JSONP: jsonpgz({"fundcode":"110011",...});
             match = re.search(r'jsonpgz\((.*)\)', text)
-            if not match:
-                logger.warning(f"基金 {code} API 返回格式异常")
-                return None
-            
-            data = json.loads(match.group(1))
-            return {
-                "nav": float(data.get("dwjz", 0)),  # 单位净值
-                "nav_date": data.get("jzrq", ""),  # 净值日期
-                "estimated": float(data.get("gsz", 0)),  # 实时估值
-                "change_pct": float(data.get("gszzl", 0)),  # 估算涨跌幅
-                "name": data.get("name", ""),
-            }
+            if match and match.group(1).strip():
+                data = json.loads(match.group(1))
+                if data.get("dwjz"):  # 有净值数据
+                    return {
+                        "nav": float(data.get("dwjz", 0)),
+                        "nav_date": data.get("jzrq", ""),
+                        "estimated": float(data.get("gsz", 0)),
+                        "change_pct": float(data.get("gszzl", 0)),
+                        "name": data.get("name", ""),
+                    }
     except Exception as e:
-        logger.error(f"获取基金 {code} 净值失败: {e}")
-        return None
+        logger.warning(f"基金 {code} 实时估值 API 失败: {e}")
+    
+    # 2. Fallback: 历史净值 API（QDII 等没有实时估值的基金）
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                FUND_HISTORY_API.format(code=code),
+                headers={**HEADERS, "Referer": "https://fundf10.eastmoney.com/"},
+            )
+            text = resp.text
+            # 解析: jQuery({"Data":{"LSJZList":[{"FSRQ":"2026-07-10","DWJZ":"1.1966",...}]}})
+            match = re.search(r'jQuery\((.*)\)', text)
+            if match:
+                data = json.loads(match.group(1))
+                lsjz_list = data.get("Data", {}).get("LSJZList", [])
+                if lsjz_list:
+                    item = lsjz_list[0]
+                    nav = float(item.get("DWJZ", 0))
+                    if nav > 0:
+                        return {
+                            "nav": nav,
+                            "nav_date": item.get("FSRQ", ""),
+                            "estimated": 0,
+                            "change_pct": float(item.get("JZZZL", 0) or 0),
+                            "name": "",
+                        }
+    except Exception as e:
+        logger.error(f"基金 {code} 历史净值 API 也失败: {e}")
+    
+    return None
 
 
 # ===== 股票价格 =====
