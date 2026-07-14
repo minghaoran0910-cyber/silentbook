@@ -442,11 +442,15 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
 
 
 @app.post("/webhook/notify/batch")
-async def webhook_notify_batch(items: List[WebhookRequest], db: Session = Depends(get_db)):
+async def webhook_notify_batch(
+    items: List[WebhookRequest],
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """批量接收通知"""
     results = []
     for item in items:
-        result = await webhook_notify(item, db)
+        result = await webhook_notify(item, background_tasks, db)
         results.append(result)
     return {"total": len(items), "results": results}
 
