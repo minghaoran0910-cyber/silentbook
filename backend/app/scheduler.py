@@ -11,7 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Transaction, AnalysisResult, BackupRecord, User
-from .tenant import reset_tenant_user_id, set_tenant_user_id
+from .tenant import get_tenant_user_id, reset_tenant_user_id, set_tenant_user_id
 
 logger = logging.getLogger("silentbook.scheduler")
 
@@ -176,6 +176,7 @@ async def _run_backup_for_user(backup_type: str = "incremental"):
             backup_type=backup_type,
             status="running",
             since_checkpoint=since,
+            user_id=get_tenant_user_id(),
         )
         db.add(record)
         db.commit()

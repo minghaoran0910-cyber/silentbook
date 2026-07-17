@@ -6253,6 +6253,7 @@ async def create_backup(
         backup_type=backup_type,
         status="running",
         since_checkpoint=since,
+        user_id=user.id,
     )
     db.add(backup_record)
     db.commit()
