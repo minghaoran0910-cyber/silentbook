@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 
 # Copy application code
 COPY ./app /app/app
+COPY ./alembic /app/alembic
+COPY ./alembic.ini /app/alembic.ini
 
 # Expose port
 EXPOSE 8000
