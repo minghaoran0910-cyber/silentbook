@@ -11,12 +11,17 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from .database import get_db, User
+from .tenant import set_tenant_user_id
 from .schemas import UserRegister, UserLogin, UserResponse, TokenResponse, PasswordResetRequest, PasswordResetConfirm
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "silentbook-secret-change-in-production")
+APP_ENV = os.getenv("APP_ENV", "production").lower()
+_INSECURE_JWT_SECRET = "silentbook-secret-change-in-production"
+JWT_SECRET = os.getenv("JWT_SECRET", _INSECURE_JWT_SECRET)
+if APP_ENV == "production" and JWT_SECRET == _INSECURE_JWT_SECRET:
+    raise RuntimeError("JWT_SECRET must be configured with a strong value in production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "30"))
@@ -72,6 +77,7 @@ def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="账号已被禁用",
         )
+    set_tenant_user_id(user.id)
     return user
 
 
@@ -188,13 +194,18 @@ def forgot_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
     if smtp_host:
         _send_reset_email(user.email, reset_token, smtp_host)
         return {"message": "重置链接已发送到您的邮箱"}
-    else:
-        # 开发模式：返回令牌供前端使用
+    elif APP_ENV in ("development", "dev", "test"):
+        # 显式开发/测试模式才允许把令牌返回给调用方
         return {
             "message": "开发模式：重置令牌已生成",
             "reset_token": reset_token,
             "expires_in": RESET_TOKEN_EXPIRE_MINUTES * 60,
         }
+    else:
+        # 生产环境绝不泄露重置令牌。
+        logger = __import__("logging").getLogger("silentbook")
+        logger.error("SMTP_HOST 未配置，无法发送密码重置邮件")
+        return {"message": "如果该账号存在，重置链接已发送"}
 
 
 @router.post("/reset-password")
@@ -233,10 +244,8 @@ def reset_password(data: PasswordResetConfirm, db: Session = Depends(get_db)):
 
 @router.post("/dev-reset-password")
 def dev_reset_password(data: dict, db: Session = Depends(get_db)):
-    """开发模式：重置密码（仅当 SILENTBOOK_MODE=auto 或 development 时可用）"""
-    import os
-    mode = os.getenv("SILENTBOOK_MODE", "auto")
-    if mode not in ("auto", "development", "dev"):
+    """开发模式重置密码；生产和未显式配置的环境始终禁用。"""
+    if APP_ENV not in ("development", "dev"):
         raise HTTPException(status_code=403, detail="仅限开发模式使用")
     
     account = data.get("account", "").strip()

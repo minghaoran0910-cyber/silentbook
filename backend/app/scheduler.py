@@ -10,12 +10,30 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
-from .database import SessionLocal, Transaction, AnalysisResult, BackupRecord
+from .database import SessionLocal, Transaction, AnalysisResult, BackupRecord, User
+from .tenant import reset_tenant_user_id, set_tenant_user_id
 
 logger = logging.getLogger("silentbook.scheduler")
 
 
-async def cleanup_old_notifications():
+async def _run_for_each_active_user(job, *args):
+    """Run a scheduled business-data job once per active tenant."""
+    db = SessionLocal()
+    try:
+        user_ids = [row[0] for row in db.query(User.id).filter(User.is_active.is_(True)).all()]
+    finally:
+        db.close()
+    for user_id in user_ids:
+        token = set_tenant_user_id(user_id)
+        try:
+            await job(*args)
+        except Exception:
+            logger.exception("租户定时任务失败: user_id=%s job=%s", user_id, job.__name__)
+        finally:
+            reset_tenant_user_id(token)
+
+
+async def _cleanup_old_notifications_for_user():
     """清理30天前的原始通知文本（节省存储空间）"""
     db: Session = SessionLocal()
     try:
@@ -34,7 +52,11 @@ async def cleanup_old_notifications():
         db.close()
 
 
-async def scheduled_daily_analysis():
+async def cleanup_old_notifications():
+    await _run_for_each_active_user(_cleanup_old_notifications_for_user)
+
+
+async def _scheduled_daily_analysis_for_user():
     """每天20:00自动运行AI分析"""
     db: Session = SessionLocal()
     try:
@@ -103,7 +125,11 @@ async def scheduled_daily_analysis():
         db.close()
 
 
-async def _run_backup(backup_type: str = "incremental"):
+async def scheduled_daily_analysis():
+    await _run_for_each_active_user(_scheduled_daily_analysis_for_user)
+
+
+async def _run_backup_for_user(backup_type: str = "incremental"):
     """执行备份的通用逻辑"""
     import json
     import gzip
@@ -112,7 +138,7 @@ async def _run_backup(backup_type: str = "incremental"):
     from datetime import datetime, date
     from .database import (
         Transaction, Asset, Liability, Account, Position,
-        TradeRecord, Transfer, AgentConfig, Setting, User
+        TradeRecord, Transfer, AgentConfig, Setting
     )
 
     BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "/tmp/silentbook-backups"))
@@ -128,7 +154,6 @@ async def _run_backup(backup_type: str = "incremental"):
         "transfers": Transfer,
         "agent_configs": AgentConfig,
         "settings": Setting,
-        "users": User,
     }
 
     start_time = _time.time()
@@ -220,15 +245,15 @@ async def _run_backup(backup_type: str = "incremental"):
 
 async def scheduled_incremental_backup():
     """每日03:00增量备份"""
-    await _run_backup("incremental")
+    await _run_for_each_active_user(_run_backup_for_user, "incremental")
 
 
 async def scheduled_full_backup():
     """每周日04:00全量备份"""
-    await _run_backup("full")
+    await _run_for_each_active_user(_run_backup_for_user, "full")
 
 
-async def scheduled_asset_sync():
+async def _scheduled_asset_sync_for_user():
     """每日15:30同步持仓实时价格"""
     import json
     from .database import SyncLog
@@ -275,6 +300,10 @@ async def scheduled_asset_sync():
         db.rollback()
     finally:
         db.close()
+
+
+async def scheduled_asset_sync():
+    await _run_for_each_active_user(_scheduled_asset_sync_for_user)
 
 
 def create_scheduler() -> AsyncIOScheduler:

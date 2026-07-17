@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, BackgroundTasks, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -7,7 +7,7 @@ from sqlalchemy import func, case, text
 from typing import List, Optional
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel, Field
-from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, Account, Transfer, BackupRecord, FinancialGoal, GoalContribution, RecurringTransaction, init_db, SyncLog
+from .database import get_db, SessionLocal, Transaction, AnalysisResult, Asset, Liability, AgentConfig, Setting, User, Account, Transfer, BackupRecord, FinancialGoal, GoalContribution, RecurringTransaction, init_db, SyncLog, WebhookEvent
 from .schemas import (
     TransactionCreate, TransactionUpdate, TransactionResponse,
     AnalysisResponse, DashboardStats,
@@ -19,12 +19,15 @@ from .schemas import (
     RecurringSummaryResponse, AutoDetectResponse
 )
 from .auth import router as auth_router, require_user, get_current_user
+from .tenant import set_tenant_user_id, reset_tenant_user_id
 import httpx
 import json
 import os
 import logging
 import time
 import collections
+import hashlib
+import hmac
 from .scheduler import create_scheduler
 from .notification_push import pusher
 from .logging_config import (
@@ -107,6 +110,7 @@ async def request_logging_middleware(request: Request, call_next):
     response = None
     status_code = 500
     
+    tenant_token = set_tenant_user_id(None)
     try:
         response = await call_next(request)
         status_code = response.status_code
@@ -134,6 +138,7 @@ async def request_logging_middleware(request: Request, call_next):
         # Reset context
         _request_id_var.set(None)
         _user_id_var.set(None)
+        reset_tenant_user_id(tenant_token)
 
 
 @app.get("/")
@@ -283,7 +288,7 @@ async def delete_all_transactions(confirm: bool = Query(False), user: User = Dep
 # ===== 通知解析 =====
 
 @app.post("/parse")
-async def parse_notification(notification: dict):
+async def parse_notification(notification: dict, user: User = Depends(require_user)):
     """解析通知并创建交易"""
     try:
         async with httpx.AsyncClient() as client:
@@ -328,7 +333,14 @@ async def parse_notification(notification: dict):
                 _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
                 db.commit()
                 db.refresh(db_transaction)
-                return {"message": "Transaction created", "id": db_transaction.id}
+                return {
+                    "status": "created",
+                    "message": "Transaction created",
+                    "id": db_transaction.id,
+                    "amount": db_transaction.amount,
+                    "category": db_transaction.category,
+                    "type": db_transaction.transaction_type,
+                }
             finally:
                 db.close()
 
@@ -350,10 +362,11 @@ class WebhookRequest(BaseModel):
     source: str = "webhook"
     timestamp: Optional[str] = None
 
-async def _background_push_and_analyze(tx_id: int, tx_data: dict):
+async def _background_push_and_analyze(tx_id: int, tx_data: dict, user_id: int):
     """后台执行推送和分析，不阻塞 webhook 响应"""
     from .database import SessionLocal
     db = SessionLocal()
+    tenant_token = set_tenant_user_id(user_id)
     try:
         tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
         if not tx:
@@ -370,10 +383,65 @@ async def _background_push_and_analyze(tx_id: int, tx_data: dict):
             logger.warning(f"后台分析失败: {e}")
     finally:
         db.close()
+        reset_tenant_user_id(tenant_token)
+
+
+async def verify_webhook(
+    request: Request,
+    x_silentbook_timestamp: str = Header(...),
+    x_silentbook_event_id: str = Header(...),
+    x_silentbook_signature: str = Header(...),
+    db: Session = Depends(get_db),
+) -> int:
+    """Verify HMAC, reject stale/replayed events, and select the webhook owner."""
+    secret = os.getenv("WEBHOOK_SECRET", "")
+    configured_user_id = os.getenv("WEBHOOK_USER_ID", "")
+    if not secret or len(secret) < 32 or not configured_user_id.isdigit():
+        logger.error("Webhook security configuration is missing or unsafe")
+        raise HTTPException(status_code=503, detail="Webhook is not configured")
+    try:
+        timestamp = int(x_silentbook_timestamp)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid webhook timestamp")
+    if abs(int(time.time()) - timestamp) > 300:
+        raise HTTPException(status_code=401, detail="Webhook timestamp expired")
+    if not x_silentbook_event_id or len(x_silentbook_event_id) > 128:
+        raise HTTPException(status_code=400, detail="Invalid webhook event id")
+
+    body = await request.body()
+    max_body_bytes = int(os.getenv("WEBHOOK_MAX_BODY_BYTES", "1048576"))
+    if len(body) > max_body_bytes:
+        raise HTTPException(status_code=413, detail="Webhook body is too large")
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        f"{timestamp}.".encode("utf-8") + body,
+        hashlib.sha256,
+    ).hexdigest()
+    supplied = x_silentbook_signature.removeprefix("sha256=")
+    if not hmac.compare_digest(expected, supplied):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    user_id = int(configured_user_id)
+    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(status_code=503, detail="Webhook owner is unavailable")
+    set_tenant_user_id(user_id)
+    if db.query(WebhookEvent).filter(WebhookEvent.event_id == x_silentbook_event_id).first():
+        raise HTTPException(status_code=409, detail="Duplicate webhook event")
+    db.add(WebhookEvent(event_id=x_silentbook_event_id, signature_timestamp=timestamp))
+    try:
+        # Reserve the event inside the request transaction. The route's transaction
+        # commit persists it together with the resulting ledger changes; failures
+        # roll both back so a legitimate sender can retry.
+        db.flush()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Duplicate webhook event")
+    return user_id
 
 
 @app.post("/webhook/notify")
-async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks, user_id: int = Depends(verify_webhook), db: Session = Depends(get_db)):
     """接收通知 webhook，自动解析并存入交易记录。推送和分析在后台异步执行。"""
     async with httpx.AsyncClient() as client:
         try:
@@ -424,7 +492,7 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
                 "description": db_tx.description,
                 "parsed_at": db_tx.parsed_at
             }
-            background_tasks.add_task(_background_push_and_analyze, db_tx.id, tx_data)
+            background_tasks.add_task(_background_push_and_analyze, db_tx.id, tx_data, user_id)
             
             return {
                 "status": "created",
@@ -445,12 +513,15 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
 async def webhook_notify_batch(
     items: List[WebhookRequest],
     background_tasks: BackgroundTasks,
+    user_id: int = Depends(verify_webhook),
     db: Session = Depends(get_db)
 ):
     """批量接收通知"""
     results = []
+    if len(items) > 100:
+        raise HTTPException(status_code=413, detail="Batch webhook accepts at most 100 items")
     for item in items:
-        result = await webhook_notify(item, background_tasks, db)
+        result = await webhook_notify(item, background_tasks, user_id, db)
         results.append(result)
     return {"total": len(items), "results": results}
 

@@ -1,22 +1,34 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date, Index
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date, Index, ForeignKey, event
+from sqlalchemy.orm import declarative_base, sessionmaker, with_loader_criteria, Session
 from datetime import datetime, date
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://silentbook:silentbook@localhost:5432/silentbook")
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
-    pool_recycle=1800,  # 回收超过30分钟的空闲连接，防止 stale connection
-    pool_pre_ping=True,  # 每次取连接前 ping 一下，避免 EOF 错误
-)
+_engine_options = {"pool_pre_ping": True}
+if not DATABASE_URL.startswith("sqlite"):
+    _engine_options.update(
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+    )
+engine = create_engine(DATABASE_URL, **_engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-class Transaction(Base):
+
+class UserOwnedMixin:
+    """Marks business data that must always belong to exactly one user."""
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+class Transaction(UserOwnedMixin, Base):
     __tablename__ = "transactions"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -39,7 +51,7 @@ class Transaction(Base):
         Index('ix_transactions_account_parsed', 'account', 'parsed_at'),
     )
 
-class Asset(Base):
+class Asset(UserOwnedMixin, Base):
     """资产：现金、存款、基金、股票、理财、房产等"""
     __tablename__ = "assets"
     
@@ -56,7 +68,7 @@ class Asset(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-class Liability(Base):
+class Liability(UserOwnedMixin, Base):
     """负债：房贷/车贷/信用卡/花呗/白条等"""
     __tablename__ = "liabilities"
     
@@ -76,7 +88,7 @@ class Liability(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-class AgentConfig(Base):
+class AgentConfig(UserOwnedMixin, Base):
     __tablename__ = "agent_configs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -86,17 +98,19 @@ class AgentConfig(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-class Setting(Base):
+class Setting(UserOwnedMixin, Base):
     """系统设置:键值对存储"""
     __tablename__ = "settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    key = Column(String(100), nullable=False, unique=True)
+    key = Column(String(100), nullable=False)
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    __table_args__ = (Index("uq_settings_user_key", "user_id", "key", unique=True),)
 
-class Account(Base):
+
+class Account(UserOwnedMixin, Base):
     """四账户体系：消费/应急/投资/目标"""
     __tablename__ = "accounts"
     
@@ -126,7 +140,7 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class Transfer(Base):
+class Transfer(UserOwnedMixin, Base):
     """账户间转账记录"""
     __tablename__ = "transfers"
     
@@ -138,7 +152,7 @@ class Transfer(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
-class AnalysisResult(Base):
+class AnalysisResult(UserOwnedMixin, Base):
     __tablename__ = "analysis_results"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -148,7 +162,7 @@ class AnalysisResult(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
-class Position(Base):
+class Position(UserOwnedMixin, Base):
     """投资持仓：股票/基金/理财产品"""
     __tablename__ = "positions"
 
@@ -167,7 +181,7 @@ class Position(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class TradeRecord(Base):
+class TradeRecord(UserOwnedMixin, Base):
     """投资交易记录：买入/卖出/分红"""
     __tablename__ = "trade_records"
 
@@ -193,7 +207,7 @@ def get_db():
         db.close()
 
 
-class FinancialGoal(Base):
+class FinancialGoal(UserOwnedMixin, Base):
     """财务目标：买房首付/应急基金/旅行基金等"""
     __tablename__ = "financial_goals"
 
@@ -211,7 +225,7 @@ class FinancialGoal(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class GoalContribution(Base):
+class GoalContribution(UserOwnedMixin, Base):
     """目标投入记录:每次往目标里存钱"""
     __tablename__ = "goal_contributions"
 
@@ -222,7 +236,7 @@ class GoalContribution(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class RecurringTransaction(Base):
+class RecurringTransaction(UserOwnedMixin, Base):
     """固定收支：工资/房租/订阅/保险等周期性收支"""
     __tablename__ = "recurring_transactions"
 
@@ -245,7 +259,7 @@ class RecurringTransaction(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class SyncLog(Base):
+class SyncLog(UserOwnedMixin, Base):
     """资产同步日志"""
     __tablename__ = "sync_logs"
 
@@ -262,7 +276,7 @@ class SyncLog(Base):
     completed_at = Column(DateTime)
 
 
-class BackupRecord(Base):
+class BackupRecord(UserOwnedMixin, Base):
     """增量备份记录"""
     __tablename__ = "backup_records"
 
@@ -278,3 +292,58 @@ class BackupRecord(Base):
     duration_seconds = Column(Float, default=0)  # 备份耗时
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime)
+
+
+class WebhookEvent(UserOwnedMixin, Base):
+    """Persisted idempotency/replay guard for signed webhook requests."""
+
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(String(128), nullable=False)
+    signature_timestamp = Column(Integer, nullable=False)
+    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("uq_webhook_events_user_event", "user_id", "event_id", unique=True),
+    )
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _enforce_tenant_reads(execute_state):
+    """Apply tenant criteria to ORM reads, updates and deletes."""
+    if (
+        not (execute_state.is_select or execute_state.is_update or execute_state.is_delete)
+        or execute_state.execution_options.get("skip_tenant_scope")
+    ):
+        return
+    from .tenant import get_tenant_user_id
+
+    user_id = get_tenant_user_id()
+    scoped_user_id = user_id if user_id is not None else -1
+    execute_state.statement = execute_state.statement.options(
+        with_loader_criteria(
+            UserOwnedMixin,
+            lambda model: model.user_id == scoped_user_id,
+            include_aliases=True,
+        )
+    )
+
+
+@event.listens_for(Session, "before_flush")
+def _enforce_tenant_writes(session, flush_context, instances):
+    """Assign ownership on inserts and reject cross-tenant writes."""
+    from .tenant import get_tenant_user_id
+
+    user_id = get_tenant_user_id()
+    if user_id is None:
+        return
+    for obj in session.new:
+        if isinstance(obj, UserOwnedMixin):
+            if obj.user_id is None:
+                obj.user_id = user_id
+            elif obj.user_id != user_id:
+                raise ValueError("cross-tenant insert rejected")
+    for obj in session.dirty | session.deleted:
+        if isinstance(obj, UserOwnedMixin) and obj.user_id != user_id:
+            raise ValueError("cross-tenant write rejected")

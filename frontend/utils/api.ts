@@ -211,7 +211,14 @@ export async function fetchAnalysisHistory(limit: number = 20): Promise<Analysis
 
 // ===== Parse =====
 
-export async function parseNotification(notification: ParseRequest): Promise<{ message: string; id: number }> {
+export async function parseNotification(notification: ParseRequest): Promise<{
+  status: string
+  message: string
+  id: number
+  amount: number
+  category: string
+  type: 'income' | 'expense'
+}> {
   return request('/parse', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

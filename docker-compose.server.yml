@@ -24,6 +24,10 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - AGENT_API_URL=${AGENT_API_URL}
       - PARSER_API_URL=${PARSER_API_URL:-http://notification-parser:6000}
+      - APP_ENV=production
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:?WEBHOOK_SECRET must be set}
+      - WEBHOOK_USER_ID=${WEBHOOK_USER_ID:?WEBHOOK_USER_ID must be set}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

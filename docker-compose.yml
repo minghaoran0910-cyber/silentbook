@@ -28,6 +28,10 @@ services:
       - DATABASE_URL=postgresql://silentbook:silentbook@db:5432/silentbook
       - AGENT_API_URL=http://agent:5000
       - PARSER_API_URL=http://notification-parser:6000
+      - APP_ENV=${APP_ENV:-development}
+      - JWT_SECRET=${JWT_SECRET:-silentbook-local-development-only}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-silentbook-local-webhook-only}
+      - WEBHOOK_USER_ID=${WEBHOOK_USER_ID:-1}
     depends_on:
       db:
         condition: service_healthy

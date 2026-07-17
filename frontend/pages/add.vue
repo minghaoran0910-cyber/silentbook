@@ -125,7 +125,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createTransaction } from '~/utils/api'
+import { createTransaction, parseNotification } from '~/utils/api'
 
 const router = useRouter()
 
@@ -191,14 +191,10 @@ const parseAndCreate = async () => {
   parsing.value = true
   parseResult.value = null
   try {
-    const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || '/api'
-    const result = await $fetch(`${apiBase}/webhook/notify`, {
-      method: 'POST',
-      body: {
-        body: notificationText.value,
-        source: 'manual_paste'
-      }
+    const result = await parseNotification({
+      title: '',
+      body: notificationText.value,
+      source: 'manual_paste'
     })
     parseResult.value = result
     if (result.status === 'created') {
