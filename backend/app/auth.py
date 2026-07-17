@@ -67,7 +67,7 @@ def get_current_user(
         return None
 
 
-def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
+async def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
     """需要登录才能访问的路由用这个依赖"""
     if not user:
         raise HTTPException(
