@@ -20,7 +20,7 @@
       </div>
 
       <div class="nav-right">
-        <button class="icon-btn" title="设置">⚙</button>
+        <NuxtLink to="/settings" class="icon-btn" title="设置" aria-label="打开设置">⚙</NuxtLink>
       </div>
     </div>
   </nav>

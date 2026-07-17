@@ -93,6 +93,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onActivated, computed } from 'vue'
 import { marked } from 'marked'
+import sanitizeHtml from 'sanitize-html'
 import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory, fetchMonthlyStats } from '~/utils/api'
 import { getCategoryIcon } from '~/utils/icons'
 
@@ -104,7 +105,11 @@ marked.setOptions({
 
 const renderMd = (text: string) => {
   if (!text) return ''
-  return marked.parse(text) as string
+  return sanitizeHtml(marked.parse(text) as string, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+    allowedAttributes: { a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title'] },
+    allowedSchemes: ['http', 'https', 'mailto'],
+  })
 }
 
 const stripMd = (text: string) => {

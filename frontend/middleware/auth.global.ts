@@ -12,9 +12,7 @@ export default defineNuxtRouteMiddleware((to) => {
   // 服务端 SSR 不检查（没有 localStorage）
   if (import.meta.server) return
 
-  // 客户端检查 token
-  const token = localStorage.getItem('auth_token')
-  if (!token) {
+  if (localStorage.getItem('authenticated') !== 'true') {
     return navigateTo('/auth')
   }
 })

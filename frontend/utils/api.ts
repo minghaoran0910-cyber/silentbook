@@ -67,43 +67,24 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const apiBase = getApiBase()
   const fullUrl = apiBase.startsWith('/') ? `${apiBase}${url}` : `${apiBase}${url}`
   
-  // 自动附加 Authorization header
   const headers = new Headers(options?.headers)
-  if (!headers.has('Authorization')) {
-    let token: string | null = null
-    if (import.meta.client) {
-      token = localStorage.getItem('auth_token')
-    } else {
-      // SSR: 从 cookie 读取 token（需要 middleware 将 cookie 同步到请求中）
-      try {
-        const event = useRequestHeaders(['cookie'])
-        const cookieHeader = event?.cookie || ''
-        const match = cookieHeader.match(/auth_token=([^;]+)/)
-        if (match) token = match[1]
-      } catch {}
-    }
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
-    }
+  if (import.meta.server) {
+    const incoming = useRequestHeaders(['cookie']).cookie
+    if (incoming) headers.set('cookie', incoming)
   }
-  
-  const response = await fetch(fullUrl, { ...options, headers })
+  const response = await fetch(fullUrl, { ...options, headers, credentials: 'include' })
   if (!response.ok) {
     // 401 时清除过期 token 并跳转登录（静默处理，不抛错）
     if (response.status === 401 && import.meta.client) {
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('authenticated')
       localStorage.removeItem('user_info')
       if (window.location.pathname !== '/auth') {
         window.location.href = '/auth'
       }
       throw new Error('登录已过期，请重新登录')
     }
-    // SSR 401: 静默返回空数据，让客户端重新加载
-    if (response.status === 401 && import.meta.server) {
-      return [] as T  // 返回空数组/对象，避免 SSR 崩溃
-    }
     const detail = await response.text().catch(() => '')
-    throw new Error(`API error ${response.status}: ${detail}`)
+    throw new Error(response.status >= 500 ? '服务暂时不可用，请稍后重试' : (detail || '请求失败'))
   }
   return response.json()
 }
@@ -377,15 +358,12 @@ export async function login(account: string, password: string): Promise<TokenDat
   })
 }
 
-export async function getCurrentUser(token: string): Promise<UserInfo> {
-  return request<UserInfo>('/auth/me', {
-    headers: { Authorization: `Bearer ${token}` }
-  })
+export async function getCurrentUser(): Promise<UserInfo> {
+  return request<UserInfo>('/auth/me')
 }
 
 export function getStoredToken(): string | null {
-  if (import.meta.server) return null
-  return localStorage.getItem('auth_token')
+  return null
 }
 
 export function getStoredUser(): UserInfo | null {
@@ -396,8 +374,9 @@ export function getStoredUser(): UserInfo | null {
 
 export function clearAuth() {
   if (import.meta.server) return
-  localStorage.removeItem('auth_token')
+  localStorage.removeItem('authenticated')
   localStorage.removeItem('user_info')
+  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
 }
 
 // ===== 财务目标 =====

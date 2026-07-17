@@ -25,11 +25,12 @@ import json
 import os
 import logging
 import time
-import collections
+import redis.asyncio as redis
 import hashlib
 import hmac
 from .scheduler import create_scheduler
 from .notification_push import pusher
+from .backup_crypto import read_backup, write_backup
 from .logging_config import (
     setup_logging, log_buffer, generate_request_id,
     set_request_context, _request_id_var, _user_id_var
@@ -43,7 +44,9 @@ PARSER_API_URL = os.getenv("PARSER_API_URL", "http://localhost:6000")
 # ===== API 限流配置 =====
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
-_request_log = collections.defaultdict(collections.deque)
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+_rate_redis = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 logger = logging.getLogger("silentbook")
@@ -63,7 +66,13 @@ async def lifespan(app: FastAPI):
     _scheduler.shutdown(wait=False)
     logger.info("定时任务调度器已关闭")
 
-app = FastAPI(title="SilentBook API", version="0.1.0", lifespan=lifespan)
+IS_PRODUCTION = os.getenv("APP_ENV", "production").lower() == "production"
+app = FastAPI(
+    title="SilentBook API", version="0.1.0", lifespan=lifespan,
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,24 +88,40 @@ app.include_router(auth_router)
 # ===== API 限流中间件 =====
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    client_ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    
-    if request.url.path in ["/health", "/"]:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+    client_ip = forwarded or (request.client.host if request.client else "unknown")
+    if not RATE_LIMIT_ENABLED or request.url.path in ["/health", "/"]:
         return await call_next(request)
-    
-    log = _request_log[client_ip]
-    while log and log[0] < now - RATE_LIMIT_WINDOW:
-        log.popleft()
-    
-    if len(log) >= RATE_LIMIT_REQUESTS:
+    bucket = f"rate:{client_ip}:{int(time.time()) // RATE_LIMIT_WINDOW}"
+    try:
+        count = await _rate_redis.incr(bucket)
+        if count == 1:
+            await _rate_redis.expire(bucket, RATE_LIMIT_WINDOW + 1)
+    except redis.RedisError:
+        logger.exception("Redis rate limiter unavailable; failing open")
+        count = 0
+    if count > RATE_LIMIT_REQUESTS:
         return JSONResponse(
             status_code=429,
             content={"detail": f"请求过于频繁，每{RATE_LIMIT_WINDOW}秒限{RATE_LIMIT_REQUESTS}次"}
         )
-    
-    log.append(now)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add browser hardening and reject cross-site cookie mutations."""
+    origin = request.headers.get("origin")
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and origin and origin not in ALLOWED_ORIGINS:
+        return JSONResponse(status_code=403, content={"detail": "非法请求来源"})
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 
 # ===== 请求日志中间件 =====
@@ -6267,11 +6292,10 @@ async def create_backup(
 
         # 写入压缩文件
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"backup_{backup_record.id}_{timestamp}.json.gz"
+        filename = f"backup_{backup_record.id}_{timestamp}.json.gz.enc"
         file_path = BACKUP_DIR / filename
 
-        with gzip.open(file_path, "wt", encoding="utf-8") as f:
-            json.dump(backup_data, f, ensure_ascii=False, default=str)
+        write_backup(file_path, backup_data)
 
         file_size = file_path.stat().st_size
         duration = _time.time() - start_time
@@ -6379,8 +6403,7 @@ async def get_backup_detail(backup_id: int, user: User = Depends(require_user), 
     preview = None
     if record.file_path and Path(record.file_path).exists():
         try:
-            with gzip.open(record.file_path, "rt", encoding="utf-8") as f:
-                data = json.load(f)
+            data = read_backup(Path(record.file_path))
             preview = {
                 "metadata": data.get("metadata"),
                 "table_names": list(data.get("tables", {}).keys()),
@@ -6413,6 +6436,7 @@ async def restore_backup(
     backup_id: int,
     tables: Optional[str] = None,
     dry_run: bool = True,
+    confirmation: Optional[str] = None,
     user: User = Depends(require_user), db: Session = Depends(get_db)
 ):
     """从备份恢复数据
@@ -6428,9 +6452,9 @@ async def restore_backup(
     if not record.file_path or not Path(record.file_path).exists():
         raise HTTPException(404, "备份文件不存在")
 
-    # 读取备份文件
-    with gzip.open(record.file_path, "rt", encoding="utf-8") as f:
-        backup_data = json.load(f)
+    if not dry_run and confirmation != f"RESTORE-{backup_id}":
+        raise HTTPException(400, f"请输入确认词 RESTORE-{backup_id}")
+    backup_data = read_backup(Path(record.file_path))
 
     # 确定要恢复的表
     if tables:

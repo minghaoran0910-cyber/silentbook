@@ -6,7 +6,7 @@ from typing import Optional
 
 import jwt
 from bcrypt import hashpw, gensalt, checkpw
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -47,15 +47,17 @@ def create_token(user: User) -> str:
 
 
 def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     """从 Bearer token 解析当前用户。token 缺失时返回 None（不报错）。"""
-    if not credentials or not credentials.credentials:
+    token = credentials.credentials if credentials and credentials.credentials else request.cookies.get("auth_token")
+    if not token:
         return None
     try:
         payload = jwt.decode(
-            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM]
         )
         user_id = int(payload.get("sub", 0))
         if not user_id:
@@ -82,7 +84,7 @@ def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-def register(data: UserRegister, db: Session = Depends(get_db)):
+def register(data: UserRegister, response: Response, db: Session = Depends(get_db)):
     """用户注册（邮箱或手机号）"""
     # 检查邮箱是否已注册
     if data.email:
@@ -106,15 +108,16 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     db.refresh(user)
 
     token = create_token(user)
+    _set_auth_cookie(response, token)
     return TokenResponse(
-        access_token=token,
+        access_token=token if APP_ENV != "production" else "",
         expires_in=JWT_EXPIRE_HOURS * 3600,
         user=UserResponse.model_validate(user),
     )
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(data: UserLogin, db: Session = Depends(get_db)):
+def login(data: UserLogin, response: Response, db: Session = Depends(get_db)):
     """用户登录（邮箱或手机号）"""
     account = data.account.strip()
     # 自动判断是邮箱还是手机号
@@ -136,11 +139,24 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="账号已被禁用")
 
     token = create_token(user)
+    _set_auth_cookie(response, token)
     return TokenResponse(
-        access_token=token,
+        access_token=token if APP_ENV != "production" else "",
         expires_in=JWT_EXPIRE_HOURS * 3600,
         user=UserResponse.model_validate(user),
     )
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "auth_token", token, httponly=True, secure=APP_ENV == "production",
+        samesite="strict", max_age=JWT_EXPIRE_HOURS * 3600, path="/",
+    )
+
+
+@router.post("/logout", status_code=204)
+def logout(response: Response):
+    response.delete_cookie("auth_token", path="/", httponly=True, secure=APP_ENV == "production", samesite="strict")
 
 
 @router.get("/me", response_model=UserResponse)

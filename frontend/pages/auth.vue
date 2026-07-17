@@ -220,6 +220,7 @@ const handleRegister = async () => {
   try {
     const resp = await fetch(`${apiBase()}/auth/register`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: regForm.email || undefined,
@@ -231,8 +232,8 @@ const handleRegister = async () => {
 
     const data = await resp.json()
 
-    if (resp.ok && data.access_token) {
-      setAuth(data.access_token, data.user)
+    if (resp.ok && data.user) {
+      setAuth('cookie', data.user)
       success.value = '注册成功！正在跳转...'
       setTimeout(() => navigateTo('/'), 800)
     } else {
@@ -253,6 +254,7 @@ const handleLogin = async () => {
   try {
     const resp = await fetch(`${apiBase()}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         account: loginForm.account,
@@ -262,8 +264,8 @@ const handleLogin = async () => {
 
     const data = await resp.json()
 
-    if (resp.ok && data.access_token) {
-      setAuth(data.access_token, data.user)
+    if (resp.ok && data.user) {
+      setAuth('cookie', data.user)
       success.value = '登录成功！'
       setTimeout(() => navigateTo('/'), 500)
     } else {
@@ -284,15 +286,14 @@ onMounted(async () => {
       const config = useRuntimeConfig()
       const apiBase = config.public?.apiBase || '/api'
       const resp = await fetch(`${apiBase}/auth/me`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+        credentials: 'include'
       })
       if (resp.ok) {
         navigateTo('/')
       } else {
         // Token 无效，清除
-        localStorage.removeItem('auth_token')
+        localStorage.removeItem('authenticated')
         localStorage.removeItem('user_info')
-        document.cookie = 'auth_token=; path=/; max-age=0'
       }
     } catch {
       // 网络错误，不清除 token

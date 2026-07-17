@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, Date, Index, ForeignKey, event
+from sqlalchemy import create_engine, Column, Integer, String, Float, Numeric, DateTime, Text, Boolean, Date, Index, ForeignKey, event
 from sqlalchemy.orm import declarative_base, sessionmaker, with_loader_criteria, Session
 from datetime import datetime, date
 import os
@@ -16,6 +16,10 @@ if not DATABASE_URL.startswith("sqlite"):
 engine = create_engine(DATABASE_URL, **_engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+# PostgreSQL stores exact decimals; existing API calculations continue to receive
+# floats until the response schema is migrated independently.
+Money = Numeric(18, 2, asdecimal=False)
+Quantity = Numeric(24, 8, asdecimal=False)
 
 
 class UserOwnedMixin:
@@ -32,7 +36,7 @@ class Transaction(UserOwnedMixin, Base):
     __tablename__ = "transactions"
     
     id = Column(Integer, primary_key=True, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     category = Column(String(50), nullable=False, index=True)
     account = Column(String(50), nullable=False, index=True)
     description = Column(Text)
@@ -59,8 +63,8 @@ class Asset(UserOwnedMixin, Base):
     name = Column(String(100), nullable=False)
     asset_type = Column(String(30), nullable=False, index=True)  # cash/savings/fund/stock/bond/gold/pension/property/other
     account = Column(String(100))  # 所属机构
-    current_value = Column(Float, nullable=False, default=0)  # 当前价值
-    initial_value = Column(Float, default=0)  # 初始投入
+    current_value = Column(Money, nullable=False, default=0)  # 当前价值
+    initial_value = Column(Money, default=0)  # 初始投入
     currency = Column(String(10), default="CNY")
     liquidity = Column(String(10), default="medium")  # high/medium/low
     status = Column(String(20), default="active", index=True)  # active/frozen/closed
@@ -75,13 +79,13 @@ class Liability(UserOwnedMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     liability_type = Column(String(30), nullable=False, index=True)  # mortgage/car_loan/credit_card/credit_card_installment/huabei/baitiao/loan/other
-    total_amount = Column(Float, nullable=False, default=0)  # 总额
-    current_amount = Column(Float, nullable=False, default=0)  # 当前待还
+    total_amount = Column(Money, nullable=False, default=0)  # 总额
+    current_amount = Column(Money, nullable=False, default=0)  # 当前待还
     interest_rate = Column(Float, default=0)  # 年利率
-    monthly_payment = Column(Float, default=0)  # 月还款额
+    monthly_payment = Column(Money, default=0)  # 月还款额
     remaining_periods = Column(Integer, default=0)  # 剩余期数（月）
     due_date = Column(Date)  # 到期日
-    min_payment = Column(Float, default=0)  # 最低还款/本期应还
+    min_payment = Column(Money, default=0)  # 最低还款/本期应还
     billing_day = Column(Integer, default=1)  # 账单日（每月几号）
     status = Column(String(20), default="active", index=True)  # active/paid/overdue
     notes = Column(Text)
@@ -118,8 +122,8 @@ class Account(UserOwnedMixin, Base):
     name = Column(String(100), nullable=False)  # 账户名称（微信/招商银行卡等）
     account_type = Column(String(30), nullable=False)  # bank/alipay/wechat/cash/fund/stock/other
     purpose = Column(String(20), nullable=False, index=True)  # consumption/emergency/investment/goal
-    balance = Column(Float, nullable=False, default=0)  # 当前余额
-    target_balance = Column(Float, default=0)  # 目标余额
+    balance = Column(Money, nullable=False, default=0)  # 当前余额
+    target_balance = Column(Money, default=0)  # 目标余额
     currency = Column(String(10), default="CNY")
     status = Column(String(20), default="active", index=True)  # active/frozen/closed
     notes = Column(Text)
@@ -147,7 +151,7 @@ class Transfer(UserOwnedMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     from_account_id = Column(Integer, nullable=False, index=True)
     to_account_id = Column(Integer, nullable=False, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
@@ -170,9 +174,9 @@ class Position(UserOwnedMixin, Base):
     name = Column(String(100), nullable=False)  # 持仓名称（如"沪深300ETF"）
     symbol = Column(String(20))  # 代码（如 510300）
     position_type = Column(String(20), nullable=False, index=True)  # stock/fund/bond/wealth_mgmt/other
-    quantity = Column(Float, default=0)  # 持有份额/股数
-    avg_cost = Column(Float, default=0)  # 平均成本价
-    current_price = Column(Float, default=0)  # 当前价格/净值
+    quantity = Column(Quantity, default=0)  # 持有份额/股数
+    avg_cost = Column(Quantity, default=0)  # 平均成本价
+    current_price = Column(Quantity, default=0)  # 当前价格/净值
     currency = Column(String(10), default="CNY")
     account = Column(String(100))  # 所属账户（证券账户等）
     status = Column(String(20), default="active", index=True)  # active/closed
@@ -188,10 +192,10 @@ class TradeRecord(UserOwnedMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     position_id = Column(Integer, nullable=False, index=True)  # 关联持仓
     trade_type = Column(String(20), nullable=False, index=True)  # buy/sell/dividend
-    quantity = Column(Float, nullable=False)  # 数量
-    price = Column(Float, nullable=False)  # 成交价
-    amount = Column(Float, nullable=False)  # 成交金额
-    fee = Column(Float, default=0)  # 手续费
+    quantity = Column(Quantity, nullable=False)  # 数量
+    price = Column(Quantity, nullable=False)  # 成交价
+    amount = Column(Money, nullable=False)  # 成交金额
+    fee = Column(Money, default=0)  # 手续费
     trade_date = Column(Date, nullable=False, index=True)  # 交易日期
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -214,8 +218,8 @@ class FinancialGoal(UserOwnedMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 目标名称
     goal_type = Column(String(30), nullable=False, index=True)  # savings/debt_payoff/investment/purchase
-    target_amount = Column(Float, nullable=False, default=0)  # 目标金额
-    current_amount = Column(Float, nullable=False, default=0)  # 当前已积累
+    target_amount = Column(Money, nullable=False, default=0)  # 目标金额
+    current_amount = Column(Money, nullable=False, default=0)  # 当前已积累
     currency = Column(String(10), default="CNY")
     deadline = Column(Date)  # 目标达成日期
     priority = Column(String(10), default="medium")  # high/medium/low
@@ -231,7 +235,7 @@ class GoalContribution(UserOwnedMixin, Base):
 
     id = Column(Integer, primary_key=True, index=True)
     goal_id = Column(Integer, nullable=False, index=True)  # 关联目标
-    amount = Column(Float, nullable=False)  # 投入金额
+    amount = Column(Money, nullable=False)  # 投入金额
     description = Column(Text)  # 备注
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -242,7 +246,7 @@ class RecurringTransaction(UserOwnedMixin, Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 名称（如"工资""房租""Netflix"）
-    amount = Column(Float, nullable=False)  # 金额
+    amount = Column(Money, nullable=False)  # 金额
     category = Column(String(50), nullable=False, index=True)  # 分类
     transaction_type = Column(String(20), nullable=False, index=True)  # income/expense
     frequency = Column(String(20), nullable=False, default="monthly")  # daily/weekly/biweekly/monthly/quarterly/yearly

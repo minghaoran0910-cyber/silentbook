@@ -276,8 +276,7 @@ function typeLabel(t: string) {
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token.value) headers['Authorization'] = `Bearer ${token.value}`
-  const res = await fetch(`${apiBase}${path}`, { ...options, headers })
+  const res = await fetch(`${apiBase}${path}`, { ...options, headers, credentials: 'include' })
   if (res.status === 401) {
     const { clearAuth } = useAuth()
     clearAuth()

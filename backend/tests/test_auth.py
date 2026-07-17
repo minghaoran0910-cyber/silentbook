@@ -215,9 +215,16 @@ class TestMe:
         assert resp.json()["email"] == "me@example.com"
 
     def test_get_me_without_token(self):
-        """不带 token 应返回 401"""
+        """没有 Bearer 或 HttpOnly Cookie 时应返回 401"""
+        client.cookies.clear()
         resp = client.get("/auth/me")
         assert resp.status_code == 401
+
+    def test_get_me_with_httponly_cookie(self):
+        """登录后不暴露 token 给 JS 也可通过 HttpOnly Cookie 认证。"""
+        resp = client.get("/auth/me")
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "me@example.com"
 
     def test_get_me_with_invalid_token(self):
         """无效 token 应返回 401"""

@@ -140,6 +140,7 @@ async def _run_backup_for_user(backup_type: str = "incremental"):
         Transaction, Asset, Liability, Account, Position,
         TradeRecord, Transfer, AgentConfig, Setting
     )
+    from .backup_crypto import write_backup
 
     BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "/tmp/silentbook-backups"))
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -210,11 +211,10 @@ async def _run_backup_for_user(backup_type: str = "incremental"):
 
         # 写入压缩文件
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"backup_{record.id}_{timestamp}.json.gz"
+        filename = f"backup_{record.id}_{timestamp}.json.gz.enc"
         file_path = BACKUP_DIR / filename
 
-        with gzip.open(file_path, "wt", encoding="utf-8") as f:
-            json.dump(backup_data, f, ensure_ascii=False, default=str)
+        write_backup(file_path, backup_data)
 
         file_size = file_path.stat().st_size
         duration = _time.time() - start_time

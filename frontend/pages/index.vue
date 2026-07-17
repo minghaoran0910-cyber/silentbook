@@ -252,6 +252,7 @@
 <script setup>
 import { ref, onMounted, onActivated, computed } from 'vue'
 import { marked } from 'marked'
+import sanitizeHtml from 'sanitize-html'
 import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
@@ -271,9 +272,9 @@ const analysis = ref({
 })
 
 const renderedAnalysis = computed(() => ({
-  consumption: marked(analysis.value.consumption || ''),
-  investment: marked(analysis.value.investment || ''),
-  suggestion: marked(analysis.value.suggestion || '')
+  consumption: sanitizeHtml(marked(analysis.value.consumption || '')),
+  investment: sanitizeHtml(marked(analysis.value.investment || '')),
+  suggestion: sanitizeHtml(marked(analysis.value.suggestion || ''))
 }))
 
 const analyzing = ref(false)

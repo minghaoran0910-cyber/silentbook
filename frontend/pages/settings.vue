@@ -241,9 +241,7 @@ const importPdf = async (event) => {
     
     const response = await fetch(`${apiBase.value}/import/pdf`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
-      },
+      credentials: 'include',
       body: formData
     })
     const result = await response.json()
