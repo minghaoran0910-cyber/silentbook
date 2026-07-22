@@ -185,15 +185,15 @@ PLATFORM_ACCOUNT_MAP = {
     "alipay": "支付宝", "wechat_pay": "微信", "wechat": "微信",
 }
 
-def _update_account_balance(db: Session, account_name: str, transaction_type: str, amount: float, reverse: bool = False):
-    """联动更新账户余额。reverse=True 表示回滚（删除/更新时先用）。"""
+def _update_account_balance(db: Session, account_name: str, transaction_type: str, amount: float, reverse: bool = False) -> Optional[float]:
+    """联动更新账户余额。reverse=True 表示回滚（删除/更新时先用）。返回更新后余额，账户不存在返回None。"""
     if not account_name:
-        return
+        return None
     # 规范化：解析器返回的平台标识映射到账户表中文名
     normalized = PLATFORM_ACCOUNT_MAP.get(account_name, account_name)
     account = db.query(Account).filter(Account.name == normalized).first()
     if not account:
-        return
+        return None
     delta = amount
     if transaction_type == 'expense':
         delta = -amount
@@ -201,6 +201,37 @@ def _update_account_balance(db: Session, account_name: str, transaction_type: st
         delta = -delta
     account.balance = (account.balance or 0) + delta
     account.updated_at = datetime.utcnow()
+    return float(account.balance)
+
+
+# IMP-040: 低余额主动告警阈值
+LOW_BALANCE_THRESHOLD = 100.0  # 余额低于此值触发告警
+
+
+async def _check_low_balance_alert(account_name: str, new_balance: float, tx_amount: float, tx_type: str):
+    """IMP-040: 支出后余额低于阈值时主动告警。仅对支出交易触发。"""
+    if new_balance is None or tx_type != 'expense':
+        return
+    if new_balance >= LOW_BALANCE_THRESHOLD:
+        return
+    normalized = PLATFORM_ACCOUNT_MAP.get(account_name, account_name)
+    title = f"🔴 低余额告警：{normalized}"
+    content = (
+        f"**账户**: {normalized}\n"
+        f"**当前余额**: ¥{new_balance:.2f}\n"
+        f"**本次支出**: ¥{tx_amount:.2f}\n"
+        f"**告警阈值**: ¥{LOW_BALANCE_THRESHOLD:.0f}\n\n"
+        f"⚠️ 余额已低于¥{LOW_BALANCE_THRESHOLD:.0f}，请及时充值！"
+    )
+    logger.warning(f"IMP-040 低余额告警: {normalized} 余额¥{new_balance:.2f} < ¥{LOW_BALANCE_THRESHOLD:.0f}")
+    try:
+        await pusher.push_to_feishu(title, content)
+    except Exception as e:
+        logger.error(f"IMP-040 飞书推送失败: {e}")
+    try:
+        await pusher.push_to_wechat(title, content)
+    except Exception as e:
+        logger.error(f"IMP-040 微信推送失败: {e}")
 
 
 @app.post("/transactions", response_model=TransactionResponse)
@@ -355,9 +386,12 @@ async def parse_notification(notification: dict, user: User = Depends(require_us
                 db.add(db_transaction)
                 db.flush()
                 # 联动账户余额
-                _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
+                new_balance = _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
                 db.commit()
                 db.refresh(db_transaction)
+                # IMP-040: 低余额主动告警
+                if new_balance is not None and new_balance < 100.0 and parsed["transaction_type"] == "expense":
+                    logger.warning(f"IMP-040 低余额告警: {parsed['account']} 余额¥{new_balance:.2f}")
                 return {
                     "status": "created",
                     "message": "Transaction created",
@@ -504,9 +538,15 @@ async def webhook_notify(req: WebhookRequest, background_tasks: BackgroundTasks,
             db.add(db_tx)
             db.flush()
             # 联动账户余额
-            _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
+            new_balance = _update_account_balance(db, parsed["account"], parsed["transaction_type"], parsed["amount"])
             db.commit()
             db.refresh(db_tx)
+            
+            # IMP-040: 低余额主动告警
+            background_tasks.add_task(
+                _check_low_balance_alert,
+                parsed["account"], new_balance, parsed["amount"], parsed["transaction_type"]
+            )
             
             # 后台异步执行推送和分析
             tx_data = {
