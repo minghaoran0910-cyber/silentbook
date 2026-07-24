@@ -88,7 +88,20 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 ## 4. 启动服务
 
-### 本地模式（推荐）
+### 轻量模式（SQLite 单文件，最简单）⭐
+
+不想装 PostgreSQL / Redis？用轻量模式，数据存本地 SQLite 文件，一条命令启动：
+
+```bash
+docker compose -f docker-compose.lite.yml up -d
+```
+
+- 无需数据库容器，数据存 `silentbook_data` 卷中的 `silentbook.db`
+- 密钥使用开发默认值，**仅限 localhost 个人使用**；对外暴露前请先配 `.env` 强密钥
+- 备份加密密钥（`BACKUP_ENCRYPTION_KEY`）默认留空，定时备份不可用，不影响记账主流程
+- 适合单人记账；多用户 / 高并发请用下面的完整模式
+
+### 本地模式（完整服务，推荐）
 
 ```bash
 docker compose up -d

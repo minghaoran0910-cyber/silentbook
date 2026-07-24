@@ -82,7 +82,7 @@ curl -fsSL https://raw.githubusercontent.com/minghaoran0910-cyber/silentbook/mai
 - [x] `install.sh` — Linux/macOS 一键安装脚本（自动生成密钥 + 拉起服务）
 - [x] `install.ps1` — Windows PowerShell 安装脚本
 - [x] 本方案文档 `docs/distribution.md`
-- [ ] `docker-compose.lite.yml` — SQLite 轻量模式（Phase 2，下个里程碑）
+- [x] `docker-compose.lite.yml` — SQLite 轻量模式（已通过服务器并发 E2E 验证：注册/并发登录/health 均正常，无跨线程错误）
 - [ ] Docker Hub 预构建镜像（Phase 3）
 
 ---

@@ -118,7 +118,17 @@ docker compose up -d
 
 ## 🎯 部署模式
 
-SilentBook 支持三种部署模式，适配不同场景：
+SilentBook 支持多种部署模式，适配不同场景：
+
+### 0. 轻量模式（最简单 · SQLite 单文件）⭐
+
+个人本地使用的最简方式——**无需 PostgreSQL、无需 Redis**，数据存本地单个 SQLite 文件，一条命令启动：
+
+```bash
+docker compose -f docker-compose.lite.yml up -d
+```
+
+适合单人记账、想快速上手、不想维护数据库的用户。多用户或对外部署请用下面的完整模式。
 
 ### 1. 本地模式（默认）
 
