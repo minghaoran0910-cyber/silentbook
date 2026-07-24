@@ -18,7 +18,7 @@ from .schemas import (
     RecurringTransactionCreate, RecurringTransactionUpdate, RecurringTransactionResponse,
     RecurringSummaryResponse, AutoDetectResponse
 )
-from .auth import router as auth_router, require_user, get_current_user
+from .auth import router as auth_router, require_user, get_current_user, hash_password
 from .tenant import set_tenant_user_id, reset_tenant_user_id
 import httpx
 import json
@@ -52,12 +52,39 @@ _rate_redis = redis.from_url(REDIS_URL, decode_responses=True)
 logger = logging.getLogger("silentbook")
 _scheduler = None
 
+
+def _auto_create_default_user():
+    """SQLite 轻量模式：首次启动且 users 表为空时，自动创建默认用户。"""
+    db_url = os.getenv("DATABASE_URL", "")
+    if not db_url.startswith("sqlite"):
+        return
+    email = os.getenv("DEFAULT_USER_EMAIL", "")
+    password = os.getenv("DEFAULT_USER_PASSWORD", "")
+    if not email or not password:
+        return
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0:
+            user = User(
+                email=email,
+                password_hash=hash_password(password),
+                nickname="默认用户",
+                is_active=True,
+            )
+            db.add(user)
+            db.commit()
+            logger.info("SQLite 轻量模式：已自动创建默认用户 %s", email)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _scheduler
     # Startup
     setup_logging()
     init_db()
+    _auto_create_default_user()
     _scheduler = create_scheduler()
     _scheduler.start()
     logger.info("定时任务调度器已启动")
@@ -1557,87 +1584,6 @@ async def apply_budget_template(template_key: str, user: User = Depends(require_
         "monthly_total": tpl["monthly_total"],
         "budgets": budgets_data,
     }
-
-
-# ===== 首次使用引导 =====
-
-@app.get("/onboarding/status")
-async def get_onboarding_status(db: Session = Depends(get_db)):
-    """检查是否需要引导"""
-    tx_count = db.query(Transaction).count()
-    asset_count = db.query(Asset).count()
-    
-    return {
-        "needs_onboarding": tx_count == 0 and asset_count == 0,
-        "has_transactions": tx_count > 0,
-        "has_assets": asset_count > 0,
-        "transaction_count": tx_count,
-        "asset_count": asset_count
-    }
-
-
-@app.post("/onboarding/init")
-async def init_first_data(data: dict, db: Session = Depends(get_db)):
-    """首次使用：录入初始资产"""
-    assets = data.get("assets", [])
-    for a in assets:
-        asset = Asset(
-            name=a.get("name", ""),
-            asset_type=a.get("asset_type", "cash"),
-            current_value=a.get("current_value", 0),
-            initial_value=a.get("initial_value", a.get("current_value", 0)),
-            status="active"
-        )
-        db.add(asset)
-    
-    db.commit()
-    return {"status": "ok", "assets_created": len(assets)}
-
-
-# ===== 用户认证（基础 JWT） =====
-
-@app.post("/auth/setup")
-async def setup_auth(data: dict, db: Session = Depends(get_db)):
-    """设置访问密码"""
-    import hashlib
-    password = data.get("password", "")
-    if not password or len(password) < 4:
-        raise HTTPException(status_code=400, detail="密码至少4位")
-    
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    existing = db.query(Setting).filter(Setting.key == "auth_password").first()
-    if existing:
-        existing.value = hashed
-    else:
-        db.add(Setting(key="auth_password", value=hashed))
-    db.commit()
-    return {"status": "ok"}
-
-
-@app.get("/auth/status")
-async def get_auth_status(db: Session = Depends(get_db)):
-    """获取认证状态"""
-    stored = db.query(Setting).filter(Setting.key == "auth_password").first()
-    return {"auth_enabled": bool(stored)}
-
-
-@app.post("/auth/verify")
-async def verify_auth(data: dict, db: Session = Depends(get_db)):
-    """验证密码，返回 token"""
-    import hashlib
-    import time
-    password = data.get("password", "")
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    
-    stored = db.query(Setting).filter(Setting.key == "auth_password").first()
-    if not stored:
-        return {"auth_enabled": False}
-    
-    if hashed != stored.value:
-        raise HTTPException(status_code=401, detail="密码错误")
-    
-    token = hashlib.md5(f"{password}{time.time()}".encode()).hexdigest()
-    return {"auth_enabled": True, "token": token}
 
 
 # ===== Agent 分析 =====
@@ -7179,13 +7125,31 @@ async def clear_logs(user: User = Depends(require_user)):
 
 from .database import Position
 
+def _verify_collaboration_key(request: Request):
+    """协作接口共享密钥校验（可选，配置 COLLABORATION_SECRET 后启用）"""
+    secret = os.getenv("COLLABORATION_SECRET", "")
+    if not secret:
+        return
+    supplied = request.headers.get("x-collaboration-key", "")
+    if not supplied or not hmac.compare_digest(secret, supplied):
+        raise HTTPException(status_code=403, detail="Invalid collaboration key")
+
+
+def _set_collaboration_tenant():
+    """协作接口设置租户上下文（默认用户 1，可配置）"""
+    user_id = int(os.getenv("COLLABORATION_USER_ID", os.getenv("WEBHOOK_USER_ID", "1")))
+    set_tenant_user_id(user_id)
+
+
 @app.get("/collaboration/moyan/consumption")
-async def collaboration_moyan_consumption(days: int = Query(default=7, le=90), db: Session = Depends(get_db)):
+async def collaboration_moyan_consumption(request: Request, days: int = Query(default=7, le=90), db: Session = Depends(get_db)):
     """
     墨砚专用：获取消费数据
     
     返回最近 N 天的交易记录，供墨砚分析和记账使用
     """
+    _verify_collaboration_key(request)
+    _set_collaboration_tenant()
     cutoff = datetime.utcnow() - timedelta(days=days)
     transactions = db.query(Transaction).filter(
         Transaction.parsed_at >= cutoff
@@ -7232,12 +7196,14 @@ async def collaboration_moyan_consumption(days: int = Query(default=7, le=90), d
 
 
 @app.get("/collaboration/yuanzhan/investment")
-async def collaboration_yuanzhan_investment(db: Session = Depends(get_db)):
+async def collaboration_yuanzhan_investment(request: Request, db: Session = Depends(get_db)):
     """
     远瞻专用：获取投资数据
     
     返回持仓、资产、收益等投资相关数据
     """
+    _verify_collaboration_key(request)
+    _set_collaboration_tenant()
     # 获取所有活跃持仓
     positions = db.query(Position).filter(
         Position.status == "active"
@@ -7298,12 +7264,14 @@ async def collaboration_yuanzhan_investment(db: Session = Depends(get_db)):
 
 
 @app.get("/collaboration/hao-ran-life/markdown")
-async def collaboration_hao_ran_life(db: Session = Depends(get_db)):
+async def collaboration_hao_ran_life(request: Request, db: Session = Depends(get_db)):
     """
     生活全景：Markdown 格式的综合数据
     
     供老油条/墨砚/远瞻共享使用
     """
+    _verify_collaboration_key(request)
+    _set_collaboration_tenant()
     # 最近 7 天消费
     cutoff_7d = datetime.utcnow() - timedelta(days=7)
     recent_txs = db.query(Transaction).filter(

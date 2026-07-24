@@ -22,7 +22,10 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
       - WEBHOOK_USER_ID=${WEBHOOK_USER_ID:-1}
       - JWT_SECRET=${JWT_SECRET:-silentbook-lite-dev-jwt-secret-change-me}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-silentbook-lite-dev-webhook-secret-change-me}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # 首次启动且 users 表为空时自动创建默认用户（免注册开箱即用）；留空则需手动注册
+      - DEFAULT_USER_EMAIL=${DEFAULT_USER_EMAIL:-admin@silentbook.local}
+      - DEFAULT_USER_PASSWORD=${DEFAULT_USER_PASSWORD:***
       # 备份加密密钥留空则定时备份不可用（不影响记账主流程）；可用 install.sh 生成
       - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY:-}
     volumes:
