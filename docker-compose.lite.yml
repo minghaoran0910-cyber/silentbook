@@ -41,8 +41,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # 浏览器直连后端（CORS 由 backend 的 ALLOWED_ORIGINS 放行 localhost:3000）
-      - NUXT_PUBLIC_API_BASE=http://localhost:8000
+      # 浏览器同源调用 /api/*，由 Nuxt server 代理转发到 backend（无需 nginx/跨域）
+      - NUXT_PUBLIC_API_BASE=/api
       - NUXT_SSR_API_BASE=http://backend:8000
     depends_on:
       backend:
