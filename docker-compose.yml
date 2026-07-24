@@ -1,5 +1,6 @@
 services:
   frontend:
+    image: dada561/silentbook-frontend:latest
     build: ./frontend
     restart: always
     ports:
@@ -20,6 +21,7 @@ services:
       start_period: 90s
 
   backend:
+    image: dada561/silentbook-backend:latest
     build: ./backend
     restart: always
     ports:
@@ -51,6 +53,7 @@ services:
       start_period: 60s
 
   notification-parser:
+    image: dada561/silentbook-parser:latest
     build: ./notification-parser
     restart: always
     ports:
@@ -63,6 +66,7 @@ services:
       start_period: 30s
 
   agent:
+    image: dada561/silentbook-agent:latest
     build: ./agent
     restart: always
     ports:

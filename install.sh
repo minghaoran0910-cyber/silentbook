@@ -111,7 +111,7 @@ fi
 
 # ---------- 5. 启动服务 ----------
 info "构建并启动全部服务（首次约 2-5 分钟）..."
-$COMPOSE up -d --build
+$COMPOSE pull 2>/dev/null; $COMPOSE up -d
 
 # ---------- 6. 等待健康检查 ----------
 info "等待服务就绪..."

@@ -7,6 +7,7 @@
 
 services:
   backend:
+    image: dada561/silentbook-backend:latest
     build: ./backend
     restart: always
     ports:
@@ -36,6 +37,7 @@ services:
       start_period: 30s
 
   frontend:
+    image: dada561/silentbook-frontend:latest
     build: ./frontend
     restart: always
     ports:
@@ -49,6 +51,7 @@ services:
         condition: service_healthy
 
   agent:
+    image: dada561/silentbook-agent:latest
     build: ./agent
     restart: always
     environment:
@@ -64,6 +67,7 @@ services:
       start_period: 30s
 
   notification-parser:
+    image: dada561/silentbook-parser:latest
     build: ./notification-parser
     restart: always
     healthcheck:

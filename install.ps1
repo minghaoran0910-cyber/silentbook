@@ -109,7 +109,8 @@ if ($envFile -match "(?m)^DASHSCOPE_API_KEY=\s*$") {
 
 # ---------- 5. 启动服务 ----------
 Write-Info "构建并启动全部服务（首次约 2-5 分钟）..."
-docker compose up -d --build
+docker compose pull 2>$null
+docker compose up -d
 
 # ---------- 6. 等待健康检查 ----------
 Write-Info "等待服务就绪..."
