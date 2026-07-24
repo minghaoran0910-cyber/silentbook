@@ -12,8 +12,9 @@
 
 银行和支付通知自动解析入账，无需手动分类；多个 AI Agent 各司其职，持续分析你的消费、投资和财务状况。数据完全属于你，本地部署，不出门。
 
-<!-- TODO: 替换为脱敏后的真实截图 -->
-<!-- ![SilentBook Dashboard](docs/assets/screenshot-dashboard.png) -->
+![SilentBook Dashboard — 深色主题，自动归类的消费/资产/报表全景](docs/assets/screenshot-dashboard.jpg)
+
+> 截图为内置演示账号数据，非真实账单。
 
 ---
 
