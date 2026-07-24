@@ -69,7 +69,23 @@
 - [Docker](https://docs.docker.com/get-docker/) 和 Docker Compose
 - 一个 LLM API Key（阿里云百炼 / OpenAI 兼容接口均可）
 
-### 三步启动
+### 方式一：一键安装（推荐）
+
+**Linux / macOS：**
+```bash
+git clone https://github.com/minghaoran0910-cyber/silentbook.git && cd silentbook
+bash install.sh
+```
+
+**Windows（PowerShell）：**
+```powershell
+git clone https://github.com/minghaoran0910-cyber/silentbook.git; cd silentbook
+.\install.ps1
+```
+
+脚本会自动检测 Docker、生成安全密钥、创建 `.env`、拉起全部服务。打包与分发的完整规划见 [docs/distribution.md](docs/distribution.md)。
+
+### 方式二：手动启动
 
 ```bash
 # 1. 克隆项目
