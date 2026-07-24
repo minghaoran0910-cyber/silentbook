@@ -6,7 +6,10 @@ import os
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://silentbook:silentbook@localhost:5432/silentbook")
 
 _engine_options = {"pool_pre_ping": True}
-if not DATABASE_URL.startswith("sqlite"):
+if DATABASE_URL.startswith("sqlite"):
+    # FastAPI 在线程池中执行同步端点，SQLite 连接必须允许跨线程使用
+    _engine_options["connect_args"] = {"check_same_thread": False}
+else:
     _engine_options.update(
         pool_size=10,
         max_overflow=20,
