@@ -31,6 +31,42 @@
 
 ---
 
+## 🔗 工作原理：通知是怎么来的？
+
+SilentBook 的"自动记账"依赖一条完整的通知链路：
+
+```
+📱 手机银行/支付宝消费通知
+    ↓
+🃏 Yoooclaw C.one 智能卡片（手机端通知同步服务）
+    ↓
+🤖 OpenClaw Agent（定时沉淀通知到 SilentBook 服务器）
+    ↓
+📥 SilentBook Webhook API（/webhook/notify）
+    ↓
+🔍 Notification Parser（自动识别银行/金额/商户/分类）
+    ↓
+💰 交易记录自动入库
+```
+
+### 前置依赖
+
+| 组件 | 作用 | 是否必须 |
+|------|------|----------|
+| [Yoooclaw C.one](https://yoooclaw.com) | 手机端通知同步 | ✅ 自动记账必须 |
+| [OpenClaw](https://docs.openclaw.ai) | AI Agent 运行时 + 通知沉淀 | ✅ 自动记账必须 |
+| SilentBook 本身 | 数据存储 + 分析 + 展示 | ✅ |
+
+> 💡 **如果你不需要自动记账**，可以跳过 C.one 和 OpenClaw，直接手动录入交易或使用 API 导入。
+
+### 📝 手动模式（不需要自动记账）
+
+如果你不想配置通知同步，SilentBook 也支持：
+- 前端手动录入交易
+- 通过 API 直接推送交易记录（见 [Webhook API 文档](docs/notification-pipeline.md)）
+
+---
+
 ## 🏗️ 架构
 
 ```
@@ -114,6 +150,18 @@ docker compose up -d
 > 首次启动需要构建镜像，约 2-5 分钟。后续启动秒级。
 
 详细配置和高级部署见 [docs/quickstart.md](docs/quickstart.md)。
+
+### 配置 AI 分析（可选但推荐）
+
+SilentBook 的 AI 分析功能需要 LLM API Key：
+
+1. 前往 [阿里云百炼](https://dashscope.aliyun.com) 注册并获取 API Key
+2. 编辑 `.env`，填入 `DASHSCOPE_API_KEY=***
+3. 重启服务：`docker compose restart agent`
+
+> 💡 如果你使用 OpenClaw 的 Agent 模式（墨砚/远瞻/老油条），还需要配置 `OPENCLAW_GATEWAY_URL`。
+> 
+> ⚠️ 不配置 API Key 也能用——记账、资产管理等核心功能不受影响，只是 AI 分析会显示"未配置"。
 
 ---
 
