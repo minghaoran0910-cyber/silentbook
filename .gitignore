@@ -32,3 +32,6 @@ logs/
 docker-compose.override.yml
 .coverage
 backend/.coverage
+
+# Internal dev docs (acceptance reports, dev logs, etc.)
+docs/internal/
