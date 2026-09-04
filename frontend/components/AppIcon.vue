@@ -60,6 +60,13 @@ import {
   PhPlus,
   PhRobot,
   PhArrowClockwise,
+  PhCloud,
+  PhRepeat,
+  PhSwap,
+  PhGift,
+  PhAirplane,
+  PhArmchair,
+  PhPawPrint,
 } from '@phosphor-icons/vue'
 
 const props = withDefaults(
@@ -116,6 +123,13 @@ const registry: Record<string, unknown> = {
   Plus: PhPlus,
   Robot: PhRobot,
   ArrowClockwise: PhArrowClockwise,
+  Cloud: PhCloud,
+  Repeat: PhRepeat,
+  Swap: PhSwap,
+  Gift: PhGift,
+  Airplane: PhAirplane,
+  Armchair: PhArmchair,
+  PawPrint: PhPawPrint,
 }
 
 const component = computed(() => registry[props.icon] || PhDotsThree)
