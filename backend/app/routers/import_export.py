@@ -93,13 +93,20 @@ async def import_csv(file: dict, user: User = Depends(require_user), db: Session
             if amount <= 0:
                 skipped += 1
                 continue
-            
+            # 类型白名单：只认收支；转账等方向不明的直接跳过并计数，
+            # 避免脏类型入库后炸掉整表查询（响应模型只接受 income/expense）
+            raw_type = (row.get("类型") or "expense").strip().lower()
+            type_map = {"income": "income", "收入": "income",
+                        "expense": "expense", "支出": "expense"}
+            if raw_type not in type_map:
+                skipped += 1
+                continue
             tx = Transaction(
                 amount=amount,
                 category=row.get("分类", "其他"),
                 account=normalize_account_name(row.get("账户", "")),
                 description=row.get("描述", ""),
-                transaction_type=row.get("类型", "expense"),
+                transaction_type=type_map[raw_type],
                 confidence=float(row.get("置信度", 1.0)),
                 parsed_at=datetime.utcnow()
             )

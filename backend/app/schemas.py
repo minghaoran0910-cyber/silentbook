@@ -31,7 +31,7 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = Field(None, min_length=1, max_length=50)
     account: Optional[str] = Field(None, min_length=1, max_length=50)
     description: Optional[str] = Field(None, max_length=500)
-    transaction_type: Optional[str] = None
+    transaction_type: Optional[str] = Field(None, pattern="^(income|expense)$")
     raw_text: Optional[str] = Field(None, max_length=2000)
     confidence: Optional[float] = Field(None, ge=0, le=1)
 

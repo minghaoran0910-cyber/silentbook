@@ -231,3 +231,27 @@ def test_import_pdf_wires_parser_and_links_balance(auth):
     d = r.json()
     assert d["status"] == "ok", d
     assert d["imported"] == 2, d
+
+
+def test_update_rejects_bad_type(auth):
+    r = client.post(
+        "/transactions",
+        json={"amount": 10.0, "category": "餐饮", "account": "现金",
+              "transaction_type": "expense"},
+        headers=auth,
+    )
+    tx_id = r.json()["id"]
+    r = client.put(f"/transactions/{tx_id}",
+                   json={"transaction_type": "transfer"}, headers=auth)
+    assert r.status_code == 422, r.text
+
+
+def test_import_csv_skips_unknown_type(auth):
+    csv_text = (
+        "日期,类型,金额,分类,账户,描述,置信度\n"
+        "2026-09-04 10:00,transfer,100.0,储蓄,现金,自动攒,1.0\n"
+        "2026-09-04 10:01,expense,50.0,餐饮,现金,午饭,1.0\n"
+    )
+    r = client.post("/import/csv", json={"content": csv_text}, headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"imported": 1, "skipped": 1}
