@@ -3,12 +3,15 @@ SilentBook Agent Engine v0.2
 
 三种分析模式：
 1. local — 本地 LLM（dashscope 直调，无需 OpenClaw）
-2. openclaw — 对接 OpenClaw subagent（墨砚管消费、远瞻管投资）
+2. openclaw — 对接 OpenClaw subagent（消费/投资/综合建议三个角色）
 3. auto — 优先 openclaw，fallback 到 local
 
 环境变量：
 - SILENTBOOK_MODE: local | openclaw | auto (默认 auto)
 - OPENCLAW_GATEWAY_URL: OpenClaw Gateway 地址
+- OPENCLAW_AGENT_CONSUMPTION / _INVESTMENT / _SUGGESTION:
+  三个分析角色分别 spawn 哪个 OpenClaw agent（默认 financial_director /
+  investment_director / main，改成你自己的 agent id 即可）
 - DASHSCOPE_API_KEY: 本地模式用的 API Key
 """
 
@@ -30,18 +33,18 @@ DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen3.7-plus")
 
-# OpenClaw agent ID 映射
+# OpenClaw agent ID 映射（环境变量可覆盖，换成你自己的 agent id）
 AGENT_MAP = {
-    "consumption": "financial_director",  # 墨砚
-    "investment": "investment_director",   # 远瞻
-    "suggestion": "main",                 # 老油条
+    "consumption": os.getenv("OPENCLAW_AGENT_CONSUMPTION", "financial_director"),
+    "investment": os.getenv("OPENCLAW_AGENT_INVESTMENT", "investment_director"),
+    "suggestion": os.getenv("OPENCLAW_AGENT_SUGGESTION", "main"),
 }
 
-# Agent 显示名
+# Agent 显示名（角色名，不绑定具体 agent）
 AGENT_NAMES = {
-    "consumption": "墨砚（财务总监）",
-    "investment": "远瞻（投资总监）",
-    "suggestion": "老油条（综合建议）",
+    "consumption": "消费分析",
+    "investment": "投资分析",
+    "suggestion": "综合建议",
 }
 
 # ===== 数据模型 =====
@@ -65,6 +68,7 @@ async def root():
         "version": "0.2.0",
         "mode": AGENT_MODE,
         "openclaw_gateway": OPENCLAW_GATEWAY_URL,
+        "openclaw_agents": AGENT_MAP,
     }
 
 @app.get("/health")
@@ -266,7 +270,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
     if use_openclaw:
         mode_used = "openclaw"
         
-        # 消费分析 — 墨砚
+        # 消费分析角色
         consumption_task = f"""你是 SilentBook 的消费分析 Agent。请分析以下财务数据，给出消费分析。
 
 交易记录：
@@ -283,7 +287,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
 
 用简洁中文回答，不超过300字。"""
         
-        # 投资分析 — 远瞻
+        # 投资分析角色
         investment_task = f"""你是 SilentBook 的投资分析 Agent。请分析以下财务数据，给出投资分析。
 
 资产情况：
@@ -340,7 +344,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
                 user_config=user_config
             )
     
-    # 综合建议 — 老油条 agent 或本地 fallback
+    # 综合建议角色或本地 fallback
     suggestion_prompt = f"""基于以下分析结果，给出综合财务建议：
 
 消费分析：{consumption}
@@ -355,7 +359,7 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
 用简洁中文回答，不超过200字。"""
     
     if use_openclaw and mode_used in ("openclaw", "openclaw"):
-        # 尝试调用老油条 agent
+        # 尝试调用综合建议角色 agent
         suggestion = await call_openclaw_agent(
             AGENT_MAP["suggestion"], suggestion_prompt, timeout=120
         )

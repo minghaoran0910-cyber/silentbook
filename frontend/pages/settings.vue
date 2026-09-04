@@ -80,8 +80,8 @@
       <!-- OpenClaw 绑定 -->
       <div class="openclaw-bindding-section">
         <h3>OpenClaw 绑定</h3>
-        <p class="config-desc">绑定后分析结果可推送到对应的 OpenClaw Agent</p>
-        
+        <p class="config-desc">绑定你自己的 OpenClaw Agent（在网关里能看到的 agent id），绑定后分析结果可推送给它</p>
+
         <div v-if="openclawBinding.bound" class="binding-status bound">
           <span class="bound-label"><AppIcon icon="Check" :size="15" /> 已绑定: {{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})</span>
           <button @click="unbindOpenClaw" class="btn-small btn-danger">解除绑定</button>
@@ -90,7 +90,7 @@
           <div class="form-actions">
             <button @click="fetchOpenClawAgents" class="btn-secondary" :disabled="fetchingAgents">
               <AppIcon v-if="!fetchingAgents" icon="MagnifyingGlass" :size="15" />
-              {{ fetchingAgents ? '获取中...' : '获取 Agent 清单' }}
+              {{ fetchingAgents ? '获取中...' : '自动发现（从网关拉取）' }}
             </button>
           </div>
           <div v-if="openclawAgents.length > 0" class="agent-select-list">
@@ -99,7 +99,28 @@
               <span class="agent-id">{{ a.id }}</span>
             </div>
           </div>
-          <div v-if="openclawFetchError" class="config-message error">{{ openclawFetchError }}</div>
+          <div v-if="openclawFetchError" class="config-message error">
+            {{ openclawFetchError }}
+            <span class="config-hint">网关不可达？检查后端 `OPENCLAW_GATEWAY_URL` 是否指向你的网关；Mac 本地可用 `http://host.docker.internal:18789`，服务器/R4S 上填网关所在机器的实际地址。连不上就用下面的手动绑定。</span>
+          </div>
+          <div class="manual-bind">
+            <div class="manual-bind-title">手动绑定</div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Agent ID（网关里的 agent id）</label>
+                <input v-model="manualBind.agentId" type="text" placeholder="如：main" />
+              </div>
+              <div class="form-group">
+                <label>显示名（可选）</label>
+                <input v-model="manualBind.agentLabel" type="text" placeholder="如：我的主 Agent" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button @click="bindManual" class="btn-primary" :disabled="bindingManual || !manualBind.agentId.trim()">
+                {{ bindingManual ? '绑定中...' : '绑定' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -205,9 +226,9 @@ const sources = ref([
 ])
 
 const agents = ref([
-  { id: 1, name: '墨砚', icon: 'ChartLine', description: '财务总监 - 消费分析', enabled: true },
-  { id: 2, name: '远瞻', icon: 'TrendUp', description: '投资总监 - 投资分析', enabled: true },
-  { id: 3, name: '老油条', icon: 'BookOpen', description: '综合建议 - 财务规划', enabled: true }
+  { id: 1, name: '消费分析', icon: 'ChartLine', description: '支出结构与异常消费分析', enabled: true },
+  { id: 2, name: '投资分析', icon: 'TrendUp', description: '资产配置与收益分析', enabled: true },
+  { id: 3, name: '综合建议', icon: 'BookOpen', description: '财务健康度与行动建议', enabled: true }
 ])
 
 const agentMode = ref('auto')
@@ -394,6 +415,8 @@ const openclawBinding = ref({ bound: false, agent_id: '', agent_label: '' })
 const openclawAgents = ref([])
 const fetchingAgents = ref(false)
 const openclawFetchError = ref('')
+const manualBind = ref({ agentId: '', agentLabel: '' })
+const bindingManual = ref(false)
 
 const fetchOpenClawAgents = async () => {
   fetchingAgents.value = true
@@ -423,6 +446,23 @@ const bindOpenClaw = async (agent) => {
     openclawAgents.value = []
   } catch (e) {
     openclawFetchError.value = '绑定失败: ' + (e.message || e)
+  }
+}
+
+const bindManual = async () => {
+  const agentId = manualBind.value.agentId.trim()
+  if (!agentId) return
+  bindingManual.value = true
+  openclawFetchError.value = ''
+  try {
+    const resp = await bindOpenClawAgent(
+      agentId, manualBind.value.agentLabel.trim() || agentId)
+    openclawBinding.value = resp
+    manualBind.value = { agentId: '', agentLabel: '' }
+  } catch (e) {
+    openclawFetchError.value = '绑定失败: ' + (e.message || e)
+  } finally {
+    bindingManual.value = false
   }
 }
 
@@ -952,6 +992,26 @@ h1 {
   color: var(--text-secondary);
   font-size: 0.8rem;
   font-family: monospace;
+}
+
+.config-hint {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.manual-bind {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
+.manual-bind-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
 }
 
 .pdf-hint {

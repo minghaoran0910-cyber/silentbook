@@ -79,7 +79,7 @@ def push(items: list):
 | 模式 | 说明 | 需要配置 |
 |------|------|----------|
 | `local` | 后端直调 OpenAI 兼容接口（百炼等） | 用户在设置页填 API Base/Key/模型，或 `.env` 的 `DASHSCOPE_API_KEY` |
-| `openclaw` | 经 OpenClaw Gateway spawn subagent（墨砚管消费/远瞻管投资） | 容器 `OPENCLAW_GATEWAY_URL`（默认 `http://host.docker.internal:18789`，R4S 等非桌面环境按实际改） |
+| `openclaw` | 经 OpenClaw Gateway spawn subagent（消费/投资/综合建议三个角色，agent id 由 `OPENCLAW_AGENT_CONSUMPTION/_INVESTMENT/_SUGGESTION` 环境变量配置，默认 financial_director / investment_director / main） | 容器 `OPENCLAW_GATEWAY_URL`（Mac 本地默认 `http://host.docker.internal:18789`，服务器/R4S 上填网关所在机器的实际地址） |
 | `auto`（默认） | 优先 openclaw，失败回退 local | 同上 |
 
 无 Key 时分析接口返回占位提示且**不入库**（历史不被污染）。

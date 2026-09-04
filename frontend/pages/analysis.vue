@@ -25,7 +25,6 @@
           <div class="card-header">
             <AppIcon icon="ChartLine" :size="22" class="card-icon" />
             <h2>消费分析</h2>
-            <span v-if="analysisMode === 'openclaw'" class="agent-badge">墨砚</span>
           </div>
           <div class="card-content markdown-body" v-html="renderMd(analysis.consumption)"></div>
         </div>
@@ -34,7 +33,6 @@
           <div class="card-header">
             <AppIcon icon="TrendUp" :size="22" class="card-icon" />
             <h2>投资分析</h2>
-            <span v-if="analysisMode === 'openclaw'" class="agent-badge">远瞻</span>
           </div>
           <div class="card-content markdown-body" v-html="renderMd(analysis.investment)"></div>
         </div>

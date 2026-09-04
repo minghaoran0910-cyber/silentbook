@@ -161,8 +161,9 @@ HTTPS 部署保持默认 `true`。
 2. 编辑 `.env`，填入 `DASHSCOPE_API_KEY=***`
 3. 重启服务：`docker compose restart agent`
 
-> 💡 如果你使用 OpenClaw 的 Agent 模式（墨砚/远瞻/老油条），还需要配置 `OPENCLAW_GATEWAY_URL`，
-> 并在前端设置页完成 OpenClaw 绑定。详见 [OpenClaw 接入文档](docs/openclaw-integration.md)。
+> 💡 如果你使用 OpenClaw 的 Agent 模式，还需要配置 `OPENCLAW_GATEWAY_URL`
+> 指向你的网关，并在前端设置页绑定你自己的 Agent（支持自动发现和手动绑定）。
+> 详见 [OpenClaw 接入文档](docs/openclaw-integration.md)。
 >
 > ⚠️ 不配置 API Key 也能用——记账、资产管理等核心功能不受影响，只是 AI 分析会显示"未配置"（且不会写入垃圾数据）。
 

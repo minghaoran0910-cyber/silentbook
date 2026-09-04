@@ -12,6 +12,9 @@ services:
     restart: always
     ports:
       - "127.0.0.1:8000:8000"
+    extra_hosts:
+      # Mac 本地 OpenClaw 网关探测用；Linux/R4S 上无影响
+      - "host.docker.internal:host-gateway"
     environment:
       - DATABASE_URL=sqlite:////data/silentbook.db
       - APP_ENV=${APP_ENV:-development}
@@ -62,6 +65,10 @@ services:
       # AI 分析需要 LLM Key；留空则 AI 功能不可用，记账主流程不受影响
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - SILENTBOOK_MODE=${SILENTBOOK_MODE:-local}
+      # OpenClaw 三角色 agent id（换成你自己的）
+      - OPENCLAW_AGENT_CONSUMPTION=${OPENCLAW_AGENT_CONSUMPTION:-financial_director}
+      - OPENCLAW_AGENT_INVESTMENT=${OPENCLAW_AGENT_INVESTMENT:-investment_director}
+      - OPENCLAW_AGENT_SUGGESTION=${OPENCLAW_AGENT_SUGGESTION:-main}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
       interval: 30s

@@ -116,7 +116,7 @@ async def clear_logs(user: User = Depends(require_user)):
     return {"message": "日志缓冲区已清空"}
 
 
-# ===== 协作 API（给墨砚/远瞻等本地 Agent 用，无需认证） =====
+# ===== 协作 API（给本地 Agent 用，无需认证） =====
 
 from ..database import Position
 
@@ -140,9 +140,9 @@ def _set_collaboration_tenant():
 @router.get("/collaboration/moyan/consumption")
 async def collaboration_moyan_consumption(request: Request, days: int = Query(default=7, le=90), db: Session = Depends(get_db)):
     """
-    墨砚专用：获取消费数据
-    
-    返回最近 N 天的交易记录，供墨砚分析和记账使用
+    消费分析角色专用：获取消费数据
+
+    返回最近 N 天的交易记录，供消费分析与记账使用
     """
     _verify_collaboration_key(request)
     _set_collaboration_tenant()
@@ -194,7 +194,7 @@ async def collaboration_moyan_consumption(request: Request, days: int = Query(de
 @router.get("/collaboration/yuanzhan/investment")
 async def collaboration_yuanzhan_investment(request: Request, db: Session = Depends(get_db)):
     """
-    远瞻专用：获取投资数据
+    投资分析角色专用：获取投资数据
     
     返回持仓、资产、收益等投资相关数据
     """
@@ -264,7 +264,7 @@ async def collaboration_hao_ran_life(request: Request, db: Session = Depends(get
     """
     生活全景：Markdown 格式的综合数据
     
-    供老油条/墨砚/远瞻共享使用
+    供各分析角色共享使用
     """
     _verify_collaboration_key(request)
     _set_collaboration_tenant()
