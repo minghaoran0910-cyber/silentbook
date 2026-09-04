@@ -47,6 +47,26 @@ AGENT_NAMES = {
     "suggestion": "综合建议",
 }
 
+# 本文件内各调用函数产生的错误文本前缀（call_openclaw_agent / call_llm /
+# gather 异常包装）。fallback 判定只认这些前缀，严禁用 "失败"/"超时" 等
+# 子串去匹配正文——正常分析里出现“上次投资失败”“避免超时费”会被误杀。
+_AGENT_ERROR_PREFIXES = (
+    "⚠️ 无法连接",
+    "OpenClaw agent 调用失败",
+    "LLM 调用失败",
+    "Agent 执行失败",
+    "消费分析失败",
+    "投资分析失败",
+)
+
+
+def _is_agent_error(text: str) -> bool:
+    """判定是否为调用失败（而非正常的分析正文）。"""
+    if not text:
+        return True
+    t = text.lstrip()
+    return t.startswith(_AGENT_ERROR_PREFIXES)
+
 # ===== 数据模型 =====
 class AnalysisRequest(BaseModel):
     transactions: List[Dict]
@@ -324,8 +344,8 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
         consumption = results[0] if not isinstance(results[0], Exception) else f"消费分析失败: {results[0]}"
         investment = results[1] if not isinstance(results[1], Exception) else f"投资分析失败: {results[1]}"
         
-        # 检查是否需要 fallback
-        if AGENT_MODE == "auto" and ("无法连接" in consumption or "无法连接" in investment):
+        # 检查是否需要 fallback（只认错误前缀，不扫正文子串）
+        if AGENT_MODE == "auto" and (_is_agent_error(consumption) or _is_agent_error(investment)):
             mode_used = "local (fallback)"
             consumption = ""
             investment = ""
@@ -370,8 +390,8 @@ async def do_analysis(request: AnalysisRequest) -> AnalysisResponse:
         suggestion = await call_openclaw_agent(
             AGENT_MAP["suggestion"], suggestion_prompt, timeout=120
         )
-        # 如果失败，fallback 到本地
-        if "无法连接" in suggestion or "失败" in suggestion or "超时" in suggestion:
+        # 如果失败，fallback 到本地（只认错误前缀，正文含“失败/超时”不再误杀）
+        if _is_agent_error(suggestion):
             suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。", user_config=user_config)
     else:
         suggestion = await call_llm(suggestion_prompt, "你是 SilentBook 的财务规划 Agent。", user_config=user_config)
