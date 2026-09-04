@@ -59,6 +59,20 @@ source 标识表、三 Agent 模式）：[docs/openclaw-integration.md](docs/ope
 > 💡 **如果你不需要自动记账**，可以跳过采集和 OpenClaw，直接手动录入、
 > 粘贴通知解析，或用 CSV / PDF 流水导入。
 
+### ⚠️ 自动记账的前置依赖声明
+
+自动记账依赖一条**能把手机通知沉淀出来**的通道（三选一，配好任意一条即可）：
+
+| 方案 | 适用 | 说明 |
+|------|------|------|
+| Cone 智能卡片（或同类通知沉淀服务） | iPhone（主力推荐） | 硬件/服务把银行通知同步出来再推给 OpenClaw |
+| Mac/PC 中继 | iPhone（已有电脑） | 系统通知同步到电脑，OpenClaw 插件读取后推送 |
+| Tasker 直推 | **仅 Android** | 无需任何第三方，详见 [docs/tasker-android.md](docs/tasker-android.md) |
+
+> iOS 系统不允许第三方 App 直接监听银行通知，这是苹果的限制，
+> 不是本项目能绕开的——所以 iPhone 目前必须走 Cone 卡或电脑中继。
+> Android 有系统级通知监听接口，一条 Tasker 配置直推 webhook 即可。
+
 ---
 
 ## 🏗️ 架构
