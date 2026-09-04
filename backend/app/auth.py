@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .database import get_db, User
 from .tenant import set_tenant_user_id
-from .schemas import UserRegister, UserLogin, UserResponse, TokenResponse, PasswordResetRequest, PasswordResetConfirm
+from .schemas import UserRegister, UserLogin, UserResponse, TokenResponse, PasswordResetRequest, PasswordResetConfirm, PasswordChange
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -168,6 +168,18 @@ def logout(response: Response):
 def get_me(user: User = Depends(require_user)):
     """获取当前登录用户信息"""
     return user
+
+
+@router.post("/change-password")
+def change_password(data: PasswordChange, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """登录态修改密码：校验旧密码。成功后请用新密码重新登录。"""
+    if not verify_password(data.old_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="旧密码不正确")
+    if data.old_password == data.new_password:
+        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+    return {"message": "密码修改成功，请重新登录"}
 
 
 # ===== 密码找回 =====

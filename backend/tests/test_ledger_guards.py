@@ -255,3 +255,28 @@ def test_import_csv_skips_unknown_type(auth):
     r = client.post("/import/csv", json={"content": csv_text}, headers=auth)
     assert r.status_code == 200, r.text
     assert r.json() == {"imported": 1, "skipped": 1}
+
+
+def test_change_password_flow(auth):
+    # 旧密码错误被拒
+    r = client.post("/auth/change-password",
+                    json={"old_password": "wrongpass", "new_password": "Newpass123"},
+                    headers=auth)
+    assert r.status_code == 400, r.text
+    # 新密码太短被拒
+    r = client.post("/auth/change-password",
+                    json={"old_password": "Testpass123", "new_password": "short"},
+                    headers=auth)
+    assert r.status_code == 422, r.text
+    # 正常修改
+    r = client.post("/auth/change-password",
+                    json={"old_password": "Testpass123", "new_password": "Newpass123"},
+                    headers=auth)
+    assert r.status_code == 200, r.text
+    # 旧密码登录失败，新密码可以
+    r = client.post("/auth/login",
+                    json={"account": "ledger@test.local", "password": "Testpass123"})
+    assert r.status_code in (401, 403, 422), r.text
+    r = client.post("/auth/login",
+                    json={"account": "ledger@test.local", "password": "Newpass123"})
+    assert r.status_code == 200, r.text

@@ -213,6 +213,12 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=128)
 
 
+class PasswordChange(BaseModel):
+    """登录态修改密码：校验旧密码 + 新密码"""
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 # ===== 多账户管理（四账户体系） =====
 
 ACCOUNT_TYPES = {"bank", "alipay", "wechat", "cash", "fund", "stock", "other"}

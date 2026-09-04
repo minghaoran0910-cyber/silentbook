@@ -131,6 +131,42 @@
     </div>
 
     <div class="settings-section">
+      <h2>账户安全</h2>
+      <p class="section-desc">修改登录密码（需验证旧密码，成功后请重新登录）</p>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>旧密码</label>
+          <div class="password-field">
+            <input v-model="pwdForm.oldPassword" :type="showPwd.old ? 'text' : 'password'" placeholder="输入旧密码" autocomplete="current-password" />
+            <button type="button" class="icon-btn" @click="showPwd.old = !showPwd.old" :aria-label="showPwd.old ? '隐藏' : '显示'">
+              <AppIcon :icon="showPwd.old ? 'EyeSlash' : 'Eye'" :size="16" />
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>新密码（至少 6 位）</label>
+          <div class="password-field">
+            <input v-model="pwdForm.newPassword" :type="showPwd.new ? 'text' : 'password'" placeholder="输入新密码" autocomplete="new-password" />
+            <button type="button" class="icon-btn" @click="showPwd.new = !showPwd.new" :aria-label="showPwd.new ? '隐藏' : '显示'">
+              <AppIcon :icon="showPwd.new ? 'EyeSlash' : 'Eye'" :size="16" />
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>确认新密码</label>
+          <input v-model="pwdForm.confirmPassword" type="password" placeholder="再次输入新密码" autocomplete="new-password" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button @click="handleChangePassword" class="btn-primary" :disabled="changingPwd">
+          {{ changingPwd ? '修改中...' : '修改密码' }}
+        </button>
+      </div>
+      <div v-if="pwdMessage" class="config-message" :class="pwdMessageType">{{ pwdMessage }}</div>
+    </div>
+
+    <div class="settings-section">
       <h2>数据管理</h2>
       <p class="section-desc">导入导出数据</p>
       
@@ -158,7 +194,7 @@
 
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
-import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile } from '~/utils/api'
+import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth } from '~/utils/api'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: 'Bank', enabled: true },
@@ -178,6 +214,48 @@ const agentMode = ref('auto')
 // 当前生效的后端地址（只读展示，由部署配置决定，不可在此修改）
 const effectiveApiBase = ref('/api')
 const importResult = ref(null)
+
+// 修改密码
+const pwdForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const showPwd = ref({ old: false, new: false })
+const changingPwd = ref(false)
+const pwdMessage = ref('')
+const pwdMessageType = ref('')
+
+const handleChangePassword = async () => {
+  pwdMessage.value = ''
+  if (!pwdForm.value.oldPassword || !pwdForm.value.newPassword) {
+    pwdMessage.value = '请填写旧密码和新密码'
+    pwdMessageType.value = 'error'
+    return
+  }
+  if (pwdForm.value.newPassword.length < 6) {
+    pwdMessage.value = '新密码至少 6 位'
+    pwdMessageType.value = 'error'
+    return
+  }
+  if (pwdForm.value.newPassword !== pwdForm.value.confirmPassword) {
+    pwdMessage.value = '两次输入的新密码不一致'
+    pwdMessageType.value = 'error'
+    return
+  }
+  changingPwd.value = true
+  try {
+    await changePasswordApi(pwdForm.value.oldPassword, pwdForm.value.newPassword)
+    pwdMessage.value = '密码修改成功，正在跳转重新登录…'
+    pwdMessageType.value = 'success'
+    pwdForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+    setTimeout(() => {
+      clearAuth()
+      navigateTo('/auth')
+    }, 1200)
+  } catch (e) {
+    pwdMessage.value = '修改失败: ' + (e.message || '未知错误')
+    pwdMessageType.value = 'error'
+  } finally {
+    changingPwd.value = false
+  }
+}
 
 // AI 配置
 const aiConfig = ref({ api_base: '', api_key: '', api_key_masked: '', model_name: '' })
@@ -569,6 +647,78 @@ h1 {
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+/* 账户安全表单 */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-group label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-group input {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-field input {
+  padding-right: 2.5rem;
+}
+
+.password-field .icon-btn {
+  position: absolute;
+  right: 0.4rem;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.password-field .icon-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 数据管理 */

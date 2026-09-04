@@ -652,6 +652,14 @@ export async function fetchFxCurrencies(): Promise<any> {
   return request<any>('/fx/currencies')
 }
 
+export async function changePassword(oldPassword: string, newPassword: string): Promise<any> {
+  return request<any>('/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+  })
+}
+
 // ===== 月度统计（分析页用）=====
 export async function fetchMonthlyStats(year?: number, month?: number): Promise<any> {
   const params = new URLSearchParams()
