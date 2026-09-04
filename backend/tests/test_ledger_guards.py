@@ -320,3 +320,41 @@ def test_analysis_import_rejects_bad_signature(auth):
                      {"consumption": "a", "investment": "b", "suggestion": "c"},
                      "ana-x", secret="wrong")
     assert r.status_code == 401
+
+
+def test_demo_seed_only_on_empty_db(auth):
+    r = client.get("/demo/status", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["transaction_count"] == 0
+    r = client.post("/demo/seed", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["imported_transactions"] > 200
+    r = client.get("/demo/status", headers=auth)
+    assert r.json()["seeded"] is True
+    # 首页仪表盘有数
+    r = client.get("/stats/dashboard", headers=auth)
+    assert r.json()["transaction_count"] > 200
+    assert r.json()["total_assets"] > 0
+    # 第二次拒绝
+    r = client.post("/demo/seed", headers=auth)
+    assert r.status_code == 409
+
+
+def test_production_security_gate():
+    import app.main as main_mod
+    import os
+    old = dict(os.environ)
+    try:
+        os.environ["APP_ENV"] = "development"
+        assert main_mod.check_production_secrets() == []
+        os.environ["APP_ENV"] = "production"
+        os.environ["JWT_SECRET"] = "silentbook-local-development-only"
+        os.environ["WEBHOOK_SECRET"] = "x"
+        problems = main_mod.check_production_secrets()
+        assert len(problems) == 2, problems
+        os.environ["JWT_SECRET"] = "a" * 64
+        os.environ["WEBHOOK_SECRET"] = "b" * 64
+        assert main_mod.check_production_secrets() == []
+    finally:
+        os.environ.clear()
+        os.environ.update(old)

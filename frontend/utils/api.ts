@@ -660,6 +660,15 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   })
 }
 
+// ===== 演示数据（空库体验，载入后可用清空恢复）=====
+export async function fetchDemoStatus(): Promise<any> {
+  return request<any>('/demo/status')
+}
+
+export async function seedDemoData(): Promise<any> {
+  return request<any>('/demo/seed', { method: 'POST' })
+}
+
 // ===== 月度统计（分析页用）=====
 export async function fetchMonthlyStats(year?: number, month?: number): Promise<any> {
   const params = new URLSearchParams()

@@ -205,9 +205,20 @@
         </label>
       </div>
       <p class="pdf-hint">支持招商银行标准格式 PDF 流水</p>
-      
+
       <div v-if="importResult" class="import-result" :class="importResult.success ? 'success' : 'error'">
         {{ importResult.message }}
+      </div>
+
+      <div class="demo-block">
+        <div class="demo-title">演示数据 <span v-if="demoStatus.seeded" class="demo-tag">已载入</span></div>
+        <p class="section-desc">空库体验：载入 3 个月仿真流水 + 资产/预算/目标。库里有数据时不可载入；用“清空交易”可恢复白纸。</p>
+        <div class="form-actions">
+          <button @click="handleSeedDemo" class="btn-secondary" :disabled="seedingDemo || demoStatus.transaction_count > 0">
+            {{ seedingDemo ? '载入中...' : (demoStatus.transaction_count > 0 ? `已有 ${demoStatus.transaction_count} 笔，不可载入` : '载入演示数据') }}
+          </button>
+        </div>
+        <div v-if="demoMessage" class="config-message" :class="demoMessageType">{{ demoMessage }}</div>
       </div>
     </div>
   </div>
@@ -215,7 +226,7 @@
 
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
-import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth } from '~/utils/api'
+import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth, fetchDemoStatus, seedDemoData } from '~/utils/api'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: 'Bank', enabled: true },
@@ -235,6 +246,37 @@ const agentMode = ref('auto')
 // 当前生效的后端地址（只读展示，由部署配置决定，不可在此修改）
 const effectiveApiBase = ref('/api')
 const importResult = ref(null)
+
+// 演示数据
+const demoStatus = ref({ seeded: false, transaction_count: 0, seeded_at: '' })
+const seedingDemo = ref(false)
+const demoMessage = ref('')
+const demoMessageType = ref('')
+
+const loadDemoStatus = async () => {
+  try {
+    demoStatus.value = await fetchDemoStatus()
+  } catch (e) {
+    console.error('加载演示状态失败:', e)
+  }
+}
+
+const handleSeedDemo = async () => {
+  if (!confirm('载入 3 个月仿真演示数据？仅空库可用。')) return
+  seedingDemo.value = true
+  demoMessage.value = ''
+  try {
+    const r = await seedDemoData()
+    demoMessage.value = r.message || '载入成功，去首页看看'
+    demoMessageType.value = 'success'
+    await loadDemoStatus()
+  } catch (e) {
+    demoMessage.value = '载入失败: ' + (e.message || '未知错误')
+    demoMessageType.value = 'error'
+  } finally {
+    seedingDemo.value = false
+  }
+}
 
 // 修改密码
 const pwdForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
@@ -509,6 +551,8 @@ const loadAll = async () => {
   await loadAiConfig()
   // 加载 OpenClaw 绑定
   await loadOpenClawBinding()
+  // 演示数据状态
+  await loadDemoStatus()
 }
 onMounted(loadAll)
 onActivated(loadAll)
@@ -1018,6 +1062,28 @@ h1 {
   color: var(--text-secondary);
   font-size: 0.8rem;
   margin-top: 0.5rem;
+}
+
+.demo-block {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
+.demo-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.demo-tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--success);
+  background: var(--success-soft);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.4rem;
 }
 </style>
 

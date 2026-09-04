@@ -21,7 +21,7 @@ from .routers.deps import (
 from .routers import (
     transactions, ingest, stats, import_export, budgets, analysis,
     settings_ai, accounts, assets, settings, cashflow, reports,
-    investments, backup, goals, recurring, admin, fx,
+    investments, backup, goals, recurring, admin, fx, demo,
 )
 from .routers.backup import BACKUP_TABLES
 
@@ -29,6 +29,38 @@ _rate_redis = redis.from_url(REDIS_URL, decode_responses=True)
 
 logger = logging.getLogger("silentbook")
 _scheduler = None
+_WEAK_SECRETS = {
+    "", "changeme", "change-me", "secret", "password",
+    "silentbook-local-development-only",
+    "silentbook-local-webhook-only",
+    "silentbook-secret-change-in-production",
+    "replace-with-a-random-secret",
+    "replace-with-another-random-secret",
+}
+
+
+def check_production_secrets() -> list:
+    """生产安全门：返回弱项列表（空 = 通过）。
+
+    JWT_SECRET 必须强（≥32 字符且不在弱名单）；
+    WEBHOOK_SECRET 必须强（传输签名命根子）；
+    BACKUP_ENCRYPTION_KEY 为空只告警（备份不可用，不阻断）。
+    非 production 环境直接通过。
+    """
+    if os.getenv("APP_ENV", "production").lower() != "production":
+        return []
+    problems = []
+    jwt = os.getenv("JWT_SECRET", "")
+    if len(jwt) < 32 or jwt in _WEAK_SECRETS:
+        problems.append("JWT_SECRET 太弱（需随机 ≥32 字符）：openssl rand -hex 32")
+    whk = os.getenv("WEBHOOK_SECRET", "")
+    if len(whk) < 32 or whk in _WEAK_SECRETS:
+        problems.append("WEBHOOK_SECRET 太弱（需随机 ≥32 字符）：openssl rand -hex 32")
+    if not os.getenv("BACKUP_ENCRYPTION_KEY", ""):
+        logger.warning("BACKUP_ENCRYPTION_KEY 为空：加密备份不可用（不阻断启动）")
+    return problems
+
+
 def _auto_create_default_user():
     """SQLite 轻量模式：首次启动且 users 表为空时，自动创建默认用户。"""
     db_url = os.getenv("DATABASE_URL", "")
@@ -98,6 +130,11 @@ async def lifespan(app: FastAPI):
     global _scheduler
     # Startup
     setup_logging()
+    problems = check_production_secrets()
+    if problems:
+        for p in problems:
+            logger.error("生产安全门拦截: %s", p)
+        raise RuntimeError("生产安全检查未通过，拒绝启动: " + "; ".join(problems))
     init_db()
     _run_migrations_best_effort()
     _auto_create_default_user()
@@ -268,3 +305,4 @@ app.include_router(goals.router)
 app.include_router(recurring.router)
 app.include_router(admin.router)
 app.include_router(fx.router)
+app.include_router(demo.router)
