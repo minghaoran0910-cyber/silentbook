@@ -129,7 +129,7 @@ async def import_pdf_endpoint(
     db: Session = Depends(get_db)
 ):
     """导入银行 PDF 流水（当前支持招商银行标准格式）"""
-    from .pdf_parser import parse_pdf
+    from ..pdf_parser import parse_pdf
     
     if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="请上传 PDF 文件")

@@ -184,3 +184,50 @@ def test_login_cookie_secure_follows_env(auth):
         assert "Secure" in r.headers.get("set-cookie", "")
     finally:
         auth_mod.COOKIE_SECURE = False
+
+
+def _minimal_pdf_bytes(lines):
+    """手写最小 PDF（Helvetica 内建字体，无需外部字体文件）供 pdfplumber 提取。"""
+    content = "BT /F1 11 Tf 50 800 Td 14 TL\n"
+    parts = []
+    for i, line in enumerate(lines):
+        esc = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        parts.append(f"({esc}) Tj")
+        if i < len(lines) - 1:
+            parts.append("T*")
+    content += " ".join(parts) + " ET\n"
+    objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content.encode())} >>\nstream\n{content}endstream",
+    ]
+    out = b"%PDF-1.4\n"
+    offsets = []
+    for i, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{body}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    for o in offsets:
+        out += f"{o:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF".encode()
+    return out
+
+
+def test_import_pdf_wires_parser_and_links_balance(auth):
+    pdf = _minimal_pdf_bytes([
+        "2024/01/15 Starbucks 31.90 6025.93",
+        "2024/01/16 Didi 25.80 6000.13",
+    ])
+    r = client.post(
+        "/import/pdf",
+        files={"file": ("stmt.pdf", pdf, "application/pdf")},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["status"] == "ok", d
+    assert d["imported"] == 2, d
