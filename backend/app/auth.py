@@ -25,6 +25,11 @@ if APP_ENV == "production" and JWT_SECRET == _INSECURE_JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "30"))
+# Secure Cookie 要求 HTTPS。纯 http 内网部署（如软路由直连）必须设 false，
+# 否则浏览器拒收 Cookie 导致登录态永远建不起来。默认跟随 APP_ENV。
+COOKIE_SECURE = os.getenv(
+    "COOKIE_SECURE", "true" if APP_ENV == "production" else "false"
+).lower() == "true"
 
 security = HTTPBearer(auto_error=False)
 
@@ -149,14 +154,14 @@ def login(data: UserLogin, response: Response, db: Session = Depends(get_db)):
 
 def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        "auth_token", token, httponly=True, secure=APP_ENV == "production",
+        "auth_token", token, httponly=True, secure=COOKIE_SECURE,
         samesite="strict", max_age=JWT_EXPIRE_HOURS * 3600, path="/",
     )
 
 
 @router.post("/logout", status_code=204)
 def logout(response: Response):
-    response.delete_cookie("auth_token", path="/", httponly=True, secure=APP_ENV == "production", samesite="strict")
+    response.delete_cookie("auth_token", path="/", httponly=True, secure=COOKIE_SECURE, samesite="strict")
 
 
 @router.get("/me", response_model=UserResponse)

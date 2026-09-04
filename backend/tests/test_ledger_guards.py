@@ -161,3 +161,26 @@ def test_list_filter_accepts_platform_id_and_chinese(auth):
         r = client.get(f"/transactions?account={q}", headers=auth)
         assert r.status_code == 200, r.text
         assert len(r.json()) == 1, q
+
+
+def test_login_cookie_secure_follows_env(auth):
+    import app.auth as auth_mod
+
+    r = client.post(
+        "/auth/login",
+        json={"account": "ledger@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code == 200, r.text
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "auth_token=" in set_cookie
+    assert "Secure" not in set_cookie  # 测试环境默认不 Secure，http 可用
+
+    auth_mod.COOKIE_SECURE = True
+    try:
+        r = client.post(
+            "/auth/login",
+            json={"account": "ledger@test.local", "password": "Testpass123"},
+        )
+        assert "Secure" in r.headers.get("set-cookie", "")
+    finally:
+        auth_mod.COOKIE_SECURE = False
