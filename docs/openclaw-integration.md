@@ -79,14 +79,33 @@ def push(items: list):
 | 模式 | 说明 | 需要配置 |
 |------|------|----------|
 | `local` | 后端直调 OpenAI 兼容接口（百炼等） | 用户在设置页填 API Base/Key/模型，或 `.env` 的 `DASHSCOPE_API_KEY` |
-| `openclaw` | 经 OpenClaw Gateway spawn subagent（消费/投资/综合建议三个角色，agent id 由 `OPENCLAW_AGENT_CONSUMPTION/_INVESTMENT/_SUGGESTION` 环境变量配置，默认 financial_director / investment_director / main） | 容器 `OPENCLAW_GATEWAY_URL`（Mac 本地默认 `http://host.docker.internal:18789`，服务器/R4S 上填网关所在机器的实际地址） |
+| `openclaw` | 经 OpenClaw Gateway sessions API spawn subagent（三个角色的 agent id 由 `OPENCLAW_AGENT_CONSUMPTION/_INVESTMENT/_SUGGESTION` 配置） | 网关须支持 sessions API 的上游版本；中文分叉版网关无此接口时自动失败并回退 |
 | `auto`（默认） | 优先 openclaw，失败回退 local | 同上 |
 
 无 Key 时分析接口返回占位提示且**不入库**（历史不被污染）。
 
-OpenClaw Agent 绑定（设置页 → OpenClaw 绑定 → 获取清单 → 绑定）：
+OpenClaw Agent 绑定（设置页 → 自动发现/手动绑定）：
 对应接口 `GET/POST/DELETE /settings/openclaw-binding`
 （旧拼写 `openclaw-bindding` 仍兼容）。
+
+### 5.1 推荐：OpenClaw 侧 automation 回写（任何网关版本都可用）
+
+网关的 HTTP spawn 接口因版本而异，最稳的是反过来——
+OpenClaw 定时任务做分析，把结果投递到 SilentBook：
+
+```bash
+# 在网关所在机器上执行一次（按官方文档的 automations 命令）：
+openclaw automations create "0 20 * * *" \
+  "分析今天的家庭财务并只输出 JSON：{\"consumption\": \"...\", \"investment\": \"...\", \"suggestion\": \"...\"}（每段 200 字内，只输出 JSON）" \
+  --agent <你的agent id> \
+  --webhook "https://<silentbook-host>/api/analysis/import" \
+  --name "SilentBook 每日分析"
+```
+
+automation 的 webhook 投递是 OpenClaw 信封格式，需要一层小脚本把
+`consumption/investment/suggestion` 三段抽出来，按第 2 节的 HMAC 规范
+重签后 POST 到 `/api/analysis/import`（字段 + 签名头与 webhook 一致，
+同体重试返回 `duplicate`，占位内容返回 `skipped` 不入库）。
 
 ## 6. 定时任务建议（OpenClaw cron 参考）
 

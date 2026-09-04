@@ -26,6 +26,7 @@ from ..schemas import (
 )
 from ..auth import require_user
 from ..tenant import set_tenant_user_id, reset_tenant_user_id
+from .ingest import verify_webhook
 from ..notification_push import pusher
 from ..backup_crypto import read_backup, write_backup
 from ..logging_config import setup_logging, log_buffer, generate_request_id, set_request_context
@@ -171,6 +172,60 @@ async def get_analysis_history(limit: int = 20, user: User = Depends(require_use
         })
     
     return list(batches.values())[:limit]
+
+
+class AnalysisImport(BaseModel):
+    consumption: str = Field(..., min_length=1)
+    investment: str = Field(..., min_length=1)
+    suggestion: str = Field(..., min_length=1)
+    agent_name: str = Field(default="openclaw-webhook", max_length=100)
+
+
+@router.post("/analysis/import")
+async def import_analysis(
+    payload: AnalysisImport,
+    user_id: int = Depends(verify_webhook),
+    db: Session = Depends(get_db),
+):
+    """OpenClaw automation 投递分析结果（HMAC 签名，同 webhook 规范）。
+
+    正确用法（OpenClaw 侧）：
+    openclaw automations create "0 20 * * *" "<prompt，要求只输出 consumption/investment/suggestion 三段>"
+      --agent <你的agent> --webhook https://<host>/api/analysis/import
+    注意 automation 的 webhook 投递是 OpenClaw 信封格式，需要一层小脚本把
+    三段抽出来按本接口签名重推（见 docs/openclaw-integration.md）。
+    占位警告不入库；同体重试返回 duplicate。
+    """
+    body_hash = _webhook_item_hash(
+        payload.agent_name, payload.consumption + payload.investment,
+        payload.suggestion, "",
+    )
+    if _is_duplicate_body(db, body_hash):
+        return {"status": "duplicate", "message": "重复投递，已去重"}
+    result = {
+        "consumption": payload.consumption,
+        "investment": payload.investment,
+        "suggestion": payload.suggestion,
+    }
+    if _is_placeholder_analysis(result):
+        return {"status": "skipped", "message": "占位内容不入库"}
+    for analysis_type in ("consumption", "investment", "suggestion"):
+        db.add(AnalysisResult(
+            agent_name=payload.agent_name,
+            analysis_type=analysis_type,
+            content=result[analysis_type],
+        ))
+    try:
+        db.add(WebhookEvent(
+            event_id=f"body:{body_hash}",
+            body_hash=body_hash,
+            signature_timestamp=int(time.time()),
+        ))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"status": "duplicate", "message": "重复投递，已去重"}
+    return {"status": "created", "message": "分析已入库"}
 
 
 # ===== PDF 导入 =====

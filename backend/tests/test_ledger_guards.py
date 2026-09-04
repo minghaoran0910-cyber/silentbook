@@ -280,3 +280,43 @@ def test_change_password_flow(auth):
     r = client.post("/auth/login",
                     json={"account": "ledger@test.local", "password": "Newpass123"})
     assert r.status_code == 200, r.text
+
+
+def _signed_post(path, payload, event_id, secret=None):
+    import hmac as _hmac, hashlib as _hl, json as _json, time as _time
+    s = secret or "test-shared-secret-0123456789abcdef"
+    body = _json.dumps(payload, ensure_ascii=False).encode()
+    ts = str(int(_time.time()))
+    sig = "sha256=" + _hmac.new(s.encode(), f"{ts}.".encode() + body, _hl.sha256).hexdigest()
+    return client.post(path, content=body, headers={
+        "Content-Type": "application/json",
+        "X-Silentbook-Timestamp": ts,
+        "X-Silentbook-Event-Id": event_id,
+        "X-Silentbook-Signature": sig,
+    })
+
+
+def test_analysis_import_flow(auth):
+    payload = {"consumption": "花得有点多", "investment": "定投继续",
+               "suggestion": "多存点", "agent_name": "test-agent"}
+    r = _signed_post("/analysis/import", payload, "ana-1")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "created"
+    # 最新分析能读到
+    r = client.get("/analysis/latest", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["consumption"] == "花得有点多"
+    # 重试去重
+    r = _signed_post("/analysis/import", payload, "ana-2")
+    assert r.json()["status"] == "duplicate"
+    # 占位不入库
+    ph = {"consumption": "未配置 API Key", "investment": "未配置", "suggestion": "请检查配置"}
+    r = _signed_post("/analysis/import", ph, "ana-3")
+    assert r.json()["status"] == "skipped"
+
+
+def test_analysis_import_rejects_bad_signature(auth):
+    r = _signed_post("/analysis/import",
+                     {"consumption": "a", "investment": "b", "suggestion": "c"},
+                     "ana-x", secret="wrong")
+    assert r.status_code == 401

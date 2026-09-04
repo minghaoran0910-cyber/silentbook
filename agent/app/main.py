@@ -149,7 +149,14 @@ async def call_llm(prompt: str, system_prompt: str = "", user_config: dict = Non
 async def call_openclaw_agent(agent_id: str, task: str, timeout: int = 60) -> str:
     """
     通过 OpenClaw Gateway 的 sessions_spawn API 调用 subagent
-    
+    （上游 OpenClaw 的 sessions API；中文分叉版网关可能不支持，
+    此时本函数抛错并由 auto 模式回退到本地 LLM）。
+
+    官方推荐的替代链路（任何网关版本都可用）：
+    OpenClaw 侧 automation 定时任务 + --webhook 投递，
+    结果 POST 到 SilentBook 的 /analysis/import（HMAC 签名同 webhook 规范）。
+    详见 docs/openclaw-integration.md 第 5 节。
+
     流程：
     1. POST /api/sessions/spawn 创建子会话
     2. 轮询结果
