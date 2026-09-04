@@ -169,8 +169,8 @@ const typeLabels = {
 
 const modeLabel = computed(() => {
   const m = analysisMode.value
-  if (m === 'openclaw') return '🔌 OpenClaw Agent'
-  if (m === 'local') return '💻 本地 LLM'
+  if (m === 'openclaw') return 'OpenClaw Agent'
+  if (m === 'local') return '本地 LLM'
   if (m.includes('fallback')) return '💻 本地 (fallback)'
   return m
 })

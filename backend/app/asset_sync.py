@@ -338,7 +338,6 @@ async def sync_all_positions(db: Session) -> Dict:
                 # 尝试从 notes 解析克数，格式: "克数:50" 或 "50克" 或 "50g"
                 grams = None
                 if asset.notes:
-                    import re
                     # 匹配 "克数:5.19" 或 "克数：5.19"
                     match = re.search(r'克数[:：]\s*(\d+\.?\d*)', asset.notes)
                     if not match:
