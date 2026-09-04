@@ -232,7 +232,7 @@
     <!-- 负债列表 -->
     <div class="section">
       <div class="section-header">
-        <h2>💳 负债列表</h2>
+        <h2>负债列表</h2>
         <button @click="showAddLiabilityForm = !showAddLiabilityForm" class="btn btn-small">
           {{ showAddLiabilityForm ? '取消' : '+ 添加负债' }}
         </button>
