@@ -6,26 +6,32 @@
     </div>
     
     <!-- 核心指标 -->
+    <div class="stats-head">
+      <span class="stats-note">以人民币记账{{ displayCurrency === 'CNY' ? '' : ` · 按${fxDate || '实时'}汇率折算为 ${displayCurrency} 展示` }}</span>
+      <select v-model="displayCurrency" class="currency-select" aria-label="展示币种">
+        <option v-for="c in currencyOptions" :key="c" :value="c">{{ fxSymbols[c] || '' }} {{ c }}</option>
+      </select>
+    </div>
     <div class="stats">
       <div class="stat-card">
         <div class="stat-label">净资产</div>
-        <div class="stat-value">¥{{ stats.net_assets.toFixed(2) }}</div>
+        <div class="stat-value">{{ fmtMoney(stats.net_assets) }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">总资产</div>
-        <div class="stat-value income">¥{{ (stats.total_assets || 0).toFixed(2) }}</div>
+        <div class="stat-value income">{{ fmtMoney(stats.total_assets || 0) }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">总负债</div>
-        <div class="stat-value expense">¥{{ (stats.total_liabilities || 0).toFixed(2) }}</div>
+        <div class="stat-value expense">{{ fmtMoney(stats.total_liabilities || 0) }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">本月支出</div>
-        <div class="stat-value expense">¥{{ stats.monthly_expenses.toFixed(2) }}</div>
+        <div class="stat-value expense">{{ fmtMoney(stats.monthly_expenses) }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">本月收入</div>
-        <div class="stat-value income">¥{{ stats.monthly_income.toFixed(2) }}</div>
+        <div class="stat-value income">{{ fmtMoney(stats.monthly_income) }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">交易笔数</div>
@@ -36,7 +42,7 @@
     <!-- AI 洞察 -->
     <div class="ai-section" v-if="mounted">
       <div class="section-header">
-        <h2>🤖 AI 洞察</h2>
+        <h2>AI 洞察</h2>
         <button @click="analyze" class="btn btn-primary" :disabled="analyzing">
           {{ analyzing ? '分析中...' : '立即分析' }}
         </button>
@@ -45,7 +51,7 @@
       <div class="insights">
         <div class="insight-card">
           <div class="insight-header">
-            <span class="insight-icon">💸</span>
+            <AppIcon icon="ChartLine" :size="20" class="insight-icon" />
             <span class="insight-title">消费分析</span>
           </div>
           <div class="insight-content" v-html="renderedAnalysis.consumption"></div>
@@ -53,7 +59,7 @@
         
         <div class="insight-card">
           <div class="insight-header">
-            <span class="insight-icon">📈</span>
+            <AppIcon icon="TrendUp" :size="20" class="insight-icon" />
             <span class="insight-title">投资分析</span>
           </div>
           <div class="insight-content" v-html="renderedAnalysis.investment"></div>
@@ -61,7 +67,7 @@
         
         <div class="insight-card">
           <div class="insight-header">
-            <span class="insight-icon">💡</span>
+            <AppIcon icon="BookOpen" :size="20" class="insight-icon" />
             <span class="insight-title">建议</span>
           </div>
           <div class="insight-content" v-html="renderedAnalysis.suggestion"></div>
@@ -72,7 +78,7 @@
     <!-- 资产概览 -->
     <div class="asset-section" v-if="mounted && (assets.length > 0 || liabilities.length > 0)">
       <div class="section-header">
-        <h2>🏦 资产概览</h2>
+        <h2>资产概览</h2>
         <NuxtLink to="/assets" class="view-all">管理资产 →</NuxtLink>
       </div>
       <div class="asset-summary">
@@ -94,7 +100,7 @@
       <!-- 资产分类明细 -->
       <div class="asset-breakdown" v-if="assetBreakdown.length > 0">
         <div v-for="item in assetBreakdown" :key="item.type" class="asset-detail-item">
-          <span class="asset-detail-icon">{{ getAssetIcon(item.type).icon }}</span>
+          <AppIcon :icon="getAssetIcon(item.type).icon" :color="getAssetIcon(item.type).color" :size="18" class="asset-detail-icon" />
           <span class="asset-detail-name">{{ getAssetIcon(item.type).label }}</span>
           <div class="asset-detail-bar-bg">
             <div class="asset-detail-bar-fill" :style="{ width: (item.value / Math.max(totalAssetValue, 1) * 100) + '%', background: getAssetIcon(item.type).color }"></div>
@@ -105,9 +111,9 @@
       </div>
       <!-- 负债列表 -->
       <div class="liability-mini" v-if="liabilities.length > 0">
-        <div class="liability-mini-title">📋 负债进度</div>
+        <div class="liability-mini-title">负债进度</div>
         <div v-for="l in liabilities.slice(0, 3)" :key="l.id" class="liability-mini-item">
-          <span class="liability-mini-icon">{{ getLiabilityIcon(l.liability_type).icon }}</span>
+          <AppIcon :icon="getLiabilityIcon(l.liability_type).icon" :color="getLiabilityIcon(l.liability_type).color" :size="16" class="liability-mini-icon" />
           <div class="liability-mini-info">
             <div class="liability-mini-name">{{ l.name }}</div>
             <div class="liability-mini-bar">
@@ -122,13 +128,13 @@
     <!-- 最近交易 -->
     <div class="recent-section" v-if="mounted && recentTransactions.length > 0">
       <div class="section-header">
-        <h2>💸 最近交易</h2>
+        <h2>最近交易</h2>
         <NuxtLink to="/transactions" class="view-all">查看全部 →</NuxtLink>
       </div>
       <div class="recent-list">
         <div v-for="tx in recentTransactions" :key="tx.id" class="recent-item">
           <div class="recent-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
-            <span>{{ getCategoryIcon(tx.category).icon }}</span>
+            <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
           </div>
           <div class="recent-info">
             <div class="recent-desc">{{ tx.description || tx.category }}</div>
@@ -148,20 +154,11 @@
     <!-- 消费趋势图 -->
     <div class="trend-section" v-if="mounted">
       <div class="section-header">
-        <h2>📊 消费趋势</h2>
+        <h2>消费趋势</h2>
         <span class="trend-summary">近{{ trendDays }}天支出 ¥{{ trend.total_expense.toFixed(2) }} · 收入 ¥{{ trend.total_income.toFixed(2) }}</span>
       </div>
-      <div class="trend-chart" v-if="trend.daily.length > 0">
-        <div v-for="d in trend.daily" :key="d.date" class="bar-group">
-          <div class="bar-expense" 
-            :style="{ height: (d.expense / maxExpense * 100) + '%', opacity: d.expense > 0 ? 1 : 0.3 }"
-            :title="`${d.date}: ¥${d.expense.toFixed(2)}`">
-          </div>
-          <div class="bar-income" 
-            :style="{ height: (d.income / maxExpense * 100) + '%', opacity: d.income > 0 ? 1 : 0 }"
-            :title="`${d.date}: ¥${d.income.toFixed(2)}`">
-          </div>
-        </div>
+      <div v-if="trend.daily.length > 0" class="card chart-card">
+        <div ref="trendEl" class="chart-box"></div>
       </div>
       <div v-else class="empty-trend">暂无交易数据</div>
     </div>
@@ -169,11 +166,11 @@
     <!-- 消费分类 -->
     <div class="category-section" v-if="mounted && trend.categories.length > 0">
       <div class="section-header">
-        <h2>🏷 消费分类</h2>
+        <h2>消费分类</h2>
       </div>
       <div class="category-bars">
         <div v-for="cat in trend.categories" :key="cat.name" class="category-item">
-          <span class="cat-icon">{{ getCategoryIcon(cat.name).icon }}</span>
+          <AppIcon :icon="getCategoryIcon(cat.name).icon" :color="getCategoryIcon(cat.name).color" :size="18" class="cat-icon" />
           <span class="cat-name">{{ cat.name }}</span>
           <div class="cat-bar-bg">
             <div class="cat-bar-fill" :style="{ width: (cat.amount / totalCategoryAmount * 100) + '%', background: getCategoryIcon(cat.name).color }"></div>
@@ -187,7 +184,7 @@
     <!-- 月度报表 -->
     <div class="monthly-section" v-if="mounted && monthly">
       <div class="section-header">
-        <h2>📋 {{ monthly.year }}年{{ monthly.month }}月报表</h2>
+        <h2>{{ monthly.year }}年{{ monthly.month }}月报表</h2>
       </div>
       <div class="monthly-grid">
         <div class="monthly-card">
@@ -217,7 +214,7 @@
       </div>
       <!-- 周对比 -->
       <div class="weekly-comparison" v-if="monthly.weekly">
-        <div class="weekly-header">📅 周对比</div>
+        <div class="weekly-header">周对比</div>
         <div class="weekly-bars">
           <div v-for="w in monthly.weekly" :key="w.week" class="weekly-item">
             <span class="weekly-label">第{{ w.week }}周</span>
@@ -234,27 +231,28 @@
     <!-- 功能特性 -->
     <div class="features">
       <div class="feature-card">
-        <h3>🤖 全自动无感记账</h3>
+        <h3>全自动无感记账</h3>
         <p>银行通知自动解析，无需手动分类</p>
       </div>
       <div class="feature-card">
-        <h3>🧠 多 Agent 协同</h3>
+        <h3>多 Agent 协同</h3>
         <p>可配置多个 AI Agent，各自独立分析</p>
       </div>
       <div class="feature-card">
-        <h3>🎨 深色主题</h3>
-        <p>电影质感，安静克制</p>
+        <h3 class="feature-title"><AppIcon icon="BookOpen" :size="18" /> 日间纸墨</h3>
+        <p>浅色第一、深色同源，双主题可切换</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onActivated, computed } from 'vue'
+import { ref, onMounted, onActivated, computed, watch } from 'vue'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
-import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities } from '~/utils/api'
+import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities, fetchFxRates, fetchFxCurrencies } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
+import { useECharts, axisCommon, tooltipCommon } from '~/composables/useECharts'
 
 const stats = ref({
   net_assets: 0,
@@ -279,15 +277,80 @@ const renderedAnalysis = computed(() => ({
 
 const analyzing = ref(false)
 const mounted = ref(false)
+
+// 展示币种（仅折算显示，账本仍记人民币）
+const displayCurrency = ref('CNY')
+const currencyOptions = ref(['CNY'])
+const fxSymbols = ref({ CNY: '¥' })
+const fxRates = ref({})
+const fxDate = ref('')
+
+const fmtMoney = (v) => {
+  const n = Number(v) || 0
+  if (displayCurrency.value === 'CNY') return `¥${n.toFixed(2)}`
+  const rate = fxRates.value[displayCurrency.value]
+  if (!rate) return `¥${n.toFixed(2)}`
+  const converted = n * rate
+  const digits = displayCurrency.value === 'JPY' ? 0 : 2
+  return `${fxSymbols.value[displayCurrency.value] || ''}${converted.toFixed(digits)}`
+}
+
+const loadFx = async () => {
+  try {
+    if (currencyOptions.value.length <= 1) {
+      const cur = await fetchFxCurrencies()
+      currencyOptions.value = ['CNY', ...(cur.supported || [])]
+      fxSymbols.value = { CNY: '¥', ...(cur.symbols || {}) }
+    }
+    if (displayCurrency.value === 'CNY') return
+    const fx = await fetchFxRates('CNY', displayCurrency.value)
+    fxRates.value = fx.rates || {}
+    fxDate.value = fx.date || ''
+  } catch (e) {
+    console.error('加载汇率失败:', e)
+  }
+}
+
+watch(displayCurrency, loadFx)
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
 const recentTransactions = ref([])
 const assets = ref([])
 const liabilities = ref([])
 
-const maxExpense = computed(() => Math.max(...trend.value.daily.map(d => d.expense), 1))
 const trendDays = computed(() => trend.value.daily.length)
 const totalCategoryAmount = computed(() => trend.value.categories.reduce((s, c) => s + c.amount, 0) || 1)
+
+// 消费趋势 echarts（主题跟随、窗口自适应）
+const { el: trendEl, render: renderTrend } = useECharts()
+watch(trend, (t) => {
+  if (!t.daily.length) return
+  renderTrend((p) => ({
+    grid: { left: 8, right: 8, top: 24, bottom: 0, containLabel: true },
+    tooltip: { ...tooltipCommon(p), valueFormatter: (v) => `¥${Number(v).toFixed(2)}` },
+    legend: {
+      top: 0, right: 0, textStyle: { color: p.subtext, fontSize: 11 },
+      itemWidth: 12, itemHeight: 8,
+    },
+    xAxis: {
+      type: 'category',
+      data: t.daily.map((d) => d.date.slice(5)),
+      ...axisCommon(p),
+      axisLabel: { ...axisCommon(p).axisLabel, interval: Math.max(Math.floor(t.daily.length / 8) - 1, 0) },
+    },
+    yAxis: { type: 'value', ...axisCommon(p) },
+    series: [
+      {
+        name: '支出', type: 'bar', data: t.daily.map((d) => d.expense),
+        itemStyle: { color: p.danger, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 14,
+      },
+      {
+        name: '收入', type: 'bar', data: t.daily.map((d) => d.income),
+        itemStyle: { color: p.success, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 14,
+      },
+    ],
+  }))
+}, { deep: true })
 
 const loadStats = async () => {
   try {
@@ -370,7 +433,7 @@ const analyze = async () => {
 }
 
 const getAccountName = (account) => {
-  const names = { cmb: '招商银行', icbc: '工商银行', ccb: '建设银行', alipay: '支付宝', wechat_pay: '微信支付', cash: '现金', other: '其他' }
+  const names = { cmb: '招商银行', icbc: '工商银行', ccb: '建设银行', abc: '农业银行', boc: '中国银行', bocom: '交通银行', spdb: '浦发银行', ceb: '光大银行', citic: '中信银行', unionpay: '云闪付', alipay: '支付宝', wechat_pay: '微信支付', meituan: '美团', jd: '京东', taobao: '淘宝', cash: '现金', other: '其他' }
   return names[account] || account
 }
 
@@ -394,6 +457,7 @@ const loadAll = () => {
   loadMonthly()
   loadRecentTransactions()
   loadAssets()
+  loadFx()
 }
 
 onMounted(loadAll)
@@ -422,6 +486,34 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
   font-size: 1.1rem;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+.stats-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.stats-note {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.currency-select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.currency-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .stats {
@@ -492,7 +584,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -525,7 +617,8 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 }
 
 .insight-icon {
-  font-size: 1.5rem;
+  display: inline-flex;
+  color: var(--accent);
 }
 
 .insight-title {
@@ -586,12 +679,12 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .asset-bar-value.income { color: var(--success); }
 .asset-bar-value.expense { color: var(--danger); }
 .asset-compare-bar { display: flex; height: 24px; border-radius: 12px; overflow: hidden; gap: 2px; }
-.asset-fill { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: white; font-weight: 500; transition: width 0.5s; min-width: 0; overflow: hidden; white-space: nowrap; }
+.asset-fill { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--fill-ink); font-weight: 500; transition: width 0.5s; min-width: 0; overflow: hidden; white-space: nowrap; }
 .asset-green { background: var(--success); }
 .asset-red { background: var(--danger); }
 .asset-breakdown { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .asset-detail-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; }
-.asset-detail-icon { font-size: 1.1rem; flex-shrink: 0; }
+.asset-detail-icon { display: inline-flex; flex-shrink: 0; }
 .asset-detail-name { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
 .asset-detail-bar-bg { flex: 1; height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
 .asset-detail-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
@@ -600,7 +693,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .liability-mini { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
 .liability-mini-title { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; font-size: 0.9rem; }
 .liability-mini-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; }
-.liability-mini-icon { font-size: 1rem; flex-shrink: 0; }
+.liability-mini-icon { display: inline-flex; flex-shrink: 0; }
 .liability-mini-info { flex: 1; min-width: 0; }
 .liability-mini-name { color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.2rem; }
 .liability-mini-bar { height: 4px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 2px; overflow: hidden; }
@@ -642,46 +735,8 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 /* 趋势图 */
 .trend-section { margin-bottom: 3rem; }
 .trend-summary { color: var(--text-secondary); font-size: 0.9rem; }
-.trend-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 120px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
-  overflow-x: auto;
-}
-.bar-group {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  flex: 1;
-  min-width: 8px;
-  height: 100%;
-  gap: 1px;
-  position: relative;
-}
-.bar-expense {
-  width: 100%;
-  max-width: 12px;
-  background: var(--danger);
-  border-radius: 3px 3px 0 0;
-  transition: all 0.2s;
-  min-height: 2px;
-}
-.bar-income {
-  width: 100%;
-  max-width: 12px;
-  background: var(--success);
-  border-radius: 3px 3px 0 0;
-  transition: all 0.2s;
-  min-height: 0;
-}
-.bar-group:hover .bar-expense, .bar-group:hover .bar-income {
-  filter: brightness(1.3);
-}
+.chart-card { padding: 1rem 0.5rem 0.5rem; }
+.chart-box { width: 100%; height: 260px; }
 .empty-trend { color: var(--text-secondary); text-align: center; padding: 3rem; }
 
 /* 分类 */
@@ -696,7 +751,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
   border-radius: 8px;
   padding: 0.6rem 1rem;
 }
-.cat-icon { font-size: 1.2rem; flex-shrink: 0; }
+.cat-icon { display: inline-flex; flex-shrink: 0; }
 .cat-name { color: var(--text-primary); font-size: 0.9rem; min-width: 70px; }
 .cat-bar-bg {
   flex: 1;
@@ -744,6 +799,12 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .feature-card h3 {
   color: var(--text-primary);
   margin-bottom: 0.5rem;
+}
+
+.feature-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .feature-card p {

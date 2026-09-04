@@ -16,13 +16,10 @@ import time
 from datetime import datetime, date, timedelta
 from sqlalchemy import inspect, text
 
-# 添加 app 到 path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
-
-# 使用 SQLite 测试数据库
-os.environ["DATABASE_URL"] = "sqlite://"
-
-from database import (
+# 与全套件一致：用包路径导入，避免把 database 当顶层模块执行两遍
+#（旧写法往 sys.path 塞 app/ 再 `from database import`，会重复注册
+# 全局 before_flush 监听器并炸掉同进程其他测试的 DB 写）
+from app.database import (
     engine, Base, SessionLocal, init_db,
     Transaction, Asset, Liability, Account, Transfer,
     AnalysisResult, Position, TradeRecord, FinancialGoal,

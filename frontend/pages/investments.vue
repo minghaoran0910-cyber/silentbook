@@ -1,13 +1,15 @@
 <template>
   <div class="container">
     <div class="header">
-      <h1>📈 投资持仓</h1>
+      <h1>投资持仓</h1>
       <div class="header-actions">
         <button @click="syncPositions" class="btn btn-sync" :disabled="syncing">
-          {{ syncing ? '同步中...' : '🔄 同步持仓' }}
+          <AppIcon icon="ArrowClockwise" :size="15" />
+          {{ syncing ? '同步中...' : '同步持仓' }}
         </button>
         <button @click="toggleAddForm" class="btn btn-primary">
-          {{ showAddForm ? '取消' : '+ 添加持仓' }}
+          <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
+          {{ showAddForm ? '取消' : '添加持仓' }}
         </button>
       </div>
     </div>
@@ -27,7 +29,7 @@
     </div>
 
     <div v-else-if="loadError" class="error-state">
-      <p>⚠️ {{ loadError }}</p>
+      <p class="error-line"><AppIcon icon="Warning" :size="16" /> {{ loadError }}</p>
       <button @click="loadData" class="btn btn-primary">重试</button>
     </div>
 
@@ -143,8 +145,8 @@
               <span v-if="pos.symbol" class="symbol">{{ pos.symbol }}</span>
             </div>
             <div class="position-actions">
-              <button @click="editPosition(pos)" class="btn-icon" title="编辑">✏️</button>
-              <button @click="deletePosition(pos.id)" class="btn-icon danger" title="关闭">🗑️</button>
+              <button @click="editPosition(pos)" class="btn-icon" title="编辑" aria-label="编辑持仓"><AppIcon icon="PencilSimple" :size="17" /></button>
+              <button @click="deletePosition(pos.id)" class="btn-icon danger" title="关闭" aria-label="关闭持仓"><AppIcon icon="Trash" :size="17" /></button>
             </div>
           </div>
           <div class="position-body">
@@ -178,7 +180,7 @@
             </div>
           </div>
           <div class="position-footer" v-if="pos.account || pos.updated_at">
-            <span v-if="pos.account">📍 {{ pos.account }}</span>
+            <span v-if="pos.account" class="position-account"><AppIcon icon="MapPin" :size="13" /> {{ pos.account }}</span>
             <span v-if="pos.updated_at">更新于 {{ formatTime(pos.updated_at) }}</span>
           </div>
         </div>
@@ -189,10 +191,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-
-const { token } = useAuth()
-const config = useRuntimeConfig()
-const apiBase = config.public.apiBase
+import {
+  fetchPositionsData,
+  createPositionApi,
+  updatePositionApi,
+  deletePositionApi,
+  syncPositionsApi,
+} from '~/utils/api'
 
 interface Position {
   id: number
@@ -274,25 +279,12 @@ function typeLabel(t: string) {
   return map[t] || t
 }
 
-async function apiFetch(path: string, options: RequestInit = {}) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const res = await fetch(`${apiBase}${path}`, { ...options, headers, credentials: 'include' })
-  if (res.status === 401) {
-    const { clearAuth } = useAuth()
-    clearAuth()
-    navigateTo('/auth')
-    throw new Error('未授权')
-  }
-  return res
-}
-
 async function loadData() {
   loading.value = true
   loadError.value = ''
   try {
-    const res = await apiFetch('/positions')
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
+    // 经统一 api 出口：自动带鉴权 Cookie + 401 跳登录
+    const data = await fetchPositionsData()
     positions.value = data.positions || []
     summary.value = data.summary || { count: 0, total_value: 0, total_cost: 0, total_profit: 0, total_profit_pct: 0 }
   } catch (e: any) {
@@ -306,8 +298,7 @@ async function syncPositions() {
   syncing.value = true
   syncResult.value = null
   try {
-    const res = await apiFetch('/sync/assets', { method: 'POST' })
-    const data = await res.json()
+    const data = await syncPositionsApi()
     syncResult.value = {
       message: data.error ? `同步失败: ${data.message}` : '同步完成',
       updated: data.updated || 0,
@@ -353,15 +344,10 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const body = { ...form.value }
-    let res: Response
     if (editingId.value) {
-      res = await apiFetch(`/positions/${editingId.value}`, { method: 'PUT', body: JSON.stringify(body) })
+      await updatePositionApi(editingId.value, body)
     } else {
-      res = await apiFetch('/positions', { method: 'POST', body: JSON.stringify(body) })
-    }
-    if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.detail || '操作失败')
+      await createPositionApi(body)
     }
     showAddForm.value = false
     resetForm()
@@ -376,8 +362,7 @@ async function handleSubmit() {
 async function deletePosition(id: number) {
   if (!confirm('确认关闭此持仓？')) return
   try {
-    const res = await apiFetch(`/positions/${id}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error('删除失败')
+    await deletePositionApi(id)
     await loadData()
   } catch (e: any) {
     alert(e.message || '删除失败')
@@ -429,7 +414,7 @@ onMounted(loadData)
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -501,6 +486,13 @@ onMounted(loadData)
   text-align: center;
   padding: 60px 20px;
   color: var(--text-secondary);
+}
+
+.error-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
 }
 
 .spinner {
@@ -713,6 +705,12 @@ onMounted(loadData)
 
 .text-profit { color: var(--success); }
 .text-loss { color: var(--danger); }
+
+.position-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
 
 .position-footer {
   display: flex;

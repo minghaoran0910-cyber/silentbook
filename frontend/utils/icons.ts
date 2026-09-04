@@ -1,47 +1,50 @@
 /**
  * SilentBook 图标系统
- * 资产类型 + 交易分类 + 导航 + 负债类型
+ * 资产类型 + 交易分类 + 负债类型，全部映射到 Phosphor 图标（见 components/AppIcon.vue）。
+ * icon 字段是 AppIcon 注册表名，不是 emoji——模板里用 <AppIcon :icon :color> 渲染。
  */
 
 // 资产类型图标
 export const assetTypeIcons: Record<string, { icon: string; label: string; color: string }> = {
-  cash:     { icon: '💰', label: '现金',   color: '#22C55E' },
-  savings:  { icon: '🏦', label: '存款',   color: '#3B82F6' },
-  fund:     { icon: '📈', label: '基金',   color: '#B45309' },
-  stock:    { icon: '📊', label: '股票',   color: '#EF4444' },
-  bond:     { icon: '📄', label: '债券',   color: '#8B5CF6' },
-  property: { icon: '🏠', label: '房产',   color: '#F59E0B' },
-  pension: { icon: '👴', label: '养老金', color: '#059669' },
-  gold:    { icon: '🥇', label: '黄金',   color: '#D4AF37' },
-  other:    { icon: '📦', label: '其他',   color: '#6B7280' },
+  cash:     { icon: 'Money',     label: '现金',   color: '#22C55E' },
+  savings:  { icon: 'PiggyBank', label: '存款',   color: '#3B82F6' },
+  fund:     { icon: 'TrendUp',   label: '基金',   color: '#B45309' },
+  stock:    { icon: 'ChartLine', label: '股票',   color: '#EF4444' },
+  bond:     { icon: 'Receipt',   label: '债券',   color: '#8B5CF6' },
+  property: { icon: 'House',     label: '房产',   color: '#F59E0B' },
+  pension: { icon: 'HandCoins', label: '养老金', color: '#059669' },
+  gold:    { icon: 'Coins',     label: '黄金',   color: '#D4AF37' },
+  other:    { icon: 'Package',   label: '其他',   color: '#6B7280' },
 }
 
 // 负债类型图标
 export const liabilityTypeIcons: Record<string, { icon: string; label: string; color: string }> = {
-  credit_card: { icon: '💳', label: '信用卡', color: '#EF4444' },
-  loan:        { icon: '🏦', label: '贷款',   color: '#F59E0B' },
-  mortgage:    { icon: '🏡', label: '房贷',   color: '#8B5CF6' },
-  other:       { icon: '📦', label: '其他',   color: '#6B7280' },
+  credit_card: { icon: 'CreditCard', label: '信用卡', color: '#EF4444' },
+  loan:        { icon: 'Bank',       label: '贷款',   color: '#F59E0B' },
+  mortgage:    { icon: 'HouseLine',  label: '房贷',   color: '#8B5CF6' },
+  other:       { icon: 'Package',    label: '其他',   color: '#6B7280' },
 }
 
-// 交易分类图标
+// 交易分类图标（与 notification-parser CATEGORY_KEYWORDS 对齐）
 export const categoryIcons: Record<string, { icon: string; color: string }> = {
-  '餐饮':    { icon: '🍔', color: '#F59E0B' },
-  '交通':    { icon: '🚗', color: '#3B82F6' },
-  '购物':    { icon: '🛍', color: '#EC4899' },
-  '娱乐':    { icon: '🎮', color: '#8B5CF6' },
-  '居住':    { icon: '🏠', color: '#22C55E' },
-  '医疗':    { icon: '💊', color: '#EF4444' },
-  '教育':    { icon: '📚', color: '#06B6D4' },
-  '通讯':    { icon: '📱', color: '#6366F1' },
-  '水电':    { icon: '⚡', color: '#FBBF24' },
-  '保险':    { icon: '🛡', color: '#10B981' },
-  '投资':    { icon: '📈', color: '#B45309' },
-  '转账':    { icon: '🔄', color: '#6B7280' },
-  '工资':    { icon: '💵', color: '#22C55E' },
-  '理财':    { icon: '💎', color: '#8B5CF6' },
-  '退款':    { icon: '↩️', color: '#06B6D4' },
-  '其他':    { icon: '📦', color: '#6B7280' },
+  '餐饮':    { icon: 'CookingPot',     color: '#F59E0B' },
+  '交通':    { icon: 'Car',            color: '#3B82F6' },
+  '购物':    { icon: 'ShoppingBag',    color: '#EC4899' },
+  '娱乐':    { icon: 'GameController', color: '#8B5CF6' },
+  '生活':    { icon: 'Basket',         color: '#65A30D' },
+  '金融':    { icon: 'Bank',           color: '#0284C7' },
+  '居住':    { icon: 'House',          color: '#22C55E' },
+  '医疗':    { icon: 'FirstAid',       color: '#EF4444' },
+  '教育':    { icon: 'GraduationCap',  color: '#06B6D4' },
+  '通讯':    { icon: 'DeviceMobile',   color: '#6366F1' },
+  '水电':    { icon: 'Lightning',      color: '#FBBF24' },
+  '保险':    { icon: 'ShieldCheck',    color: '#10B981' },
+  '投资':    { icon: 'TrendUp',        color: '#B45309' },
+  '转账':    { icon: 'ArrowsLeftRight', color: '#6B7280' },
+  '工资':    { icon: 'CurrencyCny',    color: '#22C55E' },
+  '理财':    { icon: 'ChartPieSlice',  color: '#8B5CF6' },
+  '退款':    { icon: 'ArrowUUpLeft',   color: '#06B6D4' },
+  '其他':    { icon: 'DotsThree',      color: '#6B7280' },
 }
 
 // 流动性标签

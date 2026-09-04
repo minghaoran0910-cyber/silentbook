@@ -64,7 +64,7 @@ else
   _v_jwt="$(openssl rand -hex 32)"
   _v_whk="$(openssl rand -hex 32)"
   # Fernet 密钥：url-safe base64 编码的 32 字节（不依赖 Python cryptography）
-  _v_bky="$(openssl rand 32 | basetr '+/' '-_')"
+  _v_bky="$(openssl rand 32 | tr '+/' '-_')"
   _now="$(date '+%Y-%m-%d %H:%M:%S')"
 
   {
@@ -72,7 +72,7 @@ else
     echo ""
     echo "# ===== 数据库（容器内部使用，一般无需修改）====="
     echo "DB_USER=silentbook"
-    echo "DB_PASSWORD=***"
+    echo "DB_PASSWORD=silentbook"
     echo "DB_NAME=silentbook"
     echo "DATABASE_URL=postgresql://silentbook:silentbook@db:5432/silentbook"
     echo ""

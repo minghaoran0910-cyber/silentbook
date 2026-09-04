@@ -340,7 +340,7 @@ class TestParseAPI:
         data = resp.json()
         assert data["amount"] == 88.50
         assert data["transaction_type"] == "expense"
-        assert data["account"] == "cmb"
+        assert data["account"] == "招商银行"
         assert data["category"] == "餐饮"
         assert data["bank_card"] == "1234"
         assert data["balance"] == 52311.50
@@ -353,7 +353,7 @@ class TestParseAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["amount"] == 18.90
-        assert data["account"] == "alipay"
+        assert data["account"] == "支付宝"
         assert data["category"] == "餐饮"
 
     def test_parse_wechat_income(self, client):
@@ -365,4 +365,129 @@ class TestParseAPI:
         data = resp.json()
         assert data["amount"] == 66.66
         assert data["transaction_type"] == "income"
-        assert data["account"] == "wechat_pay"
+        assert data["account"] == "微信"
+
+
+# ===========================================================================
+# 交通银行 (bocom)
+# ===========================================================================
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    return TestClient(app)
+
+
+class TestBocom:
+    def test_bocom_consumption(self):
+        text = "【交通银行】您尾号1234的太平洋借记卡于09月04日消费人民币88.00元，商户：美团外卖。"
+        assert detect_platform(text) == 'bocom'
+        assert extract_amount(text, 'bocom') == 88.00
+        assert detect_type(text) == 'expense'
+        assert extract_bank_card(text) == '1234'
+
+    def test_bocom_api(self, client):
+        resp = client.post("/parse", json={
+            "title": "交通银行",
+            "body": "您尾号1234的太平洋借记卡于09月04日消费人民币88.00元，商户：美团外卖。",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["amount"] == 88.00
+        assert data["account"] == "交通银行"
+        assert data["category"] == "餐饮"
+
+
+# ===========================================================================
+# 浦发银行 (spdb)
+# ===========================================================================
+
+class TestSpdb:
+    def test_spdb_consumption(self):
+        text = "浦发银行：您尾号5678的信用卡于09月04日消费88.00元。【京东商城】"
+        assert detect_platform(text) == 'spdb'
+        assert extract_amount(text, 'spdb') == 88.00
+        assert detect_type(text) == 'expense'
+
+    def test_spdb_api(self, client):
+        resp = client.post("/parse", json={
+            "title": "浦发银行",
+            "body": "您尾号5678的信用卡于09月04日消费88.00元。【京东商城】",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["amount"] == 88.00
+        assert data["account"] == "浦发银行"
+        assert data["category"] == "购物"
+
+
+# ===========================================================================
+# 美团 (meituan)
+# ===========================================================================
+
+class TestMeituan:
+    def test_meituan_payment(self):
+        text = "美团：您在海底捞消费¥128.00元，已使用银行卡支付。"
+        assert detect_platform(text) == 'meituan'
+        assert extract_amount(text, 'meituan') == 128.00
+        assert detect_type(text) == 'expense'
+        assert auto_categorize('海底捞', text) == '餐饮'
+
+    def test_meituan_api(self, client):
+        resp = client.post("/parse", json={
+            "title": "美团",
+            "body": "您在海底捞消费¥128.00元，已使用银行卡支付。",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["amount"] == 128.00
+        assert data["account"] == "美团"
+
+
+# ===========================================================================
+# 京东 (jd)
+# ===========================================================================
+
+class TestJd:
+    def test_jd_order(self):
+        text = "京东：您的订单123456789已支付88.00元，商品：蓝牙耳机。"
+        assert detect_platform(text) == 'jd'
+        assert extract_amount(text, 'jd') == 88.00
+        assert detect_type(text) == 'expense'
+
+    def test_jd_api(self, client):
+        resp = client.post("/parse", json={
+            "title": "京东",
+            "body": "您的订单123456789已支付88.00元，商品：蓝牙耳机。",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["amount"] == 88.00
+        assert data["account"] == "京东"
+
+
+# ===========================================================================
+# 方向判定回归：名词+动词组合
+# ===========================================================================
+
+class TestDirectionRegression:
+    def test_interest_expense(self):
+        assert detect_type("工商银行：您尾号5678贷款利息支出50.00元。") == 'expense'
+
+    def test_salary_in(self):
+        assert detect_type("招商银行：您尾号1234工资到账人民币10000.00元。") == 'income'
+
+    def test_receipt_with_payer_role(self):
+        assert detect_type("【支付宝】您于07月08日收款人民币1200.00元，付款方：李四。") == 'income'
+
+    def test_pay_action(self):
+        assert detect_type("招商银行：您尾号1234缴纳电费120.00元。") == 'expense'
+
+class TestSourceExactMatch:
+    def test_source_bocom_not_boc(self):
+        assert detect_platform("消费88元", "bocom") == 'bocom'
+
+    def test_source_exact_wins(self):
+        assert detect_platform("消费88元", "spdb") == 'spdb'
+        assert detect_platform("消费88元", "cmb") == 'cmb'

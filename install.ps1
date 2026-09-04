@@ -68,7 +68,7 @@ if (Test-Path ".env") {
 
 # ===== 数据库（容器内部使用，一般无需修改）=====
 DB_USER=silentbook
-DB_PASSWORD=***
+DB_PASSWORD=silentbook
 DB_NAME=silentbook
 DATABASE_URL=postgresql://silentbook:silentbook@db:5432/silentbook
 
@@ -92,7 +92,7 @@ DEPLOY_MODE=local
 WEBHOOK_USER_ID=1
 
 # ===== 安全密钥（已自动生成，请妥善保管，丢失将无法解密备份/会话）=====
-JWT_SECRET=$JwtS…CRET}
+JWT_SECRET=$JwtSecret
 WEBHOOK_SECRET=$WebhookSecret
 BACKUP_ENCRYPTION_KEY=$BackupKey
 "@

@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="auth-card">
       <div class="auth-header">
-        <h1>🔐 SilentBook</h1>
+        <h1>SilentBook</h1>
         <p>财务自由，不是终点，是每一步的选择</p>
       </div>
 
@@ -71,7 +71,8 @@
               class="toggle-pwd"
               @click="showRegPassword = !showRegPassword"
               tabindex="-1"
-            >{{ showRegPassword ? '🙈' : '👁️' }}</button>
+              :aria-label="showRegPassword ? '隐藏密码' : '显示密码'"
+            ><AppIcon :icon="showRegPassword ? 'EyeSlash' : 'Eye'" :size="17" /></button>
           </div>
           <span v-if="regForm.password && regForm.password.length < 6" class="field-hint field-warn">密码至少6位</span>
         </div>
@@ -92,7 +93,8 @@
               class="toggle-pwd"
               @click="showRegConfirm = !showRegConfirm"
               tabindex="-1"
-            >{{ showRegConfirm ? '🙈' : '👁️' }}</button>
+              :aria-label="showRegConfirm ? '隐藏密码' : '显示密码'"
+            ><AppIcon :icon="showRegConfirm ? 'EyeSlash' : 'Eye'" :size="17" /></button>
           </div>
           <span v-if="regForm.confirmPassword && regForm.password !== regForm.confirmPassword" class="field-hint field-warn">两次密码不一致</span>
         </div>
@@ -134,7 +136,8 @@
               class="toggle-pwd"
               @click="showPassword = !showPassword"
               tabindex="-1"
-            >{{ showPassword ? '🙈' : '👁️' }}</button>
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+            ><AppIcon :icon="showPassword ? 'EyeSlash' : 'Eye'" :size="17" /></button>
           </div>
         </div>
         <button type="submit" class="btn-primary" :disabled="!canLogin || loading">
@@ -147,7 +150,7 @@
       </form>
 
       <div v-if="error" class="error-message">
-        <span>⚠️ {{ error }}</span>
+        <span class="error-line"><AppIcon icon="Warning" :size="15" /> {{ error }}</span>
       </div>
       <div v-if="success" class="success-message">{{ success }}</div>
     </div>
@@ -360,7 +363,7 @@ onMounted(async () => {
 
 .tab-switch button.active {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -422,10 +425,12 @@ onMounted(async () => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
   padding: 0.25rem;
   opacity: 0.7;
   transition: opacity 0.2s;
+  color: var(--text-secondary);
 }
 
 .toggle-pwd:hover {
@@ -436,7 +441,7 @@ onMounted(async () => {
   width: 100%;
   padding: 0.75rem;
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -461,8 +466,8 @@ onMounted(async () => {
 .spinner {
   width: 1rem;
   height: 1rem;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -479,6 +484,12 @@ onMounted(async () => {
   border: 1px solid var(--danger, #ef4444);
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+.error-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .success-message {

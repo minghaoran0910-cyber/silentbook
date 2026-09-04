@@ -9,7 +9,7 @@
       <div class="source-list">
         <div v-for="source in sources" :key="source.id" class="source-item">
           <div class="source-info">
-            <span class="source-icon">{{ source.icon }}</span>
+            <AppIcon :icon="source.icon" :size="20" class="source-icon" />
             <span class="source-name">{{ source.name }}</span>
           </div>
           <label class="toggle">
@@ -37,7 +37,7 @@
       
       <!-- 用户自定义 AI 配置 -->
       <div class="ai-config-section">
-        <h3>🧠 自定义模型配置</h3>
+        <h3>自定义模型配置</h3>
         <p class="config-desc">填写你自己的 API 参数，分析时将使用此模型</p>
         
         <div class="config-form">
@@ -51,8 +51,8 @@
             <div class="input-with-action">
               <input :type="showApiKey ? 'text' : 'password'" v-model="aiConfig.api_key" class="input full-width" 
                      :placeholder="aiConfig.api_key_masked || 'sk-...'">
-              <button @click="showApiKey = !showApiKey" class="btn-icon" title="显示/隐藏">
-                {{ showApiKey ? '🙈' : '👁️' }}
+              <button @click="showApiKey = !showApiKey" class="btn-icon" title="显示/隐藏" :aria-label="showApiKey ? '隐藏' : '显示'">
+                <AppIcon :icon="showApiKey ? 'EyeSlash' : 'Eye'" :size="16" />
               </button>
             </div>
           </div>
@@ -63,10 +63,12 @@
           </div>
           <div class="form-actions">
             <button @click="saveAiConfig" class="btn-primary" :disabled="savingAiConfig">
-              {{ savingAiConfig ? '保存中...' : '💾 保存配置' }}
+              <AppIcon v-if="!savingAiConfig" icon="FloppyDisk" :size="15" />
+              {{ savingAiConfig ? '保存中...' : '保存配置' }}
             </button>
             <button @click="testAiConfig" class="btn-secondary" :disabled="testingAiConfig">
-              {{ testingAiConfig ? '测试中...' : '🔌 测试连接' }}
+              <AppIcon v-if="!testingAiConfig" icon="PlugsConnected" :size="15" />
+              {{ testingAiConfig ? '测试中...' : '测试连接' }}
             </button>
           </div>
           <div v-if="aiConfigMessage" class="config-message" :class="aiConfigMessageType">
@@ -77,17 +79,18 @@
       
       <!-- OpenClaw 绑定 -->
       <div class="openclaw-bindding-section">
-        <h3>🔗 OpenClaw 绑定</h3>
+        <h3>OpenClaw 绑定</h3>
         <p class="config-desc">绑定后分析结果可推送到对应的 OpenClaw Agent</p>
         
         <div v-if="openclawBinding.bound" class="binding-status bound">
-          <span>✅ 已绑定: {{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})</span>
+          <span class="bound-label"><AppIcon icon="Check" :size="15" /> 已绑定: {{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})</span>
           <button @click="unbindOpenClaw" class="btn-small btn-danger">解除绑定</button>
         </div>
         <div v-else>
           <div class="form-actions">
             <button @click="fetchOpenClawAgents" class="btn-secondary" :disabled="fetchingAgents">
-              {{ fetchingAgents ? '获取中...' : '🔍 获取 Agent 清单' }}
+              <AppIcon v-if="!fetchingAgents" icon="MagnifyingGlass" :size="15" />
+              {{ fetchingAgents ? '获取中...' : '获取 Agent 清单' }}
             </button>
           </div>
           <div v-if="openclawAgents.length > 0" class="agent-select-list">
@@ -103,7 +106,7 @@
       <div class="agent-list">
         <div v-for="agent in agents" :key="agent.id" class="agent-item">
           <div class="agent-info">
-            <span class="agent-icon">{{ agent.icon }}</span>
+            <AppIcon :icon="agent.icon" :size="20" class="agent-icon" />
             <div>
               <span class="agent-name">{{ agent.name }}</span>
               <span class="agent-desc">{{ agent.description }}</span>
@@ -119,19 +122,12 @@
 
     <div class="settings-section">
       <h2>系统</h2>
-      
+
       <div class="setting-row">
         <span>API 地址</span>
-        <input type="text" v-model="apiBase" class="input" placeholder="/api">
+        <span class="readonly-value">{{ effectiveApiBase }}</span>
       </div>
-      
-      <div class="setting-row">
-        <span>自动分析</span>
-        <label class="toggle">
-          <input type="checkbox" v-model="autoAnalyze">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
+      <p class="section-desc">由部署配置（NUXT_PUBLIC_API_BASE）决定，修改请改环境变量后重启前端。</p>
     </div>
 
     <div class="settings-section">
@@ -140,14 +136,14 @@
       
       <div class="data-actions">
         <button @click="exportData" class="btn-action">
-          <span>📥</span> 导出 CSV
+          <AppIcon icon="DownloadSimple" :size="17" /> 导出 CSV
         </button>
         <label class="btn-action import-btn">
-          <span>📤</span> 导入 CSV
+          <AppIcon icon="UploadSimple" :size="17" /> 导入 CSV
           <input type="file" accept=".csv" @change="importData" style="display: none">
         </label>
         <label class="btn-action import-btn">
-          <span>📄</span> 导入 PDF 流水
+          <AppIcon icon="FileText" :size="17" /> 导入 PDF 流水
           <input type="file" accept=".pdf" @change="importPdf" style="display: none">
         </label>
       </div>
@@ -162,25 +158,25 @@
 
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
-import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi } from '~/utils/api'
+import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile } from '~/utils/api'
 
 const sources = ref([
-  { id: 'cmb', name: '招商银行', icon: '🏦', enabled: true },
-  { id: 'icbc', name: '工商银行', icon: '🏦', enabled: true },
-  { id: 'ccb', name: '建设银行', icon: '🏦', enabled: true },
-  { id: 'alipay', name: '支付宝', icon: '💳', enabled: true },
-  { id: 'wechat_pay', name: '微信支付', icon: '💳', enabled: true }
+  { id: 'cmb', name: '招商银行', icon: 'Bank', enabled: true },
+  { id: 'icbc', name: '工商银行', icon: 'Bank', enabled: true },
+  { id: 'ccb', name: '建设银行', icon: 'Bank', enabled: true },
+  { id: 'alipay', name: '支付宝', icon: 'Wallet', enabled: true },
+  { id: 'wechat_pay', name: '微信支付', icon: 'DeviceMobile', enabled: true }
 ])
 
 const agents = ref([
-  { id: 1, name: '墨砚', icon: '📊', description: '财务总监 - 消费分析', enabled: true },
-  { id: 2, name: '远瞻', icon: '📈', description: '投资总监 - 投资分析', enabled: true },
-  { id: 3, name: '老油条', icon: '🍵', description: '综合建议 - 财务规划', enabled: true }
+  { id: 1, name: '墨砚', icon: 'ChartLine', description: '财务总监 - 消费分析', enabled: true },
+  { id: 2, name: '远瞻', icon: 'TrendUp', description: '投资总监 - 投资分析', enabled: true },
+  { id: 3, name: '老油条', icon: 'BookOpen', description: '综合建议 - 财务规划', enabled: true }
 ])
 
 const agentMode = ref('auto')
-const apiBase = ref('/api')
-const autoAnalyze = ref(false)
+// 当前生效的后端地址（只读展示，由部署配置决定，不可在此修改）
+const effectiveApiBase = ref('/api')
 const importResult = ref(null)
 
 // AI 配置
@@ -193,8 +189,8 @@ const aiConfigMessageType = ref('')
 
 const exportData = async () => {
   try {
-    const response = await fetch(`${apiBase.value}/export/csv`)
-    const blob = await response.blob()
+    // 经统一出口：带鉴权 Cookie 下载
+    const blob = await downloadExportCsv()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -210,17 +206,12 @@ const exportData = async () => {
 const importData = async (event) => {
   const file = event.target.files[0]
   if (!file) return
-  
+
   const reader = new FileReader()
   reader.onload = async (e) => {
     const content = e.target.result
     try {
-      const response = await fetch(`${apiBase.value}/import/csv`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      })
-      const result = await response.json()
+      const result = await importCsvContent(content)
       importResult.value = { success: true, message: `导入成功: ${result.imported} 条记录` }
     } catch (err) {
       importResult.value = { success: false, message: '导入失败: ' + err.message }
@@ -232,24 +223,16 @@ const importData = async (event) => {
 const importPdf = async (event) => {
   const file = event.target.files[0]
   if (!file) return
-  
+
   importResult.value = { success: true, message: '正在解析 PDF...' }
-  
+
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    const response = await fetch(`${apiBase.value}/import/pdf`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    })
-    const result = await response.json()
-    
+    const result = await importPdfFile(file)
+
     if (result.status === 'ok') {
-      importResult.value = { success: true, message: `✅ ${result.bank} | 成功导入 ${result.imported} 条记录` }
+      importResult.value = { success: true, message: `${result.bank} | 成功导入 ${result.imported} 条记录` }
     } else if (result.status === 'warning') {
-      importResult.value = { success: false, message: `⚠️ ${result.message}` }
+      importResult.value = { success: false, message: `${result.message}` }
     } else {
       importResult.value = { success: false, message: `❌ ${result.detail || '导入失败'}` }
     }
@@ -285,7 +268,7 @@ const saveAiConfig = async () => {
       api_key: aiConfig.value.api_key || undefined,
       model_name: aiConfig.value.model_name
     })
-    aiConfigMessage.value = '✅ 配置已保存'
+    aiConfigMessage.value = '配置已保存'
     aiConfigMessageType.value = 'success'
     if (resp.api_key_masked) aiConfig.value.api_key_masked = resp.api_key_masked
     aiConfig.value.api_key = ''  // 清空输入框
@@ -304,7 +287,7 @@ const testAiConfig = async () => {
   try {
     const resp = await testAiConfigConnection()
     if (resp.status === 'ok') {
-      aiConfigMessage.value = '✅ ' + resp.message
+      aiConfigMessage.value = resp.message
       aiConfigMessageType.value = 'success'
     } else {
       aiConfigMessage.value = '❌ ' + resp.message
@@ -399,10 +382,9 @@ const loadAll = async () => {
   }
   
   try {
-    const config = useRuntimeConfig()
-    apiBase.value = config.public?.apiBase || ''
+    effectiveApiBase.value = getApiBaseUrl() || ''
   } catch {
-    apiBase.value = ''
+    effectiveApiBase.value = ''
   }
   
   // 加载 AI 配置
@@ -468,7 +450,8 @@ h1 {
 }
 
 .source-icon {
-  font-size: 1.3rem;
+  display: inline-flex;
+  color: var(--accent);
 }
 
 .source-name, .agent-name {
@@ -543,6 +526,12 @@ h1 {
   color: var(--text-primary);
 }
 
+.readonly-value {
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
 .input {
   padding: 0.5rem 0.75rem;
   background: var(--bg-primary);
@@ -572,7 +561,8 @@ h1 {
 }
 
 .agent-icon {
-  font-size: 1.3rem;
+  display: inline-flex;
+  color: var(--accent);
 }
 
 .mode-selector {
@@ -690,7 +680,7 @@ h1 {
 .btn-primary {
   padding: 0.6rem 1.2rem;
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -759,6 +749,14 @@ h1 {
 .binding-status.bound {
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.bound-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--success);
+  font-weight: 500;
 }
 
 .btn-small {

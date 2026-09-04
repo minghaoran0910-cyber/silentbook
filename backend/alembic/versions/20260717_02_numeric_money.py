@@ -23,6 +23,10 @@ def _alter(mapping, column_type, scale=None):
             op.alter_column(table, column, type_=column_type, postgresql_using=using)
 
 def upgrade():
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        # 新库由 create_all 直接建出正确类型；存量 Float 老库走手动迁移（见 docs）。
+        return
     _alter(MONEY_COLUMNS, sa.Numeric(18, 2), 2)
     _alter(QUANTITY_COLUMNS, sa.Numeric(24, 8), 8)
     op.create_index("ix_transactions_user_parsed_type", "transactions", ["user_id", "parsed_at", "transaction_type"], unique=False)

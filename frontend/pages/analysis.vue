@@ -23,7 +23,7 @@
       <div class="analysis-grid">
         <div class="analysis-card">
           <div class="card-header">
-            <span class="card-icon">💸</span>
+            <AppIcon icon="ChartLine" :size="22" class="card-icon" />
             <h2>消费分析</h2>
             <span v-if="analysisMode === 'openclaw'" class="agent-badge">墨砚</span>
           </div>
@@ -32,7 +32,7 @@
 
         <div class="analysis-card">
           <div class="card-header">
-            <span class="card-icon">📈</span>
+            <AppIcon icon="TrendUp" :size="22" class="card-icon" />
             <h2>投资分析</h2>
             <span v-if="analysisMode === 'openclaw'" class="agent-badge">远瞻</span>
           </div>
@@ -41,7 +41,7 @@
 
         <div class="analysis-card">
           <div class="card-header">
-            <span class="card-icon">💡</span>
+            <AppIcon icon="BookOpen" :size="22" class="card-icon" />
             <h2>综合建议</h2>
           </div>
           <div class="card-content markdown-body" v-html="renderMd(analysis.suggestion)"></div>
@@ -51,9 +51,9 @@
       <!-- 图表区 -->
       <div v-if="categoryStats.length > 0" class="charts-section">
         <div class="chart-card">
-          <h3>📊 消费分类</h3>
+          <h3>消费分类</h3>
           <div class="pie-chart-wrapper">
-            <div class="css-pie" :style="pieStyle"></div>
+            <div ref="pieEl" class="pie-chart"></div>
             <div class="pie-legend">
               <div v-for="(cat, i) in categoryStats.slice(0, 8)" :key="cat.name" class="legend-item">
                 <span class="legend-dot" :style="{ background: pieColors[i % pieColors.length] }"></span>
@@ -68,7 +68,7 @@
 
       <!-- 历史分析 -->
       <div v-if="history.length > 0" class="history-section">
-        <h2>📜 历史分析</h2>
+        <h2>历史分析</h2>
         <div class="history-list">
           <div v-for="batch in history" :key="batch.created_at" class="history-batch">
             <div class="history-time">{{ formatTime(batch.created_at) }}</div>
@@ -95,7 +95,6 @@ import { ref, onMounted, onActivated, computed } from 'vue'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 import { runAnalysis, fetchLatestAnalysis, fetchAnalysisHistory, fetchMonthlyStats } from '~/utils/api'
-import { getCategoryIcon } from '~/utils/icons'
 
 // 配置 marked
 marked.setOptions({
@@ -129,18 +128,37 @@ const clientReady = ref(false)
 const loadingText = ref('AI 正在分析您的财务数据...')
 const categoryStats = ref([])
 const totalExpense = ref(0)
-const pieColors = ['#b45309', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1']
+const pieColors = ['#0F766E', '#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1']
 
-const pieStyle = computed(() => {
-  if (!categoryStats.value.length) return ''
-  let acc = 0
-  const segments = categoryStats.value.slice(0, 8).map((cat, i) => {
-    const pct = (cat.amount / totalExpense.value) * 100
-    const start = acc
-    acc += pct
-    return `${pieColors[i % pieColors.length]} ${start}% ${acc}%`
-  })
-  return `background: conic-gradient(${segments.join(', ')})`
+// 分类饼图 echarts（颜色与 legend 圆点同源）
+const { el: pieEl, render: renderPie } = useECharts()
+watch([categoryStats, totalExpense], () => {
+  if (!categoryStats.value.length) return
+  renderPie((p) => ({
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: p.bg,
+      borderColor: p.border,
+      textStyle: { color: p.text, fontSize: 12 },
+      valueFormatter: (v) => `¥${Number(v).toFixed(0)}`,
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: p.bg, borderWidth: 2, borderRadius: 4 },
+        label: { show: false },
+        emphasis: { scale: true, scaleSize: 4 },
+        data: categoryStats.value.slice(0, 8).map((cat, i) => ({
+          name: cat.name,
+          value: cat.amount,
+          itemStyle: { color: pieColors[i % pieColors.length] },
+        })),
+      },
+    ],
+  }))
 })
 
 const typeLabels = {
@@ -238,7 +256,7 @@ onActivated(() => { clientReady.value = true; loadAll() })
 .mode-badge.openclaw { background: rgba(180,83,9,0.15); color: var(--accent); }
 .mode-badge.local { background: rgba(59,130,246,0.15); color: #3B82F6; }
 .btn { padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; }
-.btn-primary { background: var(--accent); color: white; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .loading-state { text-align: center; padding: 4rem; color: var(--text-secondary); }
@@ -248,7 +266,7 @@ onActivated(() => { clientReady.value = true; loadAll() })
 .analysis-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
 .analysis-card:hover { border-color: var(--accent); }
 .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
-.card-icon { font-size: 1.5rem; }
+.card-icon { display: inline-flex; color: var(--accent); }
 .card-header h2 { font-size: 1.2rem; color: var(--text-primary); flex: 1; }
 .agent-badge { background: rgba(180,83,9,0.15); color: var(--accent); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
 .card-content { color: var(--text-secondary); line-height: 1.7; }
@@ -265,7 +283,7 @@ onActivated(() => { clientReady.value = true; loadAll() })
 .chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
 .chart-card h3 { color: var(--text-primary); margin-bottom: 1rem; }
 .pie-chart-wrapper { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; }
-.css-pie { width: 200px; height: 200px; border-radius: 50%; min-width: 200px; }
+.pie-chart { width: 220px; height: 220px; min-width: 220px; }
 .pie-legend { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; min-width: 200px; }
 .legend-item { display: flex; align-items: center; gap: 0.5rem; }
 .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }

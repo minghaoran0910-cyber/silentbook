@@ -1,7 +1,7 @@
 <template>
   <div class="container">
-    <div class="header">
-      <h1>📊 财务报表</h1>
+      <div class="header">
+        <h1>财务报表</h1>
       <div class="tab-bar">
         <button :class="{ active: activeTab === 'daily' }" @click="activeTab = 'daily'">日报</button>
         <button :class="{ active: activeTab === 'weekly' }" @click="activeTab = 'weekly'">周报</button>
@@ -143,15 +143,7 @@
       </div>
       <div v-if="yearlyReport.monthly?.length" class="monthly-breakdown">
         <h3>月度趋势</h3>
-        <div class="monthly-chart">
-          <div v-for="month in yearlyReport.monthly" :key="month.month" class="month-bar">
-            <div class="bar-container">
-              <div class="bar-income" :style="{ height: getBarHeight(month.income, yearlyReport.max_monthly) + '%' }"></div>
-              <div class="bar-expense" :style="{ height: getBarHeight(month.expense, yearlyReport.max_monthly) + '%' }"></div>
-            </div>
-            <div class="month-label">{{ month.month }}月</div>
-          </div>
-        </div>
+        <div ref="yearlyEl" class="chart-box"></div>
       </div>
     </div>
   </div>
@@ -159,6 +151,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import { fetchReport as fetchReportApi } from '~/utils/api'
+import { useECharts, axisCommon, tooltipCommon } from '~/composables/useECharts'
 
 const activeTab = ref('daily')
 const loading = ref(false)
@@ -169,16 +163,43 @@ const weeklyReport = ref({})
 const monthlyReport = ref({})
 const yearlyReport = ref({})
 
+// 年报月度趋势 echarts
+const { el: yearlyEl, render: renderYearly } = useECharts()
+watch(yearlyReport, (y) => {
+  if (!y.monthly?.length) return
+  renderYearly((p) => ({
+    grid: { left: 8, right: 8, top: 24, bottom: 0, containLabel: true },
+    tooltip: { ...tooltipCommon(p), valueFormatter: (v) => `¥${Number(v).toFixed(0)}` },
+    legend: {
+      top: 0, right: 0, textStyle: { color: p.subtext, fontSize: 11 },
+      itemWidth: 12, itemHeight: 8,
+    },
+    xAxis: {
+      type: 'category',
+      data: y.monthly.map((m) => `${m.month}月`),
+      ...axisCommon(p),
+    },
+    yAxis: { type: 'value', ...axisCommon(p) },
+    series: [
+      {
+        name: '收入', type: 'bar', data: y.monthly.map((m) => m.income),
+        itemStyle: { color: p.success, borderRadius: [3, 3, 0, 0] },
+      },
+      {
+        name: '支出', type: 'bar', data: y.monthly.map((m) => m.expense),
+        itemStyle: { color: p.danger, borderRadius: [3, 3, 0, 0] },
+      },
+    ],
+  }))
+}, { deep: true })
+
 const fetchReport = async (type) => {
   loading.value = true
   error.value = ''
   try {
-    const config = useRuntimeConfig()
-    const apiBase = config.public?.apiBase || '/api'
-    const resp = await fetch(`${apiBase}/stats/${type}`)
-    if (!resp.ok) throw new Error('加载失败')
-    const data = await resp.json()
-    
+    // 经统一 api 出口：自动带鉴权 Cookie + 401 跳登录
+    const data = await fetchReportApi(type)
+
     if (type === 'daily') dailyReport.value = data
     else if (type === 'weekly') weeklyReport.value = data
     else if (type === 'monthly') monthlyReport.value = data
@@ -188,11 +209,6 @@ const fetchReport = async (type) => {
   } finally {
     loading.value = false
   }
-}
-
-const getBarHeight = (value, max) => {
-  if (!max || max === 0) return 0
-  return Math.min((value / max) * 100, 100)
 }
 
 watch(activeTab, (newTab) => {
@@ -369,48 +385,9 @@ onMounted(() => {
   font-size: 0.9rem;
 }
 
-.monthly-chart {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
-  height: 200px;
-  padding: 1rem 0;
-}
-
-.month-bar {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.bar-container {
+.chart-box {
   width: 100%;
-  height: 150px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-}
-
-.bar-income {
-  width: 100%;
-  background: var(--success);
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-}
-
-.bar-expense {
-  width: 100%;
-  background: var(--danger);
-  border-radius: 0 0 2px 2px;
-  min-height: 2px;
-}
-
-.month-label {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+  height: 260px;
 }
 </style>
 

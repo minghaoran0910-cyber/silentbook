@@ -22,16 +22,17 @@
         ></textarea>
       </div>
       <button type="button" @click="parseAndCreate" class="btn-primary" :disabled="parsing || !notificationText.trim()">
-        {{ parsing ? '解析中...' : '🔍 解析并创建' }}
+        <AppIcon v-if="!parsing" icon="MagnifyingGlass" :size="15" />
+        {{ parsing ? '解析中...' : '解析并创建' }}
       </button>
       <div v-if="parseResult" class="parse-result">
         <div v-if="parseResult.status === 'created'" class="parse-success">
-          ✅ 解析成功！
+          <AppIcon icon="Check" :size="16" /> 解析成功！
           <span class="parse-detail">{{ parseResult.category }} | ¥{{ parseResult.amount }} | {{ parseResult.type === 'income' ? '收入' : '支出' }}</span>
-          <span v-if="parseResult.abnormal_alert?.triggered" class="abnormal-badge">⚠️ 异常消费已触发分析</span>
+          <span v-if="parseResult.abnormal_alert?.triggered" class="abnormal-badge"><AppIcon icon="Warning" :size="14" /> 异常消费已触发分析</span>
         </div>
         <div v-else class="parse-fail">
-          ❌ {{ parseResult.reason || parseResult.status }}
+          <AppIcon icon="X" :size="16" /> {{ parseResult.reason || parseResult.status }}
         </div>
       </div>
     </div>
@@ -93,12 +94,18 @@
         <label>账户</label>
         <select v-model="form.account" required>
           <option value="">选择账户</option>
-          <option value="cmb">招商银行</option>
-          <option value="icbc">工商银行</option>
-          <option value="ccb">建设银行</option>
-          <option value="alipay">支付宝</option>
-          <option value="wechat_pay">微信支付</option>
-          <option value="cash">现金</option>
+          <option value="招商银行">招商银行</option>
+          <option value="工商银行">工商银行</option>
+          <option value="建设银行">建设银行</option>
+          <option value="农业银行">农业银行</option>
+          <option value="中国银行">中国银行</option>
+          <option value="交通银行">交通银行</option>
+          <option value="浦发银行">浦发银行</option>
+          <option value="支付宝">支付宝</option>
+          <option value="微信">微信支付</option>
+          <option value="美团">美团</option>
+          <option value="京东">京东</option>
+          <option value="现金">现金</option>
         </select>
       </div>
 
@@ -272,8 +279,10 @@ const parseAndCreate = async () => {
 .parse-success {
   color: var(--success);
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
 }
 
 .parse-detail {
@@ -284,10 +293,16 @@ const parseAndCreate = async () => {
 .abnormal-badge {
   color: var(--warning, #f59e0b);
   font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .parse-fail {
   color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .header h1 {
@@ -350,13 +365,13 @@ const parseAndCreate = async () => {
 .toggle-btn.expense.active {
   background: var(--danger);
   border-color: var(--danger);
-  color: white;
+  color: var(--fill-ink);
 }
 
 .toggle-btn.income.active {
   background: var(--success);
   border-color: var(--success);
-  color: white;
+  color: var(--fill-ink);
 }
 
 .btn {
@@ -372,7 +387,7 @@ const parseAndCreate = async () => {
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover:not(:disabled) {

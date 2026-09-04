@@ -106,8 +106,14 @@
         <option value="cmb">招商银行</option>
         <option value="icbc">工商银行</option>
         <option value="ccb">建设银行</option>
+        <option value="abc">农业银行</option>
+        <option value="boc">中国银行</option>
+        <option value="bocom">交通银行</option>
+        <option value="spdb">浦发银行</option>
         <option value="alipay">支付宝</option>
         <option value="wechat_pay">微信支付</option>
+        <option value="meituan">美团</option>
+        <option value="jd">京东</option>
         <option value="cash">现金</option>
       </select>
 
@@ -118,9 +124,13 @@
         <option value="购物">购物</option>
         <option value="娱乐">娱乐</option>
         <option value="生活">生活</option>
+        <option value="通讯">通讯</option>
         <option value="医疗">医疗</option>
         <option value="教育">教育</option>
         <option value="投资">投资</option>
+        <option value="金融">金融</option>
+        <option value="转账">转账</option>
+        <option value="工资">工资</option>
         <option value="其他">其他</option>
       </select>
 
@@ -151,7 +161,7 @@
     </div>
 
     <div v-else-if="transactions.length === 0" class="empty">
-      <div class="empty-icon">📭</div>
+      <div class="empty-icon"><AppIcon icon="Package" :size="36" /></div>
       <div class="empty-text">暂无交易记录</div>
       <button @click="showAddForm = true" class="btn btn-primary" style="margin-top: 1rem;">记一笔</button>
     </div>
@@ -161,7 +171,7 @@
            :class="{ editing: editingId === tx.id }"
            @click="startEdit(tx)">
         <div class="tx-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
-          <span class="icon-emoji">{{ getCategoryIcon(tx.category).icon }}</span>
+          <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
         </div>
         <div class="tx-info">
           <div class="tx-description">{{ tx.description || tx.category }}</div>
@@ -376,7 +386,11 @@ const submitEdit = async () => {
 const getAccountName = (account) => {
   const names = {
     cmb: '招商银行', icbc: '工商银行', ccb: '建设银行',
-    alipay: '支付宝', wechat_pay: '微信支付', cash: '现金', other: '其他'
+    abc: '农业银行', boc: '中国银行', bocom: '交通银行', spdb: '浦发银行',
+    ceb: '光大银行', citic: '中信银行', unionpay: '云闪付',
+    alipay: '支付宝', wechat_pay: '微信支付',
+    meituan: '美团', jd: '京东', taobao: '淘宝',
+    cash: '现金', other: '其他'
   }
   return names[account] || account
 }
@@ -443,7 +457,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -665,7 +679,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   color: var(--text-secondary);
 }
 
-.empty-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+.empty-icon { display: flex; justify-content: center; margin-bottom: 0.5rem; color: var(--text-tertiary); }
 .empty-text { font-size: 1.1rem; }
 
 /* Transaction list */

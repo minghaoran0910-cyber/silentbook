@@ -113,7 +113,7 @@
         </div>
 
         <div class="goal-meta" v-if="goal.deadline || goal.notes">
-          <span v-if="goal.deadline" class="meta-item">📅 {{ goal.deadline }}</span>
+          <span v-if="goal.deadline" class="meta-item meta-date"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
           <span v-if="goal.notes" class="meta-item">{{ goal.notes }}</span>
         </div>
       </div>
@@ -470,6 +470,12 @@ onActivated(loadData)
   color: var(--text-secondary);
 }
 
+.meta-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .empty-state {
   text-align: center;
   padding: 3rem;
@@ -526,7 +532,7 @@ onActivated(loadData)
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover { opacity: 0.9; }

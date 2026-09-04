@@ -308,11 +308,15 @@ class WebhookEvent(UserOwnedMixin, Base):
 
     id = Column(Integer, primary_key=True)
     event_id = Column(String(128), nullable=False)
+    # 业务级去重键：sha256(规范 JSON)，同一条通知换 event_id 重试也能识别。
+    # nullable 以兼容存量行（NULL 在唯一索引中互不冲突）；新行必须写入。
+    body_hash = Column(String(64), nullable=True)
     signature_timestamp = Column(Integer, nullable=False)
     received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index("uq_webhook_events_user_event", "user_id", "event_id", unique=True),
+        Index("uq_webhook_events_user_body", "user_id", "body_hash", unique=True),
     )
 
 

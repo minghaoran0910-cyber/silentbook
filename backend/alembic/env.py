@@ -5,7 +5,11 @@ from sqlalchemy import engine_from_config, pool
 from app.database import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+# 容器内由 lifespan 传入 DATABASE_URL；本地直接跑时给默认避免 KeyError
+config.set_main_option(
+    "sqlalchemy.url",
+    os.environ.get("DATABASE_URL", "sqlite:////data/silentbook.db"),
+)
 if config.config_file_name:
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata

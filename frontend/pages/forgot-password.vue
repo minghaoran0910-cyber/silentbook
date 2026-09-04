@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="auth-card">
       <div class="auth-header">
-        <h1>🔐 密码找回</h1>
+        <h1>密码找回</h1>
         <p>输入注册邮箱或手机号，获取重置链接</p>
       </div>
 
@@ -40,8 +40,8 @@
               placeholder="至少6位"
               :disabled="loading"
             >
-            <button type="button" class="toggle-pwd" @click="showPwd = !showPwd" tabindex="-1">
-              {{ showPwd ? '🙈' : '👁️' }}
+            <button type="button" class="toggle-pwd" @click="showPwd = !showPwd" tabindex="-1" :aria-label="showPwd ? '隐藏密码' : '显示密码'">
+              <AppIcon :icon="showPwd ? 'EyeSlash' : 'Eye'" :size="17" />
             </button>
           </div>
           <span v-if="newPassword && newPassword.length < 6" class="field-hint field-warn">密码至少6位</span>
@@ -56,8 +56,8 @@
               placeholder="再次输入"
               :disabled="loading"
             >
-            <button type="button" class="toggle-pwd" @click="showConfirm = !showConfirm" tabindex="-1">
-              {{ showConfirm ? '🙈' : '👁️' }}
+            <button type="button" class="toggle-pwd" @click="showConfirm = !showConfirm" tabindex="-1" :aria-label="showConfirm ? '隐藏密码' : '显示密码'">
+              <AppIcon :icon="showConfirm ? 'EyeSlash' : 'Eye'" :size="17" />
             </button>
           </div>
           <span v-if="confirmPassword && newPassword !== confirmPassword" class="field-hint field-warn">两次密码不一致</span>
@@ -70,13 +70,13 @@
 
       <!-- Step 3: 成功 -->
       <div v-else class="success-block">
-        <div class="success-icon">✅</div>
+        <div class="success-icon"><AppIcon icon="Check" :size="34" /></div>
         <p>密码重置成功！</p>
         <button class="btn-primary" @click="navigateTo('/auth')">前往登录</button>
       </div>
 
       <div v-if="error" class="error-message">
-        <span>⚠️ {{ error }}</span>
+        <span class="error-line"><AppIcon icon="Warning" :size="15" /> {{ error }}</span>
       </div>
       <div v-if="info" class="info-message">{{ info }}</div>
     </div>
@@ -266,7 +266,7 @@ onMounted(() => {
   width: 100%;
   padding: 0.75rem;
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -291,8 +291,8 @@ onMounted(() => {
 .spinner {
   width: 1rem;
   height: 1rem;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -322,6 +322,12 @@ onMounted(() => {
   font-size: 0.9rem;
 }
 
+.error-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .info-message {
   margin-top: 1rem;
   padding: 0.75rem;
@@ -338,7 +344,9 @@ onMounted(() => {
 }
 
 .success-icon {
-  font-size: 3rem;
+  display: flex;
+  justify-content: center;
+  color: var(--success);
   margin-bottom: 1rem;
 }
 

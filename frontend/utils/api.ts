@@ -509,11 +509,11 @@ export async function fetchOpenClawAgents(): Promise<any> {
 }
 
 export async function fetchOpenClawBinding(): Promise<any> {
-  return request('/settings/openclaw-bindding')
+  return request('/settings/openclaw-binding')
 }
 
 export async function bindOpenClawAgent(agentId: string, agentLabel?: string): Promise<any> {
-  return request('/settings/openclaw-bindding', {
+  return request('/settings/openclaw-binding', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agent_id: agentId, agent_label: agentLabel })
@@ -521,7 +521,135 @@ export async function bindOpenClawAgent(agentId: string, agentLabel?: string): P
 }
 
 export async function unbindOpenClawAgent(): Promise<any> {
-  return request('/settings/openclaw-bindding', { method: 'DELETE' })
+  return request('/settings/openclaw-binding', { method: 'DELETE' })
+}
+
+// 当前生效的 API 基址（供需要 Blob/FormData 的场景复用，同样走 runtimeConfig）
+export function getApiBaseUrl(): string {
+  return getApiBase()
+}
+
+// ===== 报表（reports.vue 经此统一走鉴权 + 401 跳转）=====
+
+export async function fetchReport(
+  type: 'daily' | 'weekly' | 'monthly' | 'yearly',
+  params?: Record<string, string>
+): Promise<any> {
+  const q = params && Object.keys(params).length
+    ? `?${new URLSearchParams(params).toString()}`
+    : ''
+  return request<any>(`/stats/${type}${q}`)
+}
+
+// ===== 持仓（investments.vue 经此统一走鉴权 + 401 跳转）=====
+
+export interface PositionPayload {
+  name: string
+  symbol?: string
+  position_type: string
+  quantity: number
+  avg_cost: number
+  current_price?: number
+  account?: string
+  notes?: string
+}
+
+export async function fetchPositionsData(): Promise<any> {
+  return request<any>('/positions')
+}
+
+export async function createPositionApi(data: Partial<PositionPayload>): Promise<any> {
+  return request<any>('/positions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function updatePositionApi(id: number, data: Partial<PositionPayload>): Promise<any> {
+  return request<any>(`/positions/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function deletePositionApi(id: number): Promise<void> {
+  await request(`/positions/${id}`, { method: 'DELETE' })
+}
+
+export async function syncPositionsApi(): Promise<SyncResult> {
+  return request<SyncResult>('/sync/assets', { method: 'POST' })
+}
+
+// ===== 导入导出（settings.vue 经此统一走鉴权）=====
+
+export async function downloadExportCsv(): Promise<Blob> {
+  const apiBase = getApiBase()
+  const headers = new Headers()
+  if (import.meta.server) {
+    const incoming = useRequestHeaders(['cookie']).cookie
+    if (incoming) headers.set('cookie', incoming)
+  }
+  const fullUrl = apiBase.startsWith('/') ? `${apiBase}/export/csv` : `${apiBase}/export/csv`
+  const response = await fetch(fullUrl, { headers, credentials: 'include' })
+  if (!response.ok) {
+    if (response.status === 401 && import.meta.client) {
+      localStorage.removeItem('authenticated')
+      localStorage.removeItem('user_info')
+      if (window.location.pathname !== '/auth') window.location.href = '/auth'
+      throw new Error('登录已过期，请重新登录')
+    }
+    throw new Error('导出失败')
+  }
+  return response.blob()
+}
+
+export async function importCsvContent(content: string): Promise<any> {
+  return request<any>('/import/csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+}
+
+export async function importPdfFile(file: File): Promise<any> {
+  const apiBase = getApiBase()
+  const formData = new FormData()
+  formData.append('file', file)
+  const headers = new Headers()
+  if (import.meta.server) {
+    const incoming = useRequestHeaders(['cookie']).cookie
+    if (incoming) headers.set('cookie', incoming)
+  }
+  const fullUrl = apiBase.startsWith('/') ? `${apiBase}/import/pdf` : `${apiBase}/import/pdf`
+  const response = await fetch(fullUrl, { method: 'POST', headers, credentials: 'include', body: formData })
+  if (!response.ok) {
+    if (response.status === 401 && import.meta.client) {
+      localStorage.removeItem('authenticated')
+      localStorage.removeItem('user_info')
+      if (window.location.pathname !== '/auth') window.location.href = '/auth'
+      throw new Error('登录已过期，请重新登录')
+    }
+    const detail = await response.text().catch(() => '')
+    throw new Error(detail || '导入失败')
+  }
+  return response.json()
+}
+
+// ===== 资产曲线（assets.vue 真实历史代替模拟数据）=====
+export async function fetchAssetCurve(months: number = 12): Promise<any> {
+  return request<any>(`/stats/asset-curve?months=${months}`)
+}
+
+// ===== 外汇汇率（展示层折算，账本仍记原币）=====
+export async function fetchFxRates(base = 'CNY', quotes = 'USD,EUR,JPY,HKD,GBP'): Promise<any> {
+  const params = new URLSearchParams({ base, quotes })
+  return request<any>(`/fx/rates?${params.toString()}`)
+}
+
+export async function fetchFxCurrencies(): Promise<any> {
+  return request<any>('/fx/currencies')
 }
 
 // ===== 月度统计（分析页用）=====

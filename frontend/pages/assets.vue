@@ -4,10 +4,12 @@
       <h1>资产管理</h1>
       <div class="header-actions">
         <button @click="syncAssets" class="btn btn-sync" :disabled="syncing">
-          {{ syncing ? '同步中...' : '🔄 同步持仓' }}
+          <AppIcon v-if="!syncing" icon="ArrowClockwise" :size="15" />
+          {{ syncing ? '同步中...' : '同步持仓' }}
         </button>
         <button @click="toggleAddForm" class="btn btn-primary">
-          {{ showAddForm ? '取消' : '+ 添加资产' }}
+          <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
+          {{ showAddForm ? '取消' : '添加资产' }}
         </button>
       </div>
     </div>
@@ -31,7 +33,7 @@
 
     <!-- 加载失败 -->
     <div v-else-if="loadError" class="error-state">
-      <p>⚠️ {{ loadError }}</p>
+      <p class="error-line"><AppIcon icon="Warning" :size="16" /> {{ loadError }}</p>
       <button @click="loadData" class="btn btn-primary">重试</button>
     </div>
 
@@ -85,7 +87,7 @@
             <div class="form-group">
               <label>实时金价</label>
               <div class="gold-price-display">
-                <span v-if="goldPrice">🥇 {{ goldPrice }} 元/克</span>
+                <span v-if="goldPrice" class="gold-price"><AppIcon icon="Coins" :size="15" /> {{ goldPrice }} 元/克</span>
                 <span v-else>加载中...</span>
               </div>
             </div>
@@ -129,9 +131,9 @@
     <!-- 资产分类饼图 + 变化曲线 -->
     <div class="charts-row" v-if="assets.length > 0">
       <div class="chart-card">
-        <h3>📊 资产分类</h3>
+        <h3>资产分类</h3>
         <div class="pie-wrapper">
-          <div class="css-pie" :style="pieStyle"></div>
+          <div ref="assetPieEl" class="pie-chart-sm"></div>
           <div class="pie-legend">
             <div v-for="(item, i) in pieData" :key="item.type" class="legend-item">
               <span class="legend-dot" :style="{ background: pieColors[i % pieColors.length] }"></span>
@@ -143,7 +145,7 @@
         </div>
       </div>
       <div class="chart-card">
-        <h3>📈 资产收益</h3>
+        <h3>资产收益</h3>
         <div class="profit-list">
           <div v-for="item in pieData" :key="'p-'+item.type" class="profit-item">
             <span class="profit-label">{{ item.label }}</span>
@@ -158,29 +160,16 @@
       </div>
     </div>
 
-    <!-- 资产变化曲线 -->
+    <!-- 资产变化曲线（真实历史，非模拟） -->
     <div class="chart-card" v-if="assets.length > 0">
-      <h3>📈 资产变化趋势</h3>
-      <div class="trend-chart">
-        <div class="trend-bar-container">
-          <div v-for="(item, i) in trendData" :key="i" class="trend-bar-item">
-            <div class="trend-bar-bg">
-              <div class="trend-bar-fill" :style="{ height: item.height + '%', background: item.change >= 0 ? 'var(--success)' : 'var(--danger)' }"></div>
-            </div>
-            <div class="trend-label">{{ item.label }}</div>
-            <div class="trend-value">¥{{ item.value.toFixed(0) }}</div>
-            <div class="trend-change" :class="{ positive: item.change >= 0, negative: item.change < 0 }">
-              {{ item.change >= 0 ? '+' : '' }}{{ item.change }}%
-            </div>
-          </div>
-        </div>
-      </div>
+      <h3>资产变化趋势</h3>
+      <div ref="assetCurveEl" class="chart-box"></div>
     </div>
 
     <!-- 资产列表 -->
     <div class="section">
       <div class="section-header">
-        <h2>📊 资产列表</h2>
+        <h2>资产列表</h2>
         <button @click="toggleAddForm" class="btn btn-small">
           {{ showAddForm ? '取消' : '+ 添加资产' }}
         </button>
@@ -215,7 +204,7 @@
       <div v-else class="asset-list">
         <div v-for="asset in filteredAssets" :key="asset.id" class="asset-card">
           <div class="asset-icon" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
-            <span class="icon-emoji">{{ getAssetIcon(asset.asset_type).icon }}</span>
+            <AppIcon :icon="getAssetIcon(asset.asset_type).icon" :color="getAssetIcon(asset.asset_type).color" :size="20" />
           </div>
           <div class="asset-info">
             <div class="asset-name">{{ asset.name }}</div>
@@ -333,7 +322,7 @@
       <div v-else class="liability-list">
         <div v-for="liab in liabilities" :key="liab.id" class="liability-card">
           <div class="asset-icon" :style="{ background: getLiabilityIcon(liab.liability_type).color + '20' }">
-            <span class="icon-emoji">{{ getLiabilityIcon(liab.liability_type).icon }}</span>
+            <AppIcon :icon="getLiabilityIcon(liab.liability_type).icon" :color="getLiabilityIcon(liab.liability_type).color" :size="20" />
           </div>
           <div class="asset-info">
             <div class="asset-name">{{ liab.name }}</div>
@@ -365,8 +354,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onActivated, computed } from 'vue'
-import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, updateLiability, deleteLiability, triggerAssetSync, fetchSyncStatus } from '~/utils/api'
+import { ref, onMounted, onActivated, computed, watch } from 'vue'
+import { fetchAssets, createAsset, updateAsset, deleteAsset, fetchLiabilities, createLiability, updateLiability, deleteLiability, triggerAssetSync, fetchSyncStatus, fetchAssetCurve } from '~/utils/api'
+import { useECharts } from '~/composables/useECharts'
 import { assetTypeIcons, liabilityTypeIcons, liquidityLabels, statusLabels, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 
 const assets = ref([])
@@ -471,7 +461,7 @@ const updateDueDate = () => {
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
 
-const pieColors = ['#b45309', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+const pieColors = ['#0F766E', '#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
 const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', gold: '黄金', pension: '养老金', property: '房产', other: '其他' }
 
 const pieData = computed(() => {
@@ -497,50 +487,77 @@ const pieData = computed(() => {
     .sort((a, b) => b.value - a.value)
 })
 
-const pieStyle = computed(() => {
-  if (!pieData.value.length) return ''
-  let acc = 0
-  const segments = pieData.value.map((item, i) => {
-    const pct = parseFloat(item.pct)
-    const start = acc
-    acc += pct
-    return `${pieColors[i % pieColors.length]} ${start}% ${acc}%`
-  })
-  return `background: conic-gradient(${segments.join(', ')})`
+// 资产分类饼图 + 净资产曲线 echarts
+const { el: assetPieEl, render: renderAssetPie } = useECharts()
+watch(pieData, (list) => {
+  if (!list.length) return
+  renderAssetPie((p) => ({
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: p.bg,
+      borderColor: p.border,
+      textStyle: { color: p.text, fontSize: 12 },
+      valueFormatter: (v) => `¥${Number(v).toFixed(0)}`,
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: p.bg, borderWidth: 2, borderRadius: 4 },
+        label: { show: false },
+        emphasis: { scale: true, scaleSize: 4 },
+        data: list.map((item, i) => ({
+          name: item.label,
+          value: item.value,
+          itemStyle: { color: pieColors[i % pieColors.length] },
+        })),
+      },
+    ],
+  }))
 })
 
-// 资产变化趋势数据（模拟历史数据）
-const trendData = computed(() => {
-  if (!assets.value.length) return []
-  const currentTotal = totalAssets.value
-  const months = ['3月前', '2月前', '上月', '本月']
-  const percentages = [0.75, 0.85, 0.92, 1.0] // 模拟历史占比
-  
-  return months.map((label, i) => {
-    const value = currentTotal * percentages[i]
-    const prevValue = i > 0 ? currentTotal * percentages[i - 1] : value
-    const change = i > 0 ? ((value - prevValue) / prevValue * 100).toFixed(1) : 0
-    const maxValue = currentTotal * 1.1
-    const height = (value / maxValue) * 100
-    
-    return {
-      label,
-      value,
-      change: parseFloat(change),
-      height
-    }
-  })
-})
-
-// 按类型分组的资产
-const assetsByType = computed(() => {
-  const groups = {}
-  assets.value.filter(a => a.status === 'active').forEach(a => {
-    if (!groups[a.asset_type]) groups[a.asset_type] = []
-    groups[a.asset_type].push(a)
-  })
-  return groups
-})
+const assetCurve = ref({ curve: [], current_net_worth: 0 })
+const { el: assetCurveEl, render: renderAssetCurve } = useECharts()
+watch(assetCurve, (c) => {
+  if (!c.curve?.length) return
+  renderAssetCurve((p) => ({
+    grid: { left: 8, right: 8, top: 24, bottom: 0, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: p.bg,
+      borderColor: p.border,
+      textStyle: { color: p.text, fontSize: 12 },
+      valueFormatter: (v) => `¥${Number(v).toFixed(0)}`,
+    },
+    xAxis: {
+      type: 'category',
+      data: c.curve.map((d) => d.month),
+      axisLine: { lineStyle: { color: p.border } },
+      axisTick: { show: false },
+      axisLabel: { color: p.subtext, fontSize: 11, interval: Math.max(Math.floor(c.curve.length / 8) - 1, 0) },
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      axisLabel: { color: p.subtext, fontSize: 11, formatter: (v) => v >= 10000 ? `${(v / 10000).toFixed(0)}万` : v },
+    },
+    series: [
+      {
+        name: '净资产',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        data: c.curve.map((d) => d.estimated_net),
+        lineStyle: { color: p.accent, width: 2.5 },
+        itemStyle: { color: p.accent },
+        areaStyle: { color: p.dark ? 'rgba(45,212,191,0.12)' : 'rgba(15,118,110,0.08)' },
+      },
+    ],
+  }))
+}, { deep: true })
 
 const loading = ref(true)
 const loadError = ref('')
@@ -552,6 +569,12 @@ const loadData = async () => {
     const [a, l] = await Promise.all([fetchAssets(), fetchLiabilities()])
     assets.value = a
     liabilities.value = l
+    // 真实净资产曲线（失败不影响主列表）
+    try {
+      assetCurve.value = await fetchAssetCurve(12)
+    } catch (e) {
+      console.error('加载资产曲线失败:', e)
+    }
   } catch (e) {
     console.error('加载资产失败:', e)
     const msg = e?.message || ''
@@ -707,13 +730,14 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 <style scoped>
 .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
 .loading-state, .error-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+.error-line { display: inline-flex; align-items: center; gap: 0.4rem; }
 .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 .header h1 { color: var(--accent); }
 .header-actions { display: flex; gap: 0.5rem; }
 .btn-sync { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
-.btn-sync:hover:not(:disabled) { background: var(--accent); color: white; }
+.btn-sync:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
 .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
 .sync-result { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; }
 .sync-result.success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10B981; }
@@ -761,7 +785,7 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .btn-icon:hover { background: var(--bg-tertiary); }
 .btn-icon.danger:hover { color: var(--danger); }
 .btn { padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; }
-.btn-primary { background: var(--accent); color: white; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
 .btn-small { padding: 0.3rem 0.8rem; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
@@ -779,7 +803,7 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
 .chart-card h3 { color: var(--text-primary); margin-bottom: 1rem; font-size: 1rem; }
 .pie-wrapper { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
-.css-pie { width: 160px; height: 160px; border-radius: 50%; flex-shrink: 0; }
+.pie-chart-sm { width: 180px; height: 180px; flex-shrink: 0; }
 .pie-legend { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
 .legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
 .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -796,18 +820,10 @@ onActivated(loadData) // 客户端路由导航回来时也重新加载
 .profit-value.negative { color: var(--danger); }
 
 /* 趋势图 */
-.trend-chart { margin-top: 1rem; }
-.trend-bar-container { display: flex; gap: 1rem; align-items: flex-end; height: 200px; padding: 1rem 0; }
-.trend-bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
-.trend-bar-bg { width: 100%; height: 150px; background: var(--bg-tertiary); border-radius: 4px; position: relative; overflow: hidden; display: flex; align-items: flex-end; }
-.trend-bar-fill { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.3s; min-height: 10px; }
-.trend-label { color: var(--text-secondary); font-size: 0.75rem; }
-.trend-value { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; }
-.trend-change { font-size: 0.75rem; font-weight: 600; }
-.trend-change.positive { color: var(--success); }
-.trend-change.negative { color: var(--danger); }
+.chart-box { width: 100%; height: 240px; }
 
-.gold-price-display { padding: 0.5rem; background: linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%); color: white; border-radius: 6px; font-weight: 600; text-align: center; }
+.gold-price-display { padding: 0.5rem; background: linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%); color: #422006; border-radius: 6px; font-weight: 600; text-align: center; }
+.gold-price { display: inline-flex; align-items: center; gap: 0.35rem; }
 .auto-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; }
 
 .filters { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }

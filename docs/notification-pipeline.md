@@ -34,6 +34,11 @@
 3. 配置通知转发目标，指向你的 OpenClaw 实例
 
 > ⚠️ C.one 是自动记账的**必要前置条件**。没有它，SilentBook 无法获取手机通知。
+>
+> 💡 **已验证的本地路径**：手机通知 → OpenClaw `phone-notifications` 插件落盘
+> （`~/.openclaw/plugins/phone-notifications/notifications/*.json`）→ 推送脚本严格过滤
+> 金融类（银行短信号段/支付宝/微信支付关键词）→ 微信·银行同笔去重 →
+> `POST /webhook/notify/batch`。C.one 可视为同类通知源的一种，按本页签名规范推送即可。
 
 ---
 
@@ -78,10 +83,11 @@ POST /webhook/notify
   "title": "招商银行",
   "body": "您尾号1234的储蓄卡消费人民币88.00元，商户：星巴克咖啡",
   "source": "cmb",
-  "timestamp": "2026-07-28T15:00:00+08:00",
-  "event_id": "unique-event-id"
+  "timestamp": "2026-07-28T15:00:00+08:00"
 }
 ```
+
+> `event_id` 不在 body 里，通过请求头 `X-Silentbook-Event-Id` 传递（用于幂等）。
 
 ### HMAC 签名验证
 
@@ -91,27 +97,28 @@ POST /webhook/notify
 
 | Header | 说明 |
 |--------|------|
-| `X-Webhook-Timestamp` | Unix 时间戳（秒），超过 5 分钟的请求会被拒绝 |
-| `X-Webhook-Event-Id` | 唯一事件 ID，用于幂等校验（重复 ID 会被拒绝） |
-| `X-Webhook-Signature` | HMAC-SHA256 签名 |
+| `X-Silentbook-Timestamp` | Unix 时间戳（秒），超过 5 分钟的请求会被拒绝 |
+| `X-Silentbook-Event-Id` | 唯一事件 ID，用于幂等校验（重复 ID 会被拒绝，`sha256=` 前缀可选） |
+| `X-Silentbook-Signature` | HMAC-SHA256 签名，可带 `sha256=` 前缀 |
 
-**签名算法：**
+**签名算法（与后端 `verify_webhook` 及推送脚本严格一致）：**
 
 ```python
-import hmac, hashlib, time, json
+import hmac, hashlib, time
 
 secret = "你的WEBHOOK_SECRET"  # 在 .env 中配置
-payload = json.dumps(request_body)
+body_bytes = b'...'  # 请求体的原始字节（不要重新序列化）
 timestamp = str(int(time.time()))
-event_id = "unique-event-id"
 
-# 签名内容 = timestamp:event_id:payload
-signature = hmac.new(
+# 签名内容 = timestamp + "." + 原始请求体字节
+signature = "sha256=" + hmac.new(
     secret.encode(),
-    f"{timestamp}:{event_id}:{payload}".encode(),
-    hashlib.sha256
+    f"{timestamp}.".encode() + body_bytes,
+    hashlib.sha256,
 ).hexdigest()
 ```
+
+> ⚠️ 必须对**原始请求体字节**签名，不要 `json.dumps` 重组后再签（空格/键序不同会导致 401）。
 
 **密钥配置：**
 - `install.sh` 会自动生成 `WEBHOOK_SECRET`（写入 `.env`）
@@ -122,16 +129,14 @@ signature = hmac.new(
 
 ```json
 POST /webhook/notify/batch
-
-{
-  "items": [
-    { "title": "...", "body": "...", "source": "...", "timestamp": "...", "event_id": "..." },
-    { "title": "...", "body": "...", "source": "...", "timestamp": "...", "event_id": "..." }
-  ]
-}
+// 请求体是数组（不是 {"items": [...]}），单次最多 100 条
+[
+  { "title": "...", "body": "...", "source": "...", "timestamp": "..." },
+  { "title": "...", "body": "...", "source": "...", "timestamp": "..." }
+]
 ```
 
-单次最多 100 条。
+单次最多 100 条。整批共用一套请求头签名；重试请换新的 `X-Silentbook-Event-Id`，否则会被判重（409）。
 
 ---
 
@@ -159,8 +164,21 @@ POST /webhook/notify/batch
 | 招商银行 | `cmb` | 招商银行、招行、CMB |
 | 工商银行 | `icbc` | 工商银行、工行、ICBC |
 | 建设银行 | `ccb` | 建设银行、建行、CCB |
+| 农业银行 | `abc` | 农业银行、农行、ABC、金穗 |
+| 中国银行 | `boc` | 中国银行、中行、BOC |
+| 交通银行 | `bocom` | 交通银行、交行、太平洋卡 |
+| 浦发银行 | `spdb` | 浦发银行、浦发、SPDB |
+| 光大银行 | `ceb` | 光大银行、光大、CEB、阳光卡 |
+| 中信银行 | `citic` | 中信银行、中信、CITIC |
+| 云闪付 | `unionpay` | 云闪付、UnionPay、银联 |
 | 支付宝 | `alipay` | 支付宝、Alipay |
 | 微信支付 | `wechat_pay` | 微信支付、WeChat Pay |
+| 美团 | `meituan` | 美团、美团外卖、大众点评 |
+| 京东 | `jd` | 京东、JD、白条、京东支付 |
+| 淘宝 | `taobao` | 淘宝、天猫、Tmall |
+
+> 推送端 `source` 字段请直接传上表标识（如 `bocom`），服务端精确优先，
+> 避免子串误判（`bocom` 含 `boc`，曾把交通银行判成中国银行）。
 
 ### 自动分类
 
@@ -207,26 +225,26 @@ payload = {
     "body": "您尾号1234的储蓄卡消费人民币88.00元，商户：星巴克",
     "source": "cmb",
     "timestamp": "2026-07-28T15:00:00+08:00",
-    "event_id": f"test-{int(time.time())}"
 }
+event_id = f"test-{int(time.time())}"
 
-payload_json = json.dumps(payload)
+body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 timestamp = str(int(time.time()))
 
-signature = hmac.new(
+signature = "sha256=" + hmac.new(
     SECRET.encode(),
-    f"{timestamp}:{payload['event_id']}:{payload_json}".encode(),
-    hashlib.sha256
+    f"{timestamp}.".encode() + body_bytes,
+    hashlib.sha256,
 ).hexdigest()
 
 headers = {
-    "X-Webhook-Timestamp": timestamp,
-    "X-Webhook-Event-Id": payload["event_id"],
-    "X-Webhook-Signature": signature,
-    "Content-Type": "application/json"
+    "X-Silentbook-Timestamp": timestamp,
+    "X-Silentbook-Event-Id": event_id,
+    "X-Silentbook-Signature": signature,
+    "Content-Type": "application/json",
 }
 
-resp = httpx.post(WEBHOOK_URL, content=payload_json, headers=headers)
+resp = httpx.post(WEBHOOK_URL, content=body_bytes, headers=headers)
 print(f"状态码: {resp.status_code}")
 print(f"响应: {resp.json()}")
 ```

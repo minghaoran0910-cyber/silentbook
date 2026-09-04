@@ -16,6 +16,53 @@ from .tenant import get_tenant_user_id, reset_tenant_user_id, set_tenant_user_id
 logger = logging.getLogger("silentbook.scheduler")
 
 
+def _single_flight(job_id):
+    """多 worker 下同一任务只跑一份：每 tick 非阻塞抢文件锁，抢不到的跳过。
+
+    uvicorn 多 worker 是同一容器的多个进程，/tmp 文件锁可互斥；
+    赢家崩溃时内核自动释放锁。Windows 本地开发无 fcntl 则降级为直接跑。
+    """
+
+    def deco(fn):
+        async def wrapper(*args, **kwargs):
+            try:
+                import fcntl
+            except ImportError:
+                return await fn(*args, **kwargs)
+            lock_path = os.path.join(
+                os.getenv("SCHEDULER_LOCK_DIR", "/tmp"),
+                f"silentbook-sched-{job_id}.lock",
+            )
+            fd = None
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    logger.info("定时任务 %s 已有其他 worker 在跑，本进程跳过", job_id)
+                    return
+                return await fn(*args, **kwargs)
+            finally:
+                if fd is not None:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+                    os.close(fd)
+
+        return wrapper
+
+    return deco
+
+
+def _is_placeholder_analysis(result: dict) -> bool:
+    """Agent 返回占位警告（未配置 Key/服务不可用）时不入库（与 main.py 同规则）。"""
+    texts = [result.get(t, "") or "" for t in ("consumption", "investment", "suggestion")]
+    if not texts[0]:
+        return False
+    return all(("未配置" in t or "暂不可用" in t or "请检查" in t) for t in texts)
+
+
 async def _run_for_each_active_user(job, *args):
     """Run a scheduled business-data job once per active tenant."""
     db = SessionLocal()
@@ -52,6 +99,7 @@ async def _cleanup_old_notifications_for_user():
         db.close()
 
 
+@_single_flight("cleanup_old_notifications")
 async def cleanup_old_notifications():
     await _run_for_each_active_user(_cleanup_old_notifications_for_user)
 
@@ -106,7 +154,10 @@ async def _scheduled_daily_analysis_for_user():
             )
             result = response.json()
 
-        # 保存分析结果
+        # 保存分析结果（占位警告不入库）
+        if _is_placeholder_analysis(result):
+            logger.warning("定时分析返回占位警告，本次不入库")
+            return
         agent_name = result.get("mode", "scheduled")
         for analysis_type in ["consumption", "investment", "suggestion"]:
             analysis = AnalysisResult(
@@ -125,6 +176,7 @@ async def _scheduled_daily_analysis_for_user():
         db.close()
 
 
+@_single_flight("scheduled_daily_analysis")
 async def scheduled_daily_analysis():
     await _run_for_each_active_user(_scheduled_daily_analysis_for_user)
 
@@ -244,11 +296,13 @@ async def _run_backup_for_user(backup_type: str = "incremental"):
         db.close()
 
 
+@_single_flight("scheduled_incremental_backup")
 async def scheduled_incremental_backup():
     """每日03:00增量备份"""
     await _run_for_each_active_user(_run_backup_for_user, "incremental")
 
 
+@_single_flight("scheduled_full_backup")
 async def scheduled_full_backup():
     """每周日04:00全量备份"""
     await _run_for_each_active_user(_run_backup_for_user, "full")
@@ -303,6 +357,7 @@ async def _scheduled_asset_sync_for_user():
         db.close()
 
 
+@_single_flight("scheduled_asset_sync")
 async def scheduled_asset_sync():
     await _run_for_each_active_user(_scheduled_asset_sync_for_user)
 
