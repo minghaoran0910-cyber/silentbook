@@ -41,6 +41,8 @@ services:
       - BACKUP_DIR=/var/lib/silentbook/backups
       - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY:-}
       # 为空则加密备份不可用（记账主流程不受影响）；用 install.sh 生成强密钥后填入
+      # 内网 http 部署设 COOKIE_SECURE=false，否则浏览器拒收 Secure Cookie 导致无法登录
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
     volumes:
       - backup_data:/var/lib/silentbook/backups

@@ -92,6 +92,8 @@ else
     echo "# ===== CORS / 部署 ====="
     echo "ALLOWED_ORIGINS=http://localhost:3000"
     echo "APP_ENV=development"
+    echo "# 纯 http 内网部署取消注释下一行，否则浏览器拒收 Cookie 无法登录"
+    echo "# COOKIE_SECURE=false"
     echo "DEPLOY_MODE=local"
     echo "WEBHOOK_USER_ID=1"
     echo ""
