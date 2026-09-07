@@ -211,6 +211,27 @@
       </div>
 
       <div class="demo-block">
+        <div class="demo-title">分类颜色 <span class="demo-hint">未知分类自动配色，可手动覆盖</span></div>
+        <p class="section-desc">给任意分类（含 AI 自建的）指定颜色，图标按关键词自动匹配</p>
+        <div class="color-edit-row">
+          <input v-model="colorEdit.name" type="text" placeholder="分类名，如：宠物医疗" list="sb-cat-list" />
+          <datalist id="sb-cat-list">
+            <option v-for="c in knownCategories" :key="c" :value="c" />
+          </datalist>
+          <input v-model="colorEdit.color" type="color" class="color-swatch" aria-label="选择颜色" />
+          <button @click="saveColorEdit" class="btn-secondary" :disabled="!colorEdit.name.trim()">保存</button>
+        </div>
+        <div v-if="customColorList.length > 0" class="custom-color-list">
+          <div v-for="item in customColorList" :key="item.name" class="custom-color-item">
+            <AppIcon :icon="item.style.icon" :color="item.style.color" :size="16" />
+            <span class="custom-color-name">{{ item.name }}</span>
+            <span class="custom-color-hex">{{ item.style.color }}</span>
+            <button @click="resetColorEdit(item.name)" class="btn-icon" title="恢复自动" aria-label="恢复自动配色"><AppIcon icon="X" :size="14" /></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-block">
         <div class="demo-title">演示数据 <span v-if="demoStatus.seeded" class="demo-tag">已载入</span></div>
         <p class="section-desc">空库体验：载入 3 个月仿真流水 + 资产/预算/目标。库里有数据时不可载入；用“清空交易”可恢复白纸。</p>
         <div class="form-actions">
@@ -225,8 +246,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth, fetchDemoStatus, seedDemoData } from '~/utils/api'
+import { categoryIcons, getCategoryIcon, loadCustomCategoryStyles, saveCustomCategoryStyle, resetCustomCategoryStyle } from '~/utils/icons'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: 'Bank', enabled: true },
@@ -246,6 +268,30 @@ const agentMode = ref('auto')
 // 当前生效的后端地址（只读展示，由部署配置决定，不可在此修改）
 const effectiveApiBase = ref('/api')
 const importResult = ref(null)
+
+// 分类颜色自定义（覆盖内置精选与自动配色，存 localStorage）
+const colorEdit = ref({ name: '', color: '#0EA5E9' })
+const customColorList = ref([])
+const knownCategories = computed(() => Object.keys(categoryIcons))
+
+const refreshCustomColors = () => {
+  const all = loadCustomCategoryStyles()
+  customColorList.value = Object.entries(all).map(([name, style]) => ({ name, style }))
+}
+
+const saveColorEdit = () => {
+  const name = colorEdit.value.name.trim()
+  if (!name) return
+  const current = getCategoryIcon(name)
+  saveCustomCategoryStyle(name, { icon: current.icon, color: colorEdit.value.color })
+  colorEdit.value = { name: '', color: '#0EA5E9' }
+  refreshCustomColors()
+}
+
+const resetColorEdit = (name) => {
+  resetCustomCategoryStyle(name)
+  refreshCustomColors()
+}
 
 // 演示数据
 const demoStatus = ref({ seeded: false, transaction_count: 0, seeded_at: '' })
@@ -553,6 +599,8 @@ const loadAll = async () => {
   await loadOpenClawBinding()
   // 演示数据状态
   await loadDemoStatus()
+  // 自定义分类颜色
+  refreshCustomColors()
 }
 onMounted(loadAll)
 onActivated(loadAll)
@@ -1084,6 +1132,71 @@ h1 {
   border-radius: 4px;
   padding: 0.1rem 0.4rem;
   margin-left: 0.4rem;
+}
+
+.demo-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.color-edit-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.color-edit-row input[type="text"] {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.color-swatch {
+  width: 38px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+
+.custom-color-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.custom-color-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.custom-color-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 1;
+}
+
+.custom-color-hex {
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.78rem;
 }
 </style>
 

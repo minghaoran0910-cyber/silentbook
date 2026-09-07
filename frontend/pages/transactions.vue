@@ -101,51 +101,51 @@
         <span class="toggle-label">仅显示真实交易</span>
       </label>
 
-      <select v-model="filterAccount" @change="loadTransactions">
-        <option value="">全部账户</option>
-        <option value="cmb">招商银行</option>
-        <option value="icbc">工商银行</option>
-        <option value="ccb">建设银行</option>
-        <option value="abc">农业银行</option>
-        <option value="boc">中国银行</option>
-        <option value="bocom">交通银行</option>
-        <option value="spdb">浦发银行</option>
-        <option value="alipay">支付宝</option>
-        <option value="wechat_pay">微信支付</option>
-        <option value="meituan">美团</option>
-        <option value="jd">京东</option>
-        <option value="cash">现金</option>
-      </select>
+      <el-select v-model="filterAccount" @change="loadTransactions" placeholder="全部账户" class="filter-el">
+        <el-option value="" label="全部账户" />
+        <el-option value="cmb" label="招商银行" />
+        <el-option value="icbc" label="工商银行" />
+        <el-option value="ccb" label="建设银行" />
+        <el-option value="abc" label="农业银行" />
+        <el-option value="boc" label="中国银行" />
+        <el-option value="bocom" label="交通银行" />
+        <el-option value="spdb" label="浦发银行" />
+        <el-option value="alipay" label="支付宝" />
+        <el-option value="wechat_pay" label="微信支付" />
+        <el-option value="meituan" label="美团" />
+        <el-option value="jd" label="京东" />
+        <el-option value="cash" label="现金" />
+      </el-select>
 
-      <select v-model="filterCategory" @change="loadTransactions">
-        <option value="">全部分类</option>
-        <option value="餐饮">餐饮</option>
-        <option value="交通">交通</option>
-        <option value="购物">购物</option>
-        <option value="娱乐">娱乐</option>
-        <option value="生活">生活</option>
-        <option value="通讯">通讯</option>
-        <option value="医疗">医疗</option>
-        <option value="教育">教育</option>
-        <option value="投资">投资</option>
-        <option value="金融">金融</option>
-        <option value="转账">转账</option>
-        <option value="工资">工资</option>
-        <option value="其他">其他</option>
-      </select>
+      <el-select v-model="filterCategory" @change="loadTransactions" placeholder="全部分类" class="filter-el">
+        <el-option value="" label="全部分类" />
+        <el-option value="餐饮" label="餐饮" />
+        <el-option value="交通" label="交通" />
+        <el-option value="购物" label="购物" />
+        <el-option value="娱乐" label="娱乐" />
+        <el-option value="生活" label="生活" />
+        <el-option value="通讯" label="通讯" />
+        <el-option value="医疗" label="医疗" />
+        <el-option value="教育" label="教育" />
+        <el-option value="投资" label="投资" />
+        <el-option value="金融" label="金融" />
+        <el-option value="转账" label="转账" />
+        <el-option value="工资" label="工资" />
+        <el-option value="其他" label="其他" />
+      </el-select>
 
-      <select v-model="filterType" @change="loadTransactions">
-        <option value="">全部类型</option>
-        <option value="expense">支出</option>
-        <option value="income">收入</option>
-      </select>
+      <el-select v-model="filterType" @change="loadTransactions" placeholder="全部类型" class="filter-el filter-el-sm">
+        <el-option value="" label="全部类型" />
+        <el-option value="expense" label="支出" />
+        <el-option value="income" label="收入" />
+      </el-select>
 
-      <select v-model="filterDateRange" @change="loadTransactions">
-        <option value="">全部时间</option>
-        <option value="today">今天</option>
-        <option value="week">最近7天</option>
-        <option value="month">最近30天</option>
-      </select>
+      <el-select v-model="filterDateRange" @change="loadTransactions" placeholder="全部时间" class="filter-el">
+        <el-option value="" label="全部时间" />
+        <el-option value="today" label="今天" />
+        <el-option value="week" label="最近7天" />
+        <el-option value="month" label="最近30天" />
+      </el-select>
     </div>
 
     <!-- Loading skeleton -->
@@ -167,7 +167,8 @@
     </div>
 
     <div v-else class="transaction-list">
-      <div v-for="tx in transactions" :key="tx.id" class="transaction-item" 
+      <div v-for="(tx, i) in transactions" :key="tx.id" class="transaction-item reveal"
+           :style="{ '--reveal-delay': Math.min(i, 12) * 40 + 'ms' }"
            :class="{ editing: editingId === tx.id }"
            @click="startEdit(tx)">
         <div class="tx-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
@@ -570,9 +571,10 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 /* Filters */
 .filters {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 2rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .filters select {
@@ -582,6 +584,14 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   border-radius: 8px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+.filter-el {
+  width: 132px;
+}
+
+.filter-el-sm {
+  width: 112px;
 }
 
 /* Noise filter toggle */

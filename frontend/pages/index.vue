@@ -13,27 +13,27 @@
       </select>
     </div>
     <div class="stats">
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 0ms">
         <div class="stat-label">净资产</div>
         <div class="stat-value">{{ fmtMoney(stats.net_assets) }}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 60ms">
         <div class="stat-label">总资产</div>
         <div class="stat-value income">{{ fmtMoney(stats.total_assets || 0) }}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 120ms">
         <div class="stat-label">总负债</div>
         <div class="stat-value expense">{{ fmtMoney(stats.total_liabilities || 0) }}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 180ms">
         <div class="stat-label">本月支出</div>
         <div class="stat-value expense">{{ fmtMoney(stats.monthly_expenses) }}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 240ms">
         <div class="stat-label">本月收入</div>
         <div class="stat-value income">{{ fmtMoney(stats.monthly_income) }}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal" style="--reveal-delay: 300ms">
         <div class="stat-label">交易笔数</div>
         <div class="stat-value">{{ stats.transaction_count }}</div>
       </div>

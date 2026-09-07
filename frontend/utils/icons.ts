@@ -85,6 +85,90 @@ export function getLiabilityIcon(type: string) {
 }
 
 // 辅助函数：获取交易分类图标
+// 三层解析：用户自定义（localStorage）> 内置精选 > hash 稳定随机（AI 自建分类也永远有色有标）
 export function getCategoryIcon(category: string) {
-  return categoryIcons[category] || categoryIcons['其他']
+  const custom = loadCustomCategoryStyles()[category]
+  if (custom) return custom
+  if (categoryIcons[category]) return categoryIcons[category]
+  return autoCategoryStyle(category)
+}
+
+// 自动调色盘：视觉区分度优先，浅色深色双主题可读
+const AUTO_PALETTE = [
+  '#0EA5E9', '#E11D48', '#65A30D', '#7C3AED',
+  '#EA580C', '#0284C7', '#DB2777', '#059669',
+  '#D97706', '#4F46E5', '#0D9488', '#BE123C',
+]
+
+const AUTO_ICON_RULES: Array<[RegExp, string]> = [
+  [/餐|食|饭|咖啡|茶|外卖/, 'CookingPot'],
+  [/车|行|油|铁|票|停车/, 'Car'],
+  [/购|淘宝|京东|超市|商场/, 'ShoppingBag'],
+  [/影|乐|戏|健身|游/, 'GameController'],
+  [/房|租|物业|家|居/, 'House'],
+  [/医|药|院|体检/, 'FirstAid'],
+  [/学|书|课|考/, 'GraduationCap'],
+  [/话|手机|通/, 'DeviceMobile'],
+  [/电|水|气|燃/, 'Lightning'],
+  [/险|保/, 'ShieldCheck'],
+  [/投|股|基|财/, 'TrendUp'],
+  [/薪|工资/, 'CurrencyCny'],
+  [/退/, 'ArrowUUpLeft'],
+  [/存|蓄/, 'PiggyBank'],
+  [/还|贷|款/, 'HandCoins'],
+  [/政|税|罚/, 'FileText'],
+  [/猫|狗|宠/, 'PawPrint'],
+  [/飞|航|旅/, 'Airplane'],
+  [/衣|饰/, 'ShoppingBag'],
+  [/礼|红包|人情/, 'Gift'],
+  [/云|数码|会员|订阅/, 'Cloud'],
+];
+
+function hashString(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+export function autoCategoryStyle(category: string) {
+  const iconRule = AUTO_ICON_RULES.find(([re]) => re.test(category))
+  return {
+    icon: iconRule ? iconRule[1] : 'Tag',
+    color: AUTO_PALETTE[hashString(category || '其他') % AUTO_PALETTE.length],
+  }
+}
+
+// 用户自定义覆盖：设置页调色后存 localStorage，key 为分类名
+const CUSTOM_KEY = 'sb-category-styles'
+
+export function loadCustomCategoryStyles(): Record<string, { icon: string; color: string }> {
+  try {
+    if (typeof localStorage === 'undefined') return {}
+    return JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+export function saveCustomCategoryStyle(category: string, style: { icon: string; color: string }) {
+  try {
+    const all = loadCustomCategoryStyles()
+    all[category] = style
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(all))
+  } catch {
+    // 隐私模式忽略
+  }
+}
+
+export function resetCustomCategoryStyle(category: string) {
+  try {
+    const all = loadCustomCategoryStyles()
+    delete all[category]
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(all))
+  } catch {
+    // 隐私模式忽略
+  }
 }

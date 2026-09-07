@@ -218,3 +218,80 @@ label.field-label {
     animation: none !important;
   }
 }
+
+/* ---- 入场动效：挂载时淡入上浮， stagger 用 --reveal-delay 控制 ---- */
+@keyframes sb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal {
+  animation: sb-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}
+
+/* ---- Element Plus 主题桥接：组件库变量跟随日间纸墨 tokens ---- */
+:root,
+html[data-theme="light"] {
+  --el-color-primary: #0f766e;
+  --el-color-primary-light-3: #5eead4;
+  --el-color-primary-light-5: #99f6e4;
+  --el-color-primary-light-7: #ccfbf1;
+  --el-color-primary-light-8: #f0fdfa;
+  --el-color-primary-light-9: #f0fdfa;
+  --el-color-primary-dark-2: #115e59;
+  --el-color-success: #15803d;
+  --el-color-warning: #b45309;
+  --el-color-danger: #b91c1c;
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f8fafc;
+  --el-bg-color-overlay: #ffffff;
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #334155;
+  --el-text-color-secondary: #64748b;
+  --el-text-color-placeholder: #94a3b8;
+  --el-border-color: #cbd5e1;
+  --el-border-color-light: #e2e8f0;
+  --el-border-color-lighter: #e2e8f0;
+  --el-border-color-extra-light: #f1f5f9;
+  --el-fill-color-blank: #ffffff;
+  --el-mask-color: rgba(15, 23, 42, 0.4);
+}
+
+html[data-theme="dark"] {
+  --el-color-primary: #2dd4bf;
+  --el-color-primary-light-3: #5eead4;
+  --el-color-primary-light-5: #115e59;
+  --el-color-primary-light-7: #134e4a;
+  --el-color-primary-light-8: #11161d;
+  --el-color-primary-light-9: #11161d;
+  --el-color-primary-dark-2: #5eead4;
+  --el-color-success: #4ade80;
+  --el-color-warning: #fbbf24;
+  --el-color-danger: #f87171;
+  --el-bg-color: #11161d;
+  --el-bg-color-page: #0b0f14;
+  --el-bg-color-overlay: #1a212b;
+  --el-text-color-primary: #e6edf3;
+  --el-text-color-regular: #cbd5e1;
+  --el-text-color-secondary: #8b98a9;
+  --el-text-color-placeholder: #5b6b7f;
+  --el-border-color: #334155;
+  --el-border-color-light: #232c38;
+  --el-border-color-lighter: #232c38;
+  --el-border-color-extra-light: #1a212b;
+  --el-fill-color-blank: #11161d;
+  --el-mask-color: rgba(0, 0, 0, 0.6);
+}
