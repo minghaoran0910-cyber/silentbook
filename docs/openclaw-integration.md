@@ -73,6 +73,11 @@ def push(items: list):
 > ⚠️ `transaction_type` 只认 `income` / `expense`（大小写不限，中文收入/支出也认，
 > 仅 CSV 导入）。**不要发 `transfer` 或其他值**：写入接口直接 422，
 > CSV 里遇到会跳过计数；历史脏数据曾导致整表查询 500，已全部修复。
+>
+> 🛡️ **数据库层已有 CHECK 约束**（2026-09-07 起）：任何写入路径——包括经 SSH
+> 的裸 SQL 直写——`transaction_type` 非法会当场报错、
+> `created_at` 为空会自动填 now()。自账户划转请记 `expense`（分类用
+> `自账户划转`/`储蓄`/`投资`），或走 `POST /accounts/transfer` 配对转账。
 
 ## 5. AI 分析两种模式
 
