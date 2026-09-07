@@ -7,8 +7,11 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
+import app.main as main_mod
 from app.database import Base, Transaction, RecurringTransaction, User, get_db
 from app.auth import hash_password
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 
@@ -20,6 +23,8 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 TestSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+_UID = {"id": None}
 
 def override_get_db():
     try:
@@ -43,6 +48,8 @@ def client():
     )
     db.add(user)
     db.commit()
+    db.refresh(user)
+    _UID["id"] = user.id
     db.close()
     
     yield TestClient(app)
@@ -64,7 +71,8 @@ def auth_headers(client):
 def _add_tx(db, category, amount, days_ago=0, tx_type="expense", account="default"):
     tx = Transaction(category=category, amount=amount, account=account,
                      transaction_type=tx_type,
-                     parsed_at=datetime.now() - timedelta(days=days_ago))
+                     parsed_at=datetime.now() - timedelta(days=days_ago),
+                     user_id=_UID["id"])
     db.add(tx)
     db.commit()
 
@@ -78,9 +86,11 @@ class TestNextMonthForecast:
         assert data["total_predicted"] == 0
 
     def test_basic_forecast(self, client, auth_headers):
+        # 全部落在当月内（避免跨月时回归斜率为负导致预测归零）
+        ago = max(datetime.now().day - 1, 0)
         with TestSession() as db:
             for i in range(3):
-                _add_tx(db, "餐饮", 30, days_ago=i*7)
+                _add_tx(db, "餐饮", 30, days_ago=ago)
         r = client.get("/forecast/next-month", headers=auth_headers)
         assert r.status_code == 200
         data = r.json()
@@ -107,7 +117,8 @@ class TestNextMonthForecast:
         with TestSession() as db:
             recurring = RecurringTransaction(
                 name="房租", amount=3000, category="住房",
-                frequency="monthly", day_of_month=1, transaction_type="expense", is_active=True)
+                frequency="monthly", day_of_month=1, transaction_type="expense", is_active=True,
+                user_id=_UID["id"])
             db.add(recurring)
             db.commit()
         r = client.get("/forecast/next-month", headers=auth_headers)
@@ -155,7 +166,8 @@ class TestNextMonthForecast:
         with TestSession() as db:
             recurring = RecurringTransaction(
                 name="会员", amount=30, category="娱乐",
-                frequency="monthly", day_of_month=15, transaction_type="expense", is_active=True)
+                frequency="monthly", day_of_month=15, transaction_type="expense", is_active=True,
+                user_id=_UID["id"])
             db.add(recurring)
             db.commit()
         r = client.get("/forecast/next-month", headers=auth_headers)

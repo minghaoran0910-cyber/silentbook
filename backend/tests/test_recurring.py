@@ -1,14 +1,26 @@
 """V2-027 固定收支管理测试"""
+import itertools
+import os
+
+os.environ["WEBHOOK_SECRET"] = "test-shared-secret-0123456789abcdef"
+os.environ["WEBHOOK_USER_ID"] = "1"
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET"] = "test-jwt-secret-0123456789abcdef-test"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 
+import app.main as main_mod
 from app.main import app
 from app.database import get_db
 from app.database import Base, RecurringTransaction, Transaction
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 
 TEST_DB = "sqlite://"
@@ -24,15 +36,28 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
+_email_counter = itertools.count()
 
-@pytest.fixture(autouse=True)
-def setup_db():
+
+@pytest.fixture()
+def auth():
     Base.metadata.create_all(bind=engine)
-    yield
+    prev_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    r = client.post(
+        "/auth/register",
+        json={"email": f"recur{next(_email_counter)}@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    yield {"h": {"Authorization": f"Bearer {body['access_token']}"}, "uid": body["user"]["id"]}
     Base.metadata.drop_all(bind=engine)
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
@@ -45,7 +70,7 @@ def db():
 class TestRecurringCRUD:
     """固定收支 CRUD 测试"""
 
-    def test_create_recurring_income(self):
+    def test_create_recurring_income(self, auth):
         """创建固定收入（工资）"""
         resp = client.post("/recurring", json={
             "name": "工资",
@@ -54,7 +79,7 @@ class TestRecurringCRUD:
             "transaction_type": "income",
             "frequency": "monthly",
             "day_of_month": 15,
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "工资"
@@ -64,7 +89,7 @@ class TestRecurringCRUD:
         assert data["source"] == "manual"
         assert data["is_active"] is True
 
-    def test_create_recurring_expense(self):
+    def test_create_recurring_expense(self, auth):
         """创建固定支出（房租）"""
         resp = client.post("/recurring", json={
             "name": "房租",
@@ -73,13 +98,13 @@ class TestRecurringCRUD:
             "transaction_type": "expense",
             "frequency": "monthly",
             "day_of_month": 1,
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 201
         data = resp.json()
         assert data["transaction_type"] == "expense"
         assert data["category"] == "住房"
 
-    def test_create_with_dates(self):
+    def test_create_with_dates(self, auth):
         """创建带起止日期的固定收支"""
         resp = client.post("/recurring", json={
             "name": "年度保险",
@@ -90,13 +115,13 @@ class TestRecurringCRUD:
             "day_of_month": 1,
             "start_date": "2026-01-01",
             "end_date": "2028-12-31",
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 201
         data = resp.json()
         assert data["start_date"] == "2026-01-01"
         assert data["end_date"] == "2028-12-31"
 
-    def test_create_invalid_date_range(self):
+    def test_create_invalid_date_range(self, auth):
         """end_date 早于 start_date 应报错"""
         resp = client.post("/recurring", json={
             "name": "测试",
@@ -107,10 +132,10 @@ class TestRecurringCRUD:
             "day_of_month": 1,
             "start_date": "2026-12-01",
             "end_date": "2026-01-01",
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 400
 
-    def test_create_invalid_amount(self):
+    def test_create_invalid_amount(self, auth):
         """金额 <= 0 应报错"""
         resp = client.post("/recurring", json={
             "name": "测试",
@@ -119,10 +144,10 @@ class TestRecurringCRUD:
             "transaction_type": "expense",
             "frequency": "monthly",
             "day_of_month": 1,
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 422
 
-    def test_create_invalid_type(self):
+    def test_create_invalid_type(self, auth):
         """无效 transaction_type 应报错"""
         resp = client.post("/recurring", json={
             "name": "测试",
@@ -131,86 +156,86 @@ class TestRecurringCRUD:
             "transaction_type": "transfer",
             "frequency": "monthly",
             "day_of_month": 1,
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 422
 
-    def test_list_recurring(self, db):
+    def test_list_recurring(self, auth, db):
         """列表查询"""
         # 创建3条
         for i in range(3):
             rt = RecurringTransaction(
                 name=f"测试{i}", amount=100*(i+1), category="测试",
                 transaction_type="expense", frequency="monthly",
-                day_of_month=i+1, is_active=True
+                day_of_month=i+1, is_active=True, user_id=auth["uid"],
             )
             db.add(rt)
         db.commit()
 
-        resp = client.get("/recurring")
+        resp = client.get("/recurring", headers=auth["h"])
         assert resp.status_code == 200
         assert len(resp.json()) == 3
 
-    def test_list_filter_active(self, db):
+    def test_list_filter_active(self, auth, db):
         """按激活状态筛选"""
         db.add(RecurringTransaction(
             name="活跃", amount=100, category="测试",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         db.add(RecurringTransaction(
             name="停用", amount=200, category="测试",
             transaction_type="expense", frequency="monthly",
-            day_of_month=2, is_active=False
+            day_of_month=2, is_active=False, user_id=auth["uid"],
         ))
         db.commit()
 
-        resp = client.get("/recurring?is_active=true")
+        resp = client.get("/recurring?is_active=true", headers=auth["h"])
         assert len(resp.json()) == 1
         assert resp.json()[0]["name"] == "活跃"
 
-    def test_list_filter_type(self, db):
+    def test_list_filter_type(self, auth, db):
         """按收支类型筛选"""
         db.add(RecurringTransaction(
             name="收入", amount=100, category="工资",
             transaction_type="income", frequency="monthly",
-            day_of_month=15, is_active=True
+            day_of_month=15, is_active=True, user_id=auth["uid"],
         ))
         db.add(RecurringTransaction(
             name="支出", amount=200, category="住房",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         db.commit()
 
-        resp = client.get("/recurring?transaction_type=income")
+        resp = client.get("/recurring?transaction_type=income", headers=auth["h"])
         assert len(resp.json()) == 1
         assert resp.json()[0]["name"] == "收入"
 
-    def test_get_single(self, db):
+    def test_get_single(self, auth, db):
         """获取单条详情"""
         rt = RecurringTransaction(
             name="Netflix", amount=98, category="订阅",
             transaction_type="expense", frequency="monthly",
-            day_of_month=10, is_active=True
+            day_of_month=10, is_active=True, user_id=auth["uid"],
         )
         db.add(rt)
         db.commit()
 
-        resp = client.get(f"/recurring/{rt.id}")
+        resp = client.get(f"/recurring/{rt.id}", headers=auth["h"])
         assert resp.status_code == 200
         assert resp.json()["name"] == "Netflix"
 
-    def test_get_not_found(self):
+    def test_get_not_found(self, auth):
         """不存在的ID返回404"""
-        resp = client.get("/recurring/9999")
+        resp = client.get("/recurring/9999", headers=auth["h"])
         assert resp.status_code == 404
 
-    def test_update(self, db):
+    def test_update(self, auth, db):
         """更新固定收支"""
         rt = RecurringTransaction(
             name="旧房租", amount=5000, category="住房",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         )
         db.add(rt)
         db.commit()
@@ -218,54 +243,54 @@ class TestRecurringCRUD:
         resp = client.put(f"/recurring/{rt.id}", json={
             "name": "新房租",
             "amount": 6000,
-        })
+        }, headers=auth["h"])
         assert resp.status_code == 200
         assert resp.json()["name"] == "新房租"
         assert resp.json()["amount"] == 6000
 
-    def test_update_toggle_active(self, db):
+    def test_update_toggle_active(self, auth, db):
         """启用/停用切换"""
         rt = RecurringTransaction(
             name="测试", amount=100, category="测试",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         )
         db.add(rt)
         db.commit()
 
-        resp = client.put(f"/recurring/{rt.id}", json={"is_active": False})
+        resp = client.put(f"/recurring/{rt.id}", json={"is_active": False}, headers=auth["h"])
         assert resp.status_code == 200
         assert resp.json()["is_active"] is False
 
-    def test_delete(self, db):
+    def test_delete(self, auth, db):
         """删除固定收支"""
         rt = RecurringTransaction(
             name="测试", amount=100, category="测试",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         )
         db.add(rt)
         db.commit()
 
-        resp = client.delete(f"/recurring/{rt.id}")
+        resp = client.delete(f"/recurring/{rt.id}", headers=auth["h"])
         assert resp.status_code == 200
 
         # 确认已删除
-        resp = client.get(f"/recurring/{rt.id}")
+        resp = client.get(f"/recurring/{rt.id}", headers=auth["h"])
         assert resp.status_code == 404
 
-    def test_delete_not_found(self):
+    def test_delete_not_found(self, auth):
         """删除不存在的ID返回404"""
-        resp = client.delete("/recurring/9999")
+        resp = client.delete("/recurring/9999", headers=auth["h"])
         assert resp.status_code == 404
 
 
 class TestRecurringSummary:
     """固定收支汇总测试"""
 
-    def test_empty_summary(self):
+    def test_empty_summary(self, auth):
         """无记录时汇总为零"""
-        resp = client.get("/recurring/summary")
+        resp = client.get("/recurring/summary", headers=auth["h"])
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_monthly_income"] == 0
@@ -273,32 +298,32 @@ class TestRecurringSummary:
         assert data["monthly_net"] == 0
         assert data["active_count"] == 0
 
-    def test_summary_calculation(self, db):
+    def test_summary_calculation(self, auth, db):
         """汇总计算：月收入15000，月支出5000+98*4.33(weekly)"""
         db.add(RecurringTransaction(
             name="工资", amount=15000, category="工资",
             transaction_type="income", frequency="monthly",
-            day_of_month=15, is_active=True
+            day_of_month=15, is_active=True, user_id=auth["uid"],
         ))
         db.add(RecurringTransaction(
             name="房租", amount=5000, category="住房",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         db.add(RecurringTransaction(
             name="健身", amount=98, category="健康",
             transaction_type="expense", frequency="weekly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         # 停用的不计入
         db.add(RecurringTransaction(
             name="已取消订阅", amount=50, category="订阅",
             transaction_type="expense", frequency="monthly",
-            day_of_month=20, is_active=False
+            day_of_month=20, is_active=False, user_id=auth["uid"],
         ))
         db.commit()
 
-        resp = client.get("/recurring/summary")
+        resp = client.get("/recurring/summary", headers=auth["h"])
         data = resp.json()
         assert data["total_monthly_income"] == 15000
         assert data["total_monthly_expense"] > 5000  # 5000 + 98*4.33 ≈ 5424
@@ -310,14 +335,14 @@ class TestRecurringSummary:
 class TestAutoDetect:
     """自动检测测试"""
 
-    def test_auto_detect_empty(self):
+    def test_auto_detect_empty(self, auth):
         """无历史交易时检测为空"""
-        resp = client.post("/recurring/auto-detect")
+        resp = client.post("/recurring/auto-detect", headers=auth["h"])
         assert resp.status_code == 200
         data = resp.json()
         assert data["detected_count"] == 0
 
-    def test_auto_detect_with_data(self, db):
+    def test_auto_detect_with_data(self, auth, db):
         """有跨月重复交易时能检测到"""
         now = datetime.utcnow()
         # 模拟3个月的房租交易
@@ -329,11 +354,12 @@ class TestAutoDetect:
                 account="招商银行卡",
                 transaction_type="expense",
                 parsed_at=tx_date.replace(day=1),
+                user_id=auth["uid"],
             )
             db.add(tx)
         db.commit()
 
-        resp = client.post("/recurring/auto-detect?history_days=120")
+        resp = client.post("/recurring/auto-detect?history_days=120", headers=auth["h"])
         data = resp.json()
         assert data["detected_count"] >= 1
         detected = data["items"][0]
@@ -341,7 +367,7 @@ class TestAutoDetect:
         assert detected["transaction_type"] == "expense"
         assert abs(detected["amount"] - 5000) < 100
 
-    def test_auto_detect_import(self, db):
+    def test_auto_detect_import(self, auth, db):
         """检测并导入"""
         now = datetime.utcnow()
         for month_offset in range(2):
@@ -350,21 +376,22 @@ class TestAutoDetect:
                 amount=30, category="订阅", account="微信",
                 transaction_type="expense",
                 parsed_at=tx_date.replace(day=5),
+                user_id=auth["uid"],
             )
             db.add(tx)
         db.commit()
 
-        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true")
+        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true", headers=auth["h"])
         data = resp.json()
         assert data["imported_count"] >= 1
 
         # 验证已写入数据库
-        resp = client.get("/recurring")
+        resp = client.get("/recurring", headers=auth["h"])
         items = resp.json()
         auto_items = [i for i in items if i["source"] == "auto"]
         assert len(auto_items) >= 1
 
-    def test_auto_detect_no_duplicate_import(self, db):
+    def test_auto_detect_no_duplicate_import(self, auth, db):
         """重复导入应跳过"""
         now = datetime.utcnow()
         for month_offset in range(2):
@@ -373,16 +400,17 @@ class TestAutoDetect:
                 amount=5000, category="住房", account="招商银行卡",
                 transaction_type="expense",
                 parsed_at=tx_date.replace(day=1),
+                user_id=auth["uid"],
             )
             db.add(tx)
         db.commit()
 
         # 第一次导入
-        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true")
+        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true", headers=auth["h"])
         first_import = resp.json()["imported_count"]
 
         # 第二次导入应跳过
-        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true")
+        resp = client.post("/recurring/auto-detect?history_days=90&import_detected=true", headers=auth["h"])
         data = resp.json()
         assert data["skipped_count"] >= 1
 
@@ -390,18 +418,18 @@ class TestAutoDetect:
 class TestForecastIntegration:
     """与现金流预测集成测试"""
 
-    def test_forecast_includes_user_recurring(self, db):
+    def test_forecast_includes_user_recurring(self, auth, db):
         """预测应包含用户定义的固定收支"""
         # 添加用户固定收支
         db.add(RecurringTransaction(
             name="工资", amount=15000, category="工资",
             transaction_type="income", frequency="monthly",
-            day_of_month=15, is_active=True
+            day_of_month=15, is_active=True, user_id=auth["uid"],
         ))
         db.add(RecurringTransaction(
             name="房租", amount=5000, category="住房",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         db.commit()
 
@@ -412,11 +440,12 @@ class TestForecastIntegration:
                 amount=50, category="餐饮", account="微信",
                 transaction_type="expense",
                 parsed_at=now - timedelta(days=i+1),
+                user_id=auth["uid"],
             )
             db.add(tx)
         db.commit()
 
-        resp = client.get("/cashflow/forecast?days=30")
+        resp = client.get("/cashflow/forecast?days=30", headers=auth["h"])
         data = resp.json()
 
         # 检查 recurring_items 包含用户定义的
@@ -425,7 +454,7 @@ class TestForecastIntegration:
         assert "工资" in names or any(r["amount"] == 15000 for r in recurring)
         assert "房租" in names or any(r["amount"] == 5000 for r in recurring)
 
-    def test_forecast_no_duplicate_with_auto(self, db):
+    def test_forecast_no_duplicate_with_auto(self, auth, db):
         """用户定义的和自动检测的不重复"""
         now = datetime.utcnow()
         # 添加历史交易（会被自动检测）
@@ -435,13 +464,14 @@ class TestForecastIntegration:
                 amount=5000, category="住房", account="招商银行卡",
                 transaction_type="expense",
                 parsed_at=tx_date.replace(day=1),
+                user_id=auth["uid"],
             )
             db.add(tx)
         # 添加用户定义（同分类+同日）
         db.add(RecurringTransaction(
             name="房租", amount=5000, category="住房",
             transaction_type="expense", frequency="monthly",
-            day_of_month=1, is_active=True
+            day_of_month=1, is_active=True, user_id=auth["uid"],
         ))
         # 添加其他历史交易
         for i in range(5):
@@ -449,11 +479,12 @@ class TestForecastIntegration:
                 amount=50, category="餐饮", account="微信",
                 transaction_type="expense",
                 parsed_at=now - timedelta(days=i+1),
+                user_id=auth["uid"],
             )
             db.add(tx)
         db.commit()
 
-        resp = client.get("/cashflow/forecast?days=30&history_days=120")
+        resp = client.get("/cashflow/forecast?days=30&history_days=120", headers=auth["h"])
         data = resp.json()
 
         # 检查1号的房租不重复出现

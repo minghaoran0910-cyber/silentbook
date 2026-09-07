@@ -14,39 +14,55 @@ import os
 import sys
 import time
 from datetime import datetime, date, timedelta
-from sqlalchemy import inspect, text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # 与全套件一致：用包路径导入，避免把 database 当顶层模块执行两遍
 #（旧写法往 sys.path 塞 app/ 再 `from database import`，会重复注册
 # 全局 before_flush 监听器并炸掉同进程其他测试的 DB 写）
+# 注意：生产 engine 指向 postgres（本地无服务），本文件自建 sqlite engine，
+# 仅做模型索引定义/查询行为验证，不碰生产代码。
 from app.database import (
-    engine, Base, SessionLocal, init_db,
+    Base,
     Transaction, Asset, Liability, Account, Transfer,
     AnalysisResult, Position, TradeRecord, FinancialGoal,
     GoalContribution, RecurringTransaction, BackupRecord,
     Setting, AgentConfig, User
 )
+from app.tenant import set_tenant_user_id, reset_tenant_user_id
+
+TEST_UID = 1
+
+test_engine = create_engine(
+    "sqlite://",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def tenant_ctx():
+    token = set_tenant_user_id(TEST_UID)
+    yield
+    reset_tenant_user_id(token)
 
 
 @pytest.fixture(scope="module")
 def setup_db():
     """创建测试数据库"""
-    # 删除旧测试数据库
-    if os.path.exists("./test_indexes.db"):
-        os.remove("./test_indexes.db")
-    
-    init_db()
+    Base.metadata.create_all(bind=test_engine)
     yield
-    
+
     # 清理
-    if os.path.exists("./test_indexes.db"):
-        os.remove("./test_indexes.db")
+    Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(scope="module")
 def db_session(setup_db):
     """提供数据库会话"""
-    session = SessionLocal()
+    session = TestSession()
     yield session
     session.close()
 
@@ -68,43 +84,44 @@ def seed_data(db_session):
             account=accounts[i % len(accounts)],
             transaction_type=types[i % 2],
             parsed_at=base_date + timedelta(days=i % 365, hours=i % 24),
-            description=f"测试交易 {i}"
+            description=f"测试交易 {i}",
+            user_id=TEST_UID,
         )
         transactions.append(tx)
-    
+
     db_session.bulk_save_objects(transactions)
-    
+
     # 插入资产
     assets = [
-        Asset(name="招商储蓄", asset_type="savings", current_value=50000, status="active"),
-        Asset(name="余额宝", asset_type="fund", current_value=20000, status="active"),
-        Asset(name="沪深300", asset_type="fund", current_value=30000, status="active"),
-        Asset(name="冻结账户", asset_type="savings", current_value=5000, status="frozen"),
+        Asset(name="招商储蓄", asset_type="savings", current_value=50000, status="active", user_id=TEST_UID),
+        Asset(name="余额宝", asset_type="fund", current_value=20000, status="active", user_id=TEST_UID),
+        Asset(name="沪深300", asset_type="fund", current_value=30000, status="active", user_id=TEST_UID),
+        Asset(name="冻结账户", asset_type="savings", current_value=5000, status="frozen", user_id=TEST_UID),
     ]
     db_session.bulk_save_objects(assets)
-    
+
     # 插入负债
     liabilities = [
-        Liability(name="花呗", liability_type="huabei", total_amount=5000, current_amount=3000, status="active"),
-        Liability(name="房贷", liability_type="mortgage", total_amount=1000000, current_amount=800000, status="active"),
-        Liability(name="已还清", liability_type="credit_card", total_amount=10000, current_amount=0, status="paid"),
+        Liability(name="花呗", liability_type="huabei", total_amount=5000, current_amount=3000, status="active", user_id=TEST_UID),
+        Liability(name="房贷", liability_type="mortgage", total_amount=1000000, current_amount=800000, status="active", user_id=TEST_UID),
+        Liability(name="已还清", liability_type="credit_card", total_amount=10000, current_amount=0, status="paid", user_id=TEST_UID),
     ]
     db_session.bulk_save_objects(liabilities)
-    
+
     # 插入账户
     accounts_data = [
-        Account(name="微信", account_type="wechat", purpose="consumption", balance=2000, status="active"),
-        Account(name="招商", account_type="bank", purpose="emergency", balance=50000, status="active"),
-        Account(name="证券", account_type="stock", purpose="investment", balance=30000, status="active"),
-        Account(name="旅行基金", account_type="bank", purpose="goal", balance=5000, status="active"),
+        Account(name="微信", account_type="wechat", purpose="consumption", balance=2000, status="active", user_id=TEST_UID),
+        Account(name="招商", account_type="bank", purpose="emergency", balance=50000, status="active", user_id=TEST_UID),
+        Account(name="证券", account_type="stock", purpose="investment", balance=30000, status="active", user_id=TEST_UID),
+        Account(name="旅行基金", account_type="bank", purpose="goal", balance=5000, status="active", user_id=TEST_UID),
     ]
     db_session.bulk_save_objects(accounts_data)
-    
+
     # 插入固定收支
     recurring = [
-        RecurringTransaction(name="工资", amount=15000, category="工资", transaction_type="income", frequency="monthly", is_active=True),
-        RecurringTransaction(name="房租", amount=3500, category="住房", transaction_type="expense", frequency="monthly", is_active=True),
-        RecurringTransaction(name="Netflix", amount=98, category="娱乐", transaction_type="expense", frequency="monthly", is_active=False),
+        RecurringTransaction(name="工资", amount=15000, category="工资", transaction_type="income", frequency="monthly", is_active=True, user_id=TEST_UID),
+        RecurringTransaction(name="房租", amount=3500, category="住房", transaction_type="expense", frequency="monthly", is_active=True, user_id=TEST_UID),
+        RecurringTransaction(name="Netflix", amount=98, category="娱乐", transaction_type="expense", frequency="monthly", is_active=False, user_id=TEST_UID),
     ]
     db_session.bulk_save_objects(recurring)
     
@@ -117,7 +134,7 @@ class TestIndexDefinitions:
     
     def test_transaction_indexes(self, setup_db):
         """Transaction 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('transactions')}
         
         # 单列索引
@@ -133,7 +150,7 @@ class TestIndexDefinitions:
     
     def test_asset_indexes(self, setup_db):
         """Asset 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('assets')}
         
         assert 'ix_assets_asset_type' in indexes
@@ -141,7 +158,7 @@ class TestIndexDefinitions:
     
     def test_liability_indexes(self, setup_db):
         """Liability 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('liabilities')}
         
         assert 'ix_liabilities_liability_type' in indexes
@@ -149,7 +166,7 @@ class TestIndexDefinitions:
     
     def test_account_indexes(self, setup_db):
         """Account 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('accounts')}
         
         assert 'ix_accounts_purpose' in indexes
@@ -157,14 +174,14 @@ class TestIndexDefinitions:
     
     def test_transfer_indexes(self, setup_db):
         """Transfer 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('transfers')}
         
         assert 'ix_transfers_created_at' in indexes
     
     def test_analysis_result_indexes(self, setup_db):
         """AnalysisResult 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('analysis_results')}
         
         assert 'ix_analysis_results_analysis_type' in indexes
@@ -172,7 +189,7 @@ class TestIndexDefinitions:
     
     def test_position_indexes(self, setup_db):
         """Position 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('positions')}
         
         assert 'ix_positions_position_type' in indexes
@@ -180,7 +197,7 @@ class TestIndexDefinitions:
     
     def test_trade_record_indexes(self, setup_db):
         """TradeRecord 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('trade_records')}
         
         assert 'ix_trade_records_trade_type' in indexes
@@ -188,7 +205,7 @@ class TestIndexDefinitions:
     
     def test_financial_goal_indexes(self, setup_db):
         """FinancialGoal 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('financial_goals')}
         
         assert 'ix_financial_goals_goal_type' in indexes
@@ -196,7 +213,7 @@ class TestIndexDefinitions:
     
     def test_recurring_transaction_indexes(self, setup_db):
         """RecurringTransaction 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('recurring_transactions')}
         
         assert 'ix_recurring_transactions_category' in indexes
@@ -205,7 +222,7 @@ class TestIndexDefinitions:
     
     def test_backup_record_indexes(self, setup_db):
         """BackupRecord 表索引"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('backup_records')}
         
         assert 'ix_backup_records_status' in indexes
@@ -217,7 +234,7 @@ class TestCompositeIndexes:
     
     def test_composite_index_columns(self, setup_db):
         """验证复合索引列顺序正确"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         indexes = {idx['name']: idx for idx in inspector.get_indexes('transactions')}
         
         # type + parsed_at
@@ -333,7 +350,7 @@ class TestMigrationScript:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'migrations'))
         
         # 模拟迁移脚本中的 SQL
-        with engine.connect() as conn:
+        with test_engine.connect() as conn:
             sql = "CREATE INDEX IF NOT EXISTS ix_test_idempotent ON transactions(id)"
             conn.execute(text(sql))
             conn.commit()
@@ -357,7 +374,8 @@ class TestNoRegression:
             category="测试",
             account="测试账户",
             transaction_type="expense",
-            parsed_at=datetime.utcnow()
+            parsed_at=datetime.utcnow(),
+            user_id=TEST_UID,
         )
         db_session.add(tx)
         db_session.commit()
@@ -374,7 +392,8 @@ class TestNoRegression:
         asset = Asset(
             name="测试资产",
             asset_type="cash",
-            current_value=1000
+            current_value=1000,
+            user_id=TEST_UID,
         )
         db_session.add(asset)
         db_session.commit()
@@ -391,7 +410,8 @@ class TestNoRegression:
             name="测试账户",
             account_type="bank",
             purpose="consumption",
-            balance=500
+            balance=500,
+            user_id=TEST_UID,
         )
         db_session.add(account)
         db_session.commit()
@@ -430,7 +450,7 @@ class TestIndexCount:
     
     def test_total_user_indexes(self, setup_db):
         """验证用户索引总数 >= 27"""
-        inspector = inspect(engine)
+        inspector = inspect(test_engine)
         total = 0
         
         for table_name in inspector.get_table_names():

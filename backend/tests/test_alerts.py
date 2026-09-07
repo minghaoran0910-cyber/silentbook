@@ -13,8 +13,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db, Setting, Transaction
 from app.main import app
+import app.main as main_mod
 from app.routers.deps import get_alert_level, ALERT_LEVELS
 from datetime import datetime
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 # SQLite 内存数据库
 SQLALCHEMY_URL = "sqlite://"
@@ -24,6 +27,36 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+_UID = {"id": None}
+
+
+class _AuthClient:
+    """给所有请求自动带 Authorization 头的薄包装（测试体无需改动）。"""
+
+    def __init__(self, tc, headers):
+        self._tc = tc
+        self._headers = headers
+
+    def _kwargs(self, kwargs):
+        kwargs = dict(kwargs)
+        headers = dict(self._headers)
+        headers.update(kwargs.pop("headers", None) or {})
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._tc.get(*args, **self._kwargs(kwargs))
+
+    def post(self, *args, **kwargs):
+        return self._tc.post(*args, **self._kwargs(kwargs))
+
+    def put(self, *args, **kwargs):
+        return self._tc.put(*args, **self._kwargs(kwargs))
+
+    def delete(self, *args, **kwargs):
+        return self._tc.delete(*args, **self._kwargs(kwargs))
 
 
 @pytest.fixture(scope="function")
@@ -45,16 +78,29 @@ def client(db_session):
         finally:
             pass
 
+    prev_override = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    raw = TestClient(app)
+    r = raw.post(
+        "/auth/register",
+        json={"email": "alerts@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    _UID["id"] = body["user"]["id"]
+    authed = _AuthClient(raw, {"Authorization": f"Bearer {body['access_token']}"})
+    yield authed
     app.dependency_overrides.clear()
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
 
 
 def add_expense(db, category, amount):
     """辅助：添加一条支出"""
     db.add(Transaction(
         amount=amount, category=category, account="微信",
-        transaction_type="expense", parsed_at=datetime.utcnow()
+        transaction_type="expense", parsed_at=datetime.utcnow(),
+        user_id=_UID["id"],
     ))
     db.commit()
 
@@ -313,7 +359,7 @@ class TestBackwardCompat:
         """旧预算数据（无 alert_thresholds 字段）使用默认阈值"""
         db_session.add(Setting(key="budgets", value=json.dumps([
             {"category": "房租", "monthly_limit": 5000, "alert_threshold": 0.8},
-        ])))
+        ]), user_id=_UID["id"]))
         db_session.commit()
         add_expense(db_session, "房租", 4300)  # 86% → 提醒（默认阈值）
 

@@ -8,7 +8,10 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
+import app.main as main_mod
 from app.database import get_db, Base, Transaction, Setting
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -23,15 +26,38 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+
+_AUTH = {"headers": {}, "user_id": None}
+
+
+def _eget(path):
+    return client.get(path, headers=_AUTH["headers"])
 
 
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
+    prev_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    r = client.post(
+        "/auth/register",
+        json={"email": "expstruct@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    _AUTH["headers"] = {"Authorization": f"Bearer {body['access_token']}"}
+    _AUTH["user_id"] = body["user"]["id"]
     yield
     Base.metadata.drop_all(bind=engine)
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _add_tx(db, category, amount, tx_type="expense", days_ago=0):
@@ -41,13 +67,14 @@ def _add_tx(db, category, amount, tx_type="expense", days_ago=0):
         account="default",
         transaction_type=tx_type,
         parsed_at=datetime.utcnow() - timedelta(days=days_ago),
+        user_id=_AUTH["user_id"],
     )
     db.add(tx)
     db.commit()
 
 
 def _set_budgets(db, budgets):
-    raw = Setting(key="budgets", value=json.dumps(budgets))
+    raw = Setting(key="budgets", value=json.dumps(budgets), user_id=_AUTH["user_id"])
     db.merge(raw)
     db.commit()
 
@@ -57,7 +84,7 @@ class TestExpenseStructure:
 
     def test_empty_month(self):
         """当月无支出时返回空结构"""
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary"]["total_expense"] == 0
@@ -72,7 +99,7 @@ class TestExpenseStructure:
         _add_tx(db, "游戏", 300)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
 
         assert data["summary"]["total_expense"] == 1500
@@ -91,7 +118,7 @@ class TestExpenseStructure:
         _add_tx(db, "咖啡", 150)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
 
         l1 = data["by_level"]["L1"]
@@ -113,7 +140,7 @@ class TestExpenseStructure:
         _add_tx(db, "游戏", 200)  # L3
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         # L1=50% L2=30% L3=20% → 都在理想区间
         assert data["structure_health"]["score"] >= 65
@@ -127,7 +154,7 @@ class TestExpenseStructure:
         _add_tx(db, "购物", 300)   # L3
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         # L3 = 700/1100 = 63.6%
         assert data["structure_health"]["level"] == "danger"
@@ -142,7 +169,7 @@ class TestExpenseStructure:
         _add_tx(db, "游戏", 200, days_ago=35)
         db.close()
 
-        resp = client.get("/reports/expense-structure?months=2")
+        resp = _eget("/reports/expense-structure?months=2")
         data = resp.json()
         assert len(data["trend"]) == 2
         # 当月趋势
@@ -158,7 +185,7 @@ class TestExpenseStructure:
         _add_tx(db, "餐饮", 1000, days_ago=35)
         db.close()
 
-        resp = client.get("/reports/expense-structure?months=2")
+        resp = _eget("/reports/expense-structure?months=2")
         data = resp.json()
         assert data["mom_change"] is not None
         assert data["mom_change"]["total_change"] == 200  # 1200-1000
@@ -173,7 +200,7 @@ class TestExpenseStructure:
         _add_tx(db, "咖啡", 200)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         top = data["top_categories"]
         assert len(top) == 4
@@ -190,7 +217,7 @@ class TestExpenseStructure:
         _add_tx(db, "咖啡", 200)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         assert data["by_level"]["L3"]["amount"] == 200
         assert data["by_level"]["L2"]["amount"] == 0
@@ -201,7 +228,7 @@ class TestExpenseStructure:
         _add_tx(db, "未知分类", 500)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         assert data["by_level"]["L2"]["amount"] == 500
 
@@ -212,7 +239,7 @@ class TestExpenseStructure:
         db.close()
 
         now = datetime.utcnow()
-        resp = client.get(f"/reports/expense-structure?year={now.year}&month={now.month}")
+        resp = _eget(f"/reports/expense-structure?year={now.year}&month={now.month}")
         data = resp.json()
         assert data["year"] == now.year
         assert data["month"] == now.month
@@ -225,7 +252,7 @@ class TestExpenseStructure:
         _add_tx(db, "游戏", 500)  # L3 占比 50%
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         suggestions = data["structure_health"]["suggestions"]
         assert len(suggestions) > 0
@@ -236,13 +263,13 @@ class TestExpenseStructure:
         _add_tx(db, "餐饮", 1000)
         db.close()
 
-        resp = client.get("/reports/expense-structure?months=1")
+        resp = _eget("/reports/expense-structure?months=1")
         data = resp.json()
         assert data["mom_change"] is None
 
     def test_ideal_range_in_by_level(self):
         """by_level 包含理想区间"""
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         assert "ideal_range" in data["by_level"]["L1"]
         assert "ideal_range" in data["by_level"]["L2"]
@@ -256,7 +283,7 @@ class TestExpenseStructure:
         _add_tx(db, "咖啡", 50)
         db.close()
 
-        resp = client.get("/reports/expense-structure")
+        resp = _eget("/reports/expense-structure")
         data = resp.json()
         assert data["summary"]["transaction_count"] == 3
         assert data["summary"]["category_count"] == 2

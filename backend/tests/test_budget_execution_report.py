@@ -8,7 +8,10 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
+import app.main as main_mod
 from app.database import get_db, Base, Transaction, Setting
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -23,15 +26,38 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+
+_AUTH = {"headers": {}, "user_id": None}
+
+
+def _get(path):
+    return client.get(path, headers=_AUTH["headers"])  # noqa: _get helper uses raw client
 
 
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
+    prev_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    r = client.post(
+        "/auth/register",
+        json={"email": "budgetexec@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    _AUTH["headers"] = {"Authorization": f"Bearer {body['access_token']}"}
+    _AUTH["user_id"] = body["user"]["id"]
     yield
     Base.metadata.drop_all(bind=engine)
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _add_tx(db, category, amount, tx_type="expense", days_ago=0):
@@ -41,13 +67,14 @@ def _add_tx(db, category, amount, tx_type="expense", days_ago=0):
         account="default",
         transaction_type=tx_type,
         parsed_at=datetime.utcnow() - timedelta(days=days_ago),
+        user_id=_AUTH["user_id"],
     )
     db.add(tx)
     db.commit()
 
 
 def _set_budgets(db, budgets):
-    raw = Setting(key="budgets", value=json.dumps(budgets))
+    raw = Setting(key="budgets", value=json.dumps(budgets), user_id=_AUTH["user_id"])
     db.merge(raw)
     db.commit()
 
@@ -57,7 +84,7 @@ class TestBudgetExecutionReport:
 
     def test_no_budgets(self):
         """无预算时返回空结果和提示信息"""
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary"]["total_budget"] == 0
@@ -71,7 +98,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 600)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["summary"]["total_budget"] == 1000
         assert data["summary"]["total_spent"] == 600
@@ -89,7 +116,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "娱乐", 800)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["summary"]["execution_rate"] == 160.0
         assert data["summary"]["over_budget_count"] == 1
@@ -111,7 +138,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "健身", 100)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["summary"]["total_budget"] == 2800
         assert data["summary"]["total_spent"] == 2200
@@ -133,7 +160,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "娱乐", 250)  # 超支
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         levels = data["by_level"]
         assert "L1" in levels
@@ -152,7 +179,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "水果", 150)  # 没设预算
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert len(data["unbudgeted_categories"]) == 2
         cats = [u["category"] for u in data["unbudgeted_categories"]]
@@ -170,7 +197,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "娱乐", 400)  # 133% - 超支
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         # 娱乐应该出现在 alerts 中
         assert len(data["alerts"]) >= 1
@@ -189,7 +216,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 600, days_ago=30)
         db.close()
 
-        resp = client.get("/reports/budget-execution?months=2")
+        resp = _get("/reports/budget-execution?months=2")
         data = resp.json()
         assert len(data["trend"]) == 2
         # 趋势按时间顺序排列
@@ -204,12 +231,13 @@ class TestBudgetExecutionReport:
             category="餐饮", amount=700, account="default",
             transaction_type="expense",
             parsed_at=datetime(2026, 2, 15),
+            user_id=_AUTH["user_id"],
         )
         db.add(tx)
         db.commit()
         db.close()
 
-        resp = client.get("/reports/budget-execution?year=2026&month=2")
+        resp = _get("/reports/budget-execution?year=2026&month=2")
         data = resp.json()
         assert data["year"] == 2026
         assert data["month"] == 2
@@ -222,7 +250,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 1500)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         summary = data["summary"]
         assert summary["daily_budget"] > 0
@@ -237,7 +265,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 500)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         # 预测使用率应该基于日均消费外推
         projected = data["summary"]["projected_usage"]
@@ -249,7 +277,7 @@ class TestBudgetExecutionReport:
         _set_budgets(db, [{"category": "餐饮", "monthly_limit": 1000, "level": "L1"}])
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["summary"]["total_spent"] == 0
         assert data["summary"]["execution_rate"] == 0
@@ -264,7 +292,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 2000, tx_type="income")  # 收入不影响
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["summary"]["total_spent"] == 500
 
@@ -281,7 +309,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "交通", 400)   # -50% 偏差
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         cats = data["by_category"]
         # 第一个应该是偏差率最高的（娱乐 +60%）
@@ -295,7 +323,7 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 500)
         db.close()
 
-        resp = client.get("/reports/budget-execution")
+        resp = _get("/reports/budget-execution")
         data = resp.json()
         assert data["by_category"][0]["level"] == "L1"  # 餐饮默认L1
 
@@ -306,12 +334,12 @@ class TestBudgetExecutionReport:
         _add_tx(db, "餐饮", 500)
         db.close()
 
-        resp = client.get("/reports/budget-execution?months=0")
+        resp = _get("/reports/budget-execution?months=0")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["trend"]) >= 1  # clamped to 1
 
-        resp = client.get("/reports/budget-execution?months=20")
+        resp = _get("/reports/budget-execution?months=20")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["trend"]) <= 12

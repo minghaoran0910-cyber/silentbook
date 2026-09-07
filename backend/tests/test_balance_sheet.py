@@ -1,18 +1,23 @@
 """V2-015 资产负债表测试"""
-import pytest
-import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["WEBHOOK_SECRET"] = "test-shared-secret-0123456789abcdef"
+os.environ["WEBHOOK_USER_ID"] = "1"
+os.environ["DATABASE_URL"] = "sqlite:////tmp/sb_balance_test.db"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET"] = "test-jwt-secret-0123456789abcdef-test"
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from datetime import datetime
 
-from app.database import Base, get_db, Asset, Liability, Account
+import app.main as main_mod
 from app.main import app
+from app.database import Base, get_db, Asset, Liability, Account
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 SQLALCHEMY_URL = "sqlite://"
 engine = create_engine(
@@ -23,53 +28,78 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture(scope="function")
-def db_session():
-    Base.metadata.create_all(bind=engine)
+def override_get_db():
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
-        Base.metadata.drop_all(bind=engine)
+
+
+client = TestClient(app)
 
 
 @pytest.fixture(scope="function")
-def client(db_session):
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
+def auth():
+    Base.metadata.create_all(bind=engine)
+    prev = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    r = client.post(
+        "/auth/register",
+        json={"email": "balance@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    j = r.json()
+    yield {"headers": {"Authorization": f"Bearer {j['access_token']}"}, "user_id": j["user"]["id"]}
+    Base.metadata.drop_all(bind=engine)
+    if prev is not None:
+        app.dependency_overrides[get_db] = prev
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
-def add_asset(db, name, asset_type, current_value, initial_value=None, status="active"):
-    db.add(Asset(
-        name=name, asset_type=asset_type, current_value=current_value,
-        initial_value=initial_value if initial_value is not None else current_value,
-        status=status,
-    ))
+def add_asset(uid, name, asset_type, current_value, initial_value=None, status="active"):
+    db = TestingSessionLocal()
+    try:
+        db.add(Asset(
+            name=name, asset_type=asset_type, current_value=current_value,
+            initial_value=initial_value if initial_value is not None else current_value,
+            status=status, user_id=uid,
+        ))
+        db.commit()
+    finally:
+        db.close()
 
 
-def add_liability(db, name, liability_type, current_amount, total_amount=None, monthly_payment=0, status="active"):
-    db.add(Liability(
-        name=name, liability_type=liability_type,
-        current_amount=current_amount,
-        total_amount=total_amount if total_amount is not None else current_amount,
-        monthly_payment=monthly_payment,
-        status=status,
-    ))
+def add_liability(uid, name, liability_type, current_amount, total_amount=None, monthly_payment=0, status="active"):
+    db = TestingSessionLocal()
+    try:
+        db.add(Liability(
+            name=name, liability_type=liability_type,
+            current_amount=current_amount,
+            total_amount=total_amount if total_amount is not None else current_amount,
+            monthly_payment=monthly_payment,
+            status=status, user_id=uid,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def add_account(uid, name, account_type, purpose, balance):
+    db = TestingSessionLocal()
+    try:
+        db.add(Account(name=name, account_type=account_type, purpose=purpose, balance=balance, user_id=uid))
+        db.commit()
+    finally:
+        db.close()
 
 
 class TestBalanceSheet:
 
-    def test_empty(self, client):
-        """无资产无负债"""
-        resp = client.get("/reports/balance-sheet")
-        assert resp.status_code == 200
+    def test_empty(self, auth):
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
+        assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["total_assets"] == 0
         assert data["total_liabilities"] == 0
@@ -79,13 +109,12 @@ class TestBalanceSheet:
         assert data["asset_count"] == 0
         assert data["liability_count"] == 0
 
-    def test_assets_only(self, client, db_session):
-        """只有资产无负债"""
-        add_asset(db_session, "现金", "cash", 10000)
-        add_asset(db_session, "基金A", "fund", 20000, initial_value=15000)
-        db_session.commit()
+    def test_assets_only(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "现金", "cash", 10000)
+        add_asset(uid, "基金A", "fund", 20000, initial_value=15000)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         assert data["total_assets"] == 30000
         assert data["total_liabilities"] == 0
@@ -93,42 +122,38 @@ class TestBalanceSheet:
         assert data["debt_ratio"] == 0
         assert data["health_status"] == "healthy"
 
-    def test_liabilities_only(self, client, db_session):
-        """只有负债无资产"""
-        add_liability(db_session, "花呗", "huabei", 2000, monthly_payment=500)
-        db_session.commit()
+    def test_liabilities_only(self, auth):
+        add_liability(auth["user_id"], "花呗", "huabei", 2000, monthly_payment=500)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         assert data["total_assets"] == 0
         assert data["total_liabilities"] == 2000
         assert data["net_worth"] == -2000
-        assert data["debt_ratio"] == 0  # 无资产时比率为0
+        assert data["debt_ratio"] == 0
 
-    def test_both_assets_liabilities(self, client, db_session):
-        """资产和负债都有"""
-        add_asset(db_session, "存款", "savings", 100000)
-        add_asset(db_session, "基金", "fund", 50000)
-        add_liability(db_session, "房贷", "mortgage", 300000, monthly_payment=3000)
-        add_liability(db_session, "花呗", "huabei", 2000, monthly_payment=500)
-        db_session.commit()
+    def test_both_assets_liabilities(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "存款", "savings", 100000)
+        add_asset(uid, "基金", "fund", 50000)
+        add_liability(uid, "房贷", "mortgage", 300000, monthly_payment=3000)
+        add_liability(uid, "花呗", "huabei", 2000, monthly_payment=500)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         assert data["total_assets"] == 150000
         assert data["total_liabilities"] == 302000
         assert data["net_worth"] == -152000
-        assert data["debt_ratio"] == 201.3  # 302000/150000*100
+        assert data["debt_ratio"] == 201.3
 
-    def test_asset_breakdown_by_type(self, client, db_session):
-        """资产按类型分组"""
-        add_asset(db_session, "现金1", "cash", 5000)
-        add_asset(db_session, "现金2", "cash", 3000)
-        add_asset(db_session, "基金A", "fund", 20000)
-        add_asset(db_session, "股票B", "stock", 10000)
-        db_session.commit()
+    def test_asset_breakdown_by_type(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "现金1", "cash", 5000)
+        add_asset(uid, "现金2", "cash", 3000)
+        add_asset(uid, "基金A", "fund", 20000)
+        add_asset(uid, "股票B", "stock", 10000)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         by_type = data["assets_by_type"]
         assert "cash" in by_type
@@ -139,15 +164,14 @@ class TestBalanceSheet:
         assert "stock" in by_type
         assert by_type["stock"]["total_value"] == 10000
 
-    def test_liability_breakdown_by_type(self, client, db_session):
-        """负债按类型分组"""
-        add_liability(db_session, "房贷", "mortgage", 500000)
-        add_liability(db_session, "车贷", "car_loan", 100000)
-        add_liability(db_session, "花呗", "huabei", 1000)
-        add_liability(db_session, "白条", "baitiao", 500)
-        db_session.commit()
+    def test_liability_breakdown_by_type(self, auth):
+        uid = auth["user_id"]
+        add_liability(uid, "房贷", "mortgage", 500000)
+        add_liability(uid, "车贷", "car_loan", 100000)
+        add_liability(uid, "花呗", "huabei", 1000)
+        add_liability(uid, "白条", "baitiao", 500)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         by_type = data["liabilities_by_type"]
         assert "mortgage" in by_type
@@ -157,53 +181,48 @@ class TestBalanceSheet:
         assert "huabei" in by_type
         assert "baitiao" in by_type
 
-    def test_debt_ratio_healthy(self, client, db_session):
-        """资产负债率 < 30% = healthy"""
-        add_asset(db_session, "存款", "savings", 100000)
-        add_liability(db_session, "花呗", "huabei", 20000)
-        db_session.commit()
+    def test_debt_ratio_healthy(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "存款", "savings", 100000)
+        add_liability(uid, "花呗", "huabei", 20000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["debt_ratio"] == 20.0
         assert data["health_status"] == "healthy"
 
-    def test_debt_ratio_normal(self, client, db_session):
-        """30% <= 资产负债率 < 50% = normal"""
-        add_asset(db_session, "存款", "savings", 100000)
-        add_liability(db_session, "房贷", "mortgage", 40000)
-        db_session.commit()
+    def test_debt_ratio_normal(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "存款", "savings", 100000)
+        add_liability(uid, "房贷", "mortgage", 40000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["debt_ratio"] == 40.0
         assert data["health_status"] == "normal"
 
-    def test_debt_ratio_warning(self, client, db_session):
-        """50% <= 资产负债率 < 70% = warning"""
-        add_asset(db_session, "存款", "savings", 100000)
-        add_liability(db_session, "房贷", "mortgage", 60000)
-        db_session.commit()
+    def test_debt_ratio_warning(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "存款", "savings", 100000)
+        add_liability(uid, "房贷", "mortgage", 60000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["debt_ratio"] == 60.0
         assert data["health_status"] == "warning"
 
-    def test_debt_ratio_danger(self, client, db_session):
-        """资产负债率 >= 70% = danger"""
-        add_asset(db_session, "存款", "savings", 100000)
-        add_liability(db_session, "房贷", "mortgage", 80000)
-        db_session.commit()
+    def test_debt_ratio_danger(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "存款", "savings", 100000)
+        add_liability(uid, "房贷", "mortgage", 80000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["debt_ratio"] == 80.0
         assert data["health_status"] == "danger"
 
-    def test_gain_loss_calculation(self, client, db_session):
-        """资产盈亏计算"""
-        add_asset(db_session, "基金A", "fund", 12000, initial_value=10000)
-        add_asset(db_session, "股票B", "stock", 8000, initial_value=10000)
-        db_session.commit()
+    def test_gain_loss_calculation(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "基金A", "fund", 12000, initial_value=10000)
+        add_asset(uid, "股票B", "stock", 8000, initial_value=10000)
 
-        resp = client.get("/reports/balance-sheet")
+        resp = client.get("/reports/balance-sheet", headers=auth["headers"])
         data = resp.json()
         fund_items = data["assets_by_type"]["fund"]["items"]
         stock_items = data["assets_by_type"]["stock"]["items"]
@@ -212,61 +231,53 @@ class TestBalanceSheet:
         assert stock_items[0]["gain_loss"] == -2000
         assert stock_items[0]["gain_loss_pct"] == -20.0
 
-    def test_inactive_assets_excluded(self, client, db_session):
-        """非active状态的资产不纳入"""
-        add_asset(db_session, "活跃资产", "cash", 10000, status="active")
-        add_asset(db_session, "冻结资产", "cash", 5000, status="frozen")
-        db_session.commit()
+    def test_inactive_assets_excluded(self, auth):
+        uid = auth["user_id"]
+        add_asset(uid, "活跃资产", "cash", 10000, status="active")
+        add_asset(uid, "冻结资产", "cash", 5000, status="frozen")
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["total_assets"] == 10000
         assert data["asset_count"] == 1
 
-    def test_paid_liabilities_excluded(self, client, db_session):
-        """已还清的负债不纳入"""
-        add_liability(db_session, "活跃负债", "huabei", 2000, status="active")
-        add_liability(db_session, "已还清", "loan", 0, status="paid")
-        db_session.commit()
+    def test_paid_liabilities_excluded(self, auth):
+        uid = auth["user_id"]
+        add_liability(uid, "活跃负债", "huabei", 2000, status="active")
+        add_liability(uid, "已还清", "loan", 0, status="paid")
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["total_liabilities"] == 2000
         assert data["liability_count"] == 1
 
-    def test_account_balance_included(self, client, db_session):
-        """账户余额纳入总净资产"""
-        db_session.add(Account(name="招行", account_type="bank", purpose="consumption", balance=5000))
-        db_session.add(Account(name="余额宝", account_type="alipay", purpose="emergency", balance=15000))
-        add_asset(db_session, "基金", "fund", 20000)
-        add_liability(db_session, "花呗", "huabei", 3000)
-        db_session.commit()
+    def test_account_balance_included(self, auth):
+        uid = auth["user_id"]
+        add_account(uid, "招行", "bank", "consumption", 5000)
+        add_account(uid, "余额宝", "alipay", "emergency", 15000)
+        add_asset(uid, "基金", "fund", 20000)
+        add_liability(uid, "花呗", "huabei", 3000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert data["total_account_balance"] == 20000
         assert data["total_assets"] == 20000
         assert data["total_liabilities"] == 3000
-        assert data["net_worth"] == 17000  # 20000 - 3000
-        assert data["total_net_worth"] == 37000  # 17000 + 20000(账户)
+        assert data["net_worth"] == 17000
+        assert data["total_net_worth"] == 37000
 
-    def test_as_of_timestamp(self, client):
-        """as_of 时间戳存在"""
-        data = client.get("/reports/balance-sheet").json()
+    def test_as_of_timestamp(self, auth):
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert "as_of" in data
         assert len(data["as_of"]) > 10
 
-    def test_unknown_asset_type(self, client, db_session):
-        """未知资产类型归入other"""
-        add_asset(db_session, "奇怪的资产", "crypto", 5000)  # crypto不在标准类型中
-        db_session.commit()
+    def test_unknown_asset_type(self, auth):
+        add_asset(auth["user_id"], "奇怪的资产", "crypto", 5000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert "other" in data["assets_by_type"]
         assert data["assets_by_type"]["other"]["total_value"] == 5000
 
-    def test_unknown_liability_type(self, client, db_session):
-        """未知负债类型归入other"""
-        add_liability(db_session, "奇怪负债", "unknown_type", 1000)
-        db_session.commit()
+    def test_unknown_liability_type(self, auth):
+        add_liability(auth["user_id"], "奇怪负债", "unknown_type", 1000)
 
-        data = client.get("/reports/balance-sheet").json()
+        data = client.get("/reports/balance-sheet", headers=auth["headers"]).json()
         assert "other" in data["liabilities_by_type"]
         assert data["liabilities_by_type"]["other"]["total_amount"] == 1000

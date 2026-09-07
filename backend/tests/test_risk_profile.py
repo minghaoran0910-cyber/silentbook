@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 
 from app.database import Base, get_db, Transaction, Account, Asset
 from app.main import app
+import app.main as main_mod
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 SQLALCHEMY_URL = "sqlite://"
 engine = create_engine(
@@ -24,6 +27,36 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+_UID = {"id": None}
+
+
+class _AuthClient:
+    """给所有请求自动带 Authorization 头的薄包装（测试体无需改动）。"""
+
+    def __init__(self, tc, headers):
+        self._tc = tc
+        self._headers = headers
+
+    def _kwargs(self, kwargs):
+        kwargs = dict(kwargs)
+        headers = dict(self._headers)
+        headers.update(kwargs.pop("headers", None) or {})
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._tc.get(*args, **self._kwargs(kwargs))
+
+    def post(self, *args, **kwargs):
+        return self._tc.post(*args, **self._kwargs(kwargs))
+
+    def put(self, *args, **kwargs):
+        return self._tc.put(*args, **self._kwargs(kwargs))
+
+    def delete(self, *args, **kwargs):
+        return self._tc.delete(*args, **self._kwargs(kwargs))
 
 
 @pytest.fixture(scope="function")
@@ -45,10 +78,21 @@ def client(db_session):
         finally:
             pass
 
+    prev_override = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
+        r = c.post(
+            "/auth/register",
+            json={"email": "riskprofile@test.local", "password": "Testpass123"},
+        )
+        assert r.status_code in (200, 201), r.text
+        body = r.json()
+        _UID["id"] = body["user"]["id"]
+        yield _AuthClient(c, {"Authorization": f"Bearer {body['access_token']}"})
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _add_tx(db, amount, category, ttype, days_ago=0):
@@ -56,6 +100,7 @@ def _add_tx(db, amount, category, ttype, days_ago=0):
         amount=amount, category=category, account="微信",
         transaction_type=ttype,
         parsed_at=datetime.utcnow() - timedelta(days=days_ago),
+        user_id=_UID["id"],
     )
     db.add(t)
     db.commit()
@@ -65,7 +110,7 @@ def _add_tx(db, amount, category, ttype, days_ago=0):
 def _add_account(db, name, purpose, balance, account_type="bank"):
     a = Account(
         name=name, account_type=account_type, purpose=purpose,
-        balance=balance, status="active"
+        balance=balance, status="active", user_id=_UID["id"],
     )
     db.add(a)
     db.commit()
@@ -75,7 +120,7 @@ def _add_account(db, name, purpose, balance, account_type="bank"):
 def _add_asset(db, name, asset_type, current_value, initial_value=0):
     a = Asset(
         name=name, asset_type=asset_type, current_value=current_value,
-        initial_value=initial_value, status="active"
+        initial_value=initial_value, status="active", user_id=_UID["id"],
     )
     db.add(a)
     db.commit()

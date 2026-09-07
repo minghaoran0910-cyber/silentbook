@@ -318,7 +318,8 @@ ASSET_TYPE_LABELS = {
     "other": "其他",
 }
 
-# 负债类型中文标签（复用 V2-011 定义的 LIABI_LIABILITY_TYPE_LABELS）
+# 负债类型中文标签（复用 assets.py 的定义）
+from .assets import LIABILITY_TYPE_LABELS
 
 
 @router.get("/reports/balance-sheet")

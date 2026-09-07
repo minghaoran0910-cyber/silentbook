@@ -14,6 +14,9 @@ from datetime import datetime
 
 from app.database import Base, get_db, Transaction
 from app.main import app
+import app.main as main_mod
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 # SQLite 内存数据库
 SQLALCHEMY_URL = "sqlite://"
@@ -23,6 +26,36 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+_UID = {"id": None}
+
+
+class _AuthClient:
+    """给所有请求自动带 Authorization 头的薄包装（测试体无需改动）。"""
+
+    def __init__(self, tc, headers):
+        self._tc = tc
+        self._headers = headers
+
+    def _kwargs(self, kwargs):
+        kwargs = dict(kwargs)
+        headers = dict(self._headers)
+        headers.update(kwargs.pop("headers", None) or {})
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._tc.get(*args, **self._kwargs(kwargs))
+
+    def post(self, *args, **kwargs):
+        return self._tc.post(*args, **self._kwargs(kwargs))
+
+    def put(self, *args, **kwargs):
+        return self._tc.put(*args, **self._kwargs(kwargs))
+
+    def delete(self, *args, **kwargs):
+        return self._tc.delete(*args, **self._kwargs(kwargs))
 
 
 @pytest.fixture(scope="function")
@@ -43,14 +76,25 @@ def client(db_session):
             yield db_session
         finally:
             pass
+    prev_override = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    raw = TestClient(app)
+    r = raw.post(
+        "/auth/register",
+        json={"email": "cashflow@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    _UID["id"] = body["user"]["id"]
+    yield _AuthClient(raw, {"Authorization": f"Bearer {body['access_token']}"})
     app.dependency_overrides.clear()
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
 
 
 def setup_transactions(db, txs):
     for tx in txs:
-        db.add(Transaction(**tx))
+        db.add(Transaction(user_id=_UID["id"], **tx))
     db.commit()
 
 

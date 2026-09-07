@@ -7,13 +7,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.main import app
+import app.main as main_mod
 from app.database import get_db
 from app.database import Base, User, AnalysisResult, Setting
 from app.auth import hash_password, create_token
 
+main_mod.RATE_LIMIT_ENABLED = False
+
 TEST_DB = "sqlite:///./test_analysis_settings.db"
 engine = create_engine(TEST_DB, connect_args={"check_same_thread": False})
 TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+_UID = {"id": None}
 
 
 def override_get_db():
@@ -24,7 +29,10 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
 
 
 @pytest.fixture(autouse=True)
@@ -52,18 +60,20 @@ def auth_headers():
     db.commit()
     db.refresh(user)
     token = create_token(user)
+    uid = user.id
     db.close()
+    _UID["id"] = uid
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
-def sample_analysis():
-    """创建示例分析数据"""
+def sample_analysis(auth_headers):
+    """创建示例分析数据（归属当前登录用户；依赖 auth_headers 保证顺序）"""
     db = TestingSession()
     analyses = [
-        AnalysisResult(agent_name="test", analysis_type="consumption", content="消费分析内容"),
-        AnalysisResult(agent_name="test", analysis_type="investment", content="投资分析内容"),
-        AnalysisResult(agent_name="test", analysis_type="suggestion", content="综合建议内容"),
+        AnalysisResult(agent_name="test", analysis_type="consumption", content="消费分析内容", user_id=_UID["id"]),
+        AnalysisResult(agent_name="test", analysis_type="investment", content="投资分析内容", user_id=_UID["id"]),
+        AnalysisResult(agent_name="test", analysis_type="suggestion", content="综合建议内容", user_id=_UID["id"]),
     ]
     for a in analyses:
         db.add(a)

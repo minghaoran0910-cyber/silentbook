@@ -1,9 +1,13 @@
 """V2-024 深度风险分析 测试"""
-import pytest
 import os
 
-os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["WEBHOOK_SECRET"] = "test-shared-secret-0123456789abcdef"
+os.environ["WEBHOOK_USER_ID"] = "1"
+os.environ["DATABASE_URL"] = "sqlite:////tmp/sb_risk_test.db"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET"] = "test-jwt-secret-0123456789abcdef-test"
 
+import pytest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -13,8 +17,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from datetime import date, timedelta
 
+import app.main as main_mod
 from app.database import Base, get_db, Position, TradeRecord, Account
 from app.main import app
+
+main_mod.RATE_LIMIT_ENABLED = False
+
+# 本文件当前登录用户的信息（由 auth fixture 注册后填入）
+_AUTH = {}
 
 engine = create_engine(
     "sqlite://",
@@ -32,7 +42,10 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 
@@ -45,6 +58,19 @@ def db_session():
     Base.metadata.drop_all(bind=engine)
 
 
+@pytest.fixture(scope="function")
+def auth(db_session):
+    r = client.post(
+        "/auth/register",
+        json={"email": "risk@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    data = r.json()
+    _AUTH["headers"] = {"Authorization": f"Bearer {data['access_token']}"}
+    _AUTH["uid"] = data["user"]["id"]
+    return _AUTH["headers"]
+
+
 def _create_account(db):
     account = Account(
         name="测试投资账户",
@@ -52,7 +78,8 @@ def _create_account(db):
         purpose="investment",
         balance=100000,
         currency="CNY",
-        status="active"
+        status="active",
+        user_id=_AUTH["uid"],
     )
     db.add(account)
     db.commit()
@@ -67,6 +94,7 @@ def _create_position(db, name="测试股票", quantity=100, avg_cost=50.0, curre
         avg_cost=avg_cost,
         current_price=current_price,
         status="active",
+        user_id=_AUTH["uid"],
     )
     db.add(pos)
     db.commit()
@@ -82,6 +110,7 @@ def _create_trade(db, position_id, trade_type="buy", quantity=100, price=50.0, t
         price=price,
         amount=quantity * price,
         trade_date=trade_date or date.today(),
+        user_id=_AUTH["uid"],
     )
     db.add(trade)
     db.commit()
@@ -91,14 +120,15 @@ def _create_trade(db, position_id, trade_type="buy", quantity=100, price=50.0, t
 class TestRiskAnalysisEndpoint:
     """测试 /investment/risk-analysis 端点"""
 
-    def test_no_positions(self, db_session):
+    def test_no_positions(self, db_session, auth):
         """无持仓时返回提示"""
-        resp = client.get("/investment/risk-analysis")
+        resp = client.get("/investment/risk-analysis", headers=_AUTH["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert data["risk_metrics"] is None or "message" in data
 
-    def test_basic_response_structure(self, db_session):
+    
+    def test_basic_response_structure(self, db_session, auth):
         """有持仓时返回完整结构"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -106,7 +136,7 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=60 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0 + i * 0.1, d)
 
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         assert resp.status_code == 200
         data = resp.json()
         
@@ -122,7 +152,8 @@ class TestRiskAnalysisEndpoint:
         assert "recommendations" in data
         assert "portfolio_value" in data
 
-    def test_var_values(self, db_session):
+    
+    def test_var_values(self, db_session, auth):
         """VaR 值应在合理范围"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -131,7 +162,7 @@ class TestRiskAnalysisEndpoint:
             price = 50.0 + (i % 10) * 0.5 - 2.0
             _create_trade(db_session, pos.id, "buy", 10, price, d)
 
-        resp = client.get("/investment/risk-analysis?days=120")
+        resp = client.get("/investment/risk-analysis?days=120", headers=_AUTH["headers"])
         data = resp.json()
         
         if data.get("var") and data["var"].get("var_95") is not None:
@@ -140,7 +171,8 @@ class TestRiskAnalysisEndpoint:
             if var_99 is not None:
                 assert var_99 <= var_95 + 0.001
 
-    def test_cvar_more_extreme_than_var(self, db_session):
+    
+    def test_cvar_more_extreme_than_var(self, db_session, auth):
         """CVaR 应比 VaR 更极端"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -149,7 +181,7 @@ class TestRiskAnalysisEndpoint:
             price = 50.0 + (i % 7) * 0.8 - 2.5
             _create_trade(db_session, pos.id, "buy", 10, price, d)
 
-        resp = client.get("/investment/risk-analysis?days=120")
+        resp = client.get("/investment/risk-analysis?days=120", headers=_AUTH["headers"])
         data = resp.json()
         
         if data.get("var") and data["var"].get("var_95") is not None:
@@ -158,7 +190,8 @@ class TestRiskAnalysisEndpoint:
             if cvar_95 is not None:
                 assert cvar_95 <= var_95 + 0.001
 
-    def test_drawdown_details(self, db_session):
+    
+    def test_drawdown_details(self, db_session, auth):
         """回撤分析应包含必要字段"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -170,7 +203,7 @@ class TestRiskAnalysisEndpoint:
                 price = 80.0 - (i - 30) * 0.8
             _create_trade(db_session, pos.id, "buy", 10, price, d)
 
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         data = resp.json()
         
         dd = data.get("drawdown", {})
@@ -181,12 +214,13 @@ class TestRiskAnalysisEndpoint:
         assert "drawdown_periods" in dd
         assert isinstance(dd["drawdown_periods"], list)
 
-    def test_stress_test_scenarios(self, db_session):
+    
+    def test_stress_test_scenarios(self, db_session, auth):
         """压力测试应返回5种情景"""
         _create_account(db_session)
         pos = _create_position(db_session, quantity=100, avg_cost=50, current_price=55)
         
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         data = resp.json()
         
         stress = data.get("stress_test", [])
@@ -198,7 +232,8 @@ class TestRiskAnalysisEndpoint:
             assert "estimated_loss" in s
             assert "remaining_value" in s
 
-    def test_risk_grade(self, db_session):
+    
+    def test_risk_grade(self, db_session, auth):
         """风险评级应在 A-F 范围"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -206,7 +241,7 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=60 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0 + i * 0.05, d)
 
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         data = resp.json()
         
         grade = data.get("risk_grade", {})
@@ -216,7 +251,8 @@ class TestRiskAnalysisEndpoint:
         assert "score" in grade
         assert 0 <= grade["score"] <= 100
 
-    def test_distribution_stats(self, db_session):
+    
+    def test_distribution_stats(self, db_session, auth):
         """收益分布统计"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -225,7 +261,7 @@ class TestRiskAnalysisEndpoint:
             price = 50.0 + (i % 5) * 0.3 - 0.5
             _create_trade(db_session, pos.id, "buy", 10, price, d)
 
-        resp = client.get("/investment/risk-analysis?days=120")
+        resp = client.get("/investment/risk-analysis?days=120", headers=_AUTH["headers"])
         data = resp.json()
         
         dist = data.get("distribution", {})
@@ -233,7 +269,8 @@ class TestRiskAnalysisEndpoint:
             assert dist["total_days"] == dist["positive_days"] + dist["negative_days"] + dist["zero_days"]
             assert 0 <= dist["positive_pct"] <= 100
 
-    def test_risk_decomposition(self, db_session):
+    
+    def test_risk_decomposition(self, db_session, auth):
         """风险分解应按持仓列出"""
         _create_account(db_session)
         pos1 = _create_position(db_session, "股票A", 100, 50, 55, "stock")
@@ -244,7 +281,7 @@ class TestRiskAnalysisEndpoint:
             _create_trade(db_session, pos1.id, "buy", 5, 50.0 + i * 0.1, d)
             _create_trade(db_session, pos2.id, "buy", 10, 30.0 + i * 0.05, d)
 
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         data = resp.json()
         
         decomp = data.get("risk_decomposition", [])
@@ -254,7 +291,8 @@ class TestRiskAnalysisEndpoint:
             assert "weight" in item
             assert "risk_contribution" in item
 
-    def test_rolling_metrics(self, db_session):
+    
+    def test_rolling_metrics(self, db_session, auth):
         """滚动指标应包含夏普和波动率"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -262,14 +300,15 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=90 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0 + (i % 10) * 0.2, d)
 
-        resp = client.get("/investment/risk-analysis?days=120")
+        resp = client.get("/investment/risk-analysis?days=120", headers=_AUTH["headers"])
         data = resp.json()
         
         rolling = data.get("rolling_metrics", {})
         assert "rolling_sharpe" in rolling
         assert "rolling_volatility" in rolling
 
-    def test_recommendations_not_empty(self, db_session):
+    
+    def test_recommendations_not_empty(self, db_session, auth):
         """建议列表不应为空"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -277,13 +316,14 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=60 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0 + i * 0.1, d)
 
-        resp = client.get("/investment/risk-analysis?days=90")
+        resp = client.get("/investment/risk-analysis?days=90", headers=_AUTH["headers"])
         data = resp.json()
         
         recs = data.get("recommendations", [])
         assert len(recs) >= 1
 
-    def test_custom_confidence(self, db_session):
+    
+    def test_custom_confidence(self, db_session, auth):
         """自定义置信度参数"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -291,12 +331,13 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=60 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0 + i * 0.1, d)
 
-        resp = client.get("/investment/risk-analysis?days=90&confidence=0.99")
+        resp = client.get("/investment/risk-analysis?days=90&confidence=0.99", headers=_AUTH["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert data["confidence_level"] == 0.99
 
-    def test_insufficient_data(self, db_session):
+    
+    def test_insufficient_data(self, db_session, auth):
         """数据不足时返回提示"""
         _create_account(db_session)
         pos = _create_position(db_session)
@@ -304,44 +345,44 @@ class TestRiskAnalysisEndpoint:
             d = date.today() - timedelta(days=2 - i)
             _create_trade(db_session, pos.id, "buy", 10, 50.0, d)
 
-        resp = client.get("/investment/risk-analysis?days=30")
+        resp = client.get("/investment/risk-analysis?days=30", headers=_AUTH["headers"])
         assert resp.status_code == 200
 
 
 class TestHelperFunctions:
     """测试辅助函数"""
 
-    def test_var_empty_returns(self, db_session):
-        from app.main import _calc_var_historical
+    def test_var_empty_returns(self, db_session, auth):
+        from app.routers.investments import _calc_var_historical
         assert _calc_var_historical([], 0.95) is None
         assert _calc_var_historical([0.01], 0.95) is None
 
-    def test_var_with_known_data(self, db_session):
-        from app.main import _calc_var_historical
+    def test_var_with_known_data(self, db_session, auth):
+        from app.routers.investments import _calc_var_historical
         returns = [i * 0.01 - 0.5 for i in range(100)]
         var_95 = _calc_var_historical(returns, 0.95)
         assert var_95 is not None
         assert var_95 < 0
 
-    def test_cvar_empty(self, db_session):
-        from app.main import _calc_cvar
+    def test_cvar_empty(self, db_session, auth):
+        from app.routers.investments import _calc_cvar
         assert _calc_cvar([], 0.95) is None
 
-    def test_cvar_more_extreme(self, db_session):
-        from app.main import _calc_var_historical, _calc_cvar
+    def test_cvar_more_extreme(self, db_session, auth):
+        from app.routers.investments import _calc_var_historical, _calc_cvar
         returns = [i * 0.01 - 0.5 for i in range(100)]
         var = _calc_var_historical(returns, 0.95)
         cvar = _calc_cvar(returns, 0.95)
         assert cvar <= var
 
-    def test_drawdown_details_empty(self, db_session):
-        from app.main import _calc_drawdown_details
+    def test_drawdown_details_empty(self, db_session, auth):
+        from app.routers.investments import _calc_drawdown_details
         result = _calc_drawdown_details([])
         assert result["current_drawdown"] == 0
         assert result["max_drawdown"] == 0
 
-    def test_drawdown_with_peak_and_trough(self, db_session):
-        from app.main import _calc_drawdown_details
+    def test_drawdown_with_peak_and_trough(self, db_session, auth):
+        from app.routers.investments import _calc_drawdown_details
         series = [
             {"date": "2026-01-01", "value": 100},
             {"date": "2026-01-02", "value": 120},
@@ -353,23 +394,23 @@ class TestHelperFunctions:
         assert result["max_drawdown"] > 0
         assert abs(result["max_drawdown"] - 25.0) < 0.1
 
-    def test_stress_test(self, db_session):
-        from app.main import _calc_stress_test
+    def test_stress_test(self, db_session, auth):
+        from app.routers.investments import _calc_stress_test
         results = _calc_stress_test(100000, [])
         assert len(results) == 5
         assert results[0]["estimated_loss"] == -5000
         assert results[0]["remaining_value"] == 95000
 
-    def test_risk_grade_boundaries(self, db_session):
-        from app.main import _calc_risk_grade
+    def test_risk_grade_boundaries(self, db_session, auth):
+        from app.routers.investments import _calc_risk_grade
         grade = _calc_risk_grade(0.005, 3.0, 1.5, 0.1, 2.0)
         assert grade["grade"] in ["A", "B"]
         
         grade = _calc_risk_grade(0.06, 35.0, -0.5, 0.5, 25.0)
         assert grade["grade"] in ["D", "F"]
 
-    def test_rolling_metrics_insufficient_data(self, db_session):
-        from app.main import _calc_rolling_metrics
+    def test_rolling_metrics_insufficient_data(self, db_session, auth):
+        from app.routers.investments import _calc_rolling_metrics
         result = _calc_rolling_metrics([0.01, -0.02, 0.03], ["d1", "d2", "d3", "d4"], window=30)
         assert result["rolling_sharpe"] == []
         assert result["rolling_volatility"] == []

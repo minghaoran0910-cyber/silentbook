@@ -1,11 +1,15 @@
 """V2-016 五维度评分模型测试"""
+import os
+
+os.environ["WEBHOOK_SECRET"] = "test-shared-secret-0123456789abcdef"
+os.environ["WEBHOOK_USER_ID"] = "1"
+os.environ["DATABASE_URL"] = "sqlite:////tmp/sb_health_test.db"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET"] = "test-jwt-secret-0123456789abcdef-test"
+
 import pytest
 import sys
-import os
 import json
-
-# 必须在导入 app 之前设置 DATABASE_URL 为 SQLite
-os.environ["DATABASE_URL"] = "sqlite://"
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -15,8 +19,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from datetime import datetime, timedelta
 
+import app.main as main_mod
 from app.database import Base, get_db, Transaction, Account, Asset, Liability, Setting
 from app.main import app
+
+main_mod.RATE_LIMIT_ENABLED = False
+
+# 本文件当前登录用户的信息（由 client fixture 注册后填入）
+_AUTH = {}
 
 SQLALCHEMY_URL = "sqlite://"
 engine = create_engine(
@@ -48,6 +58,14 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
+        r = c.post(
+            "/auth/register",
+            json={"email": "health@test.local", "password": "Testpass123"},
+        )
+        assert r.status_code in (200, 201), r.text
+        data = r.json()
+        _AUTH["headers"] = {"Authorization": f"Bearer {data['access_token']}"}
+        _AUTH["uid"] = data["user"]["id"]
         yield c
     app.dependency_overrides.clear()
 
@@ -57,6 +75,7 @@ def _add_tx(db, amount, category, ttype, days_ago=0):
         amount=amount, category=category, account="微信",
         transaction_type=ttype,
         parsed_at=datetime.utcnow() - timedelta(days=days_ago),
+        user_id=_AUTH["uid"],
     )
     db.add(t)
     db.commit()
@@ -66,7 +85,7 @@ def _add_tx(db, amount, category, ttype, days_ago=0):
 def _add_account(db, name, purpose, balance, account_type="bank"):
     a = Account(
         name=name, account_type=account_type, purpose=purpose,
-        balance=balance, status="active"
+        balance=balance, status="active", user_id=_AUTH["uid"],
     )
     db.add(a)
     db.commit()
@@ -76,7 +95,7 @@ def _add_account(db, name, purpose, balance, account_type="bank"):
 def _add_asset(db, name, asset_type, current_value, initial_value=0):
     a = Asset(
         name=name, asset_type=asset_type, current_value=current_value,
-        initial_value=initial_value, status="active"
+        initial_value=initial_value, status="active", user_id=_AUTH["uid"],
     )
     db.add(a)
     db.commit()
@@ -84,7 +103,7 @@ def _add_asset(db, name, asset_type, current_value, initial_value=0):
 
 
 def _set_budgets(db, budgets):
-    s = Setting(key="budgets", value=json.dumps(budgets))
+    s = Setting(key="budgets", value=json.dumps(budgets), user_id=_AUTH["uid"])
     db.add(s)
     db.commit()
 
@@ -94,7 +113,7 @@ def _set_budgets(db, budgets):
 class TestEmptyData:
     def test_empty_returns_all_zeros(self, client):
         """无任何数据时，所有维度返回0分"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_score"] == 0
@@ -107,7 +126,7 @@ class TestEmptyData:
 
     def test_empty_has_suggestions(self, client):
         """空数据时每个维度都有建议"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         for dim_name in ["savings", "risk", "budget", "structure", "investment"]:
             assert "suggestion" in data["dimensions"][dim_name]
@@ -122,7 +141,7 @@ class TestSavingsDimension:
         _add_tx(db_session, 10000, "工资", "income")
         _add_tx(db_session, 5000, "餐饮", "expense")
         _add_tx(db_session, 1000, "交通", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["savings"]["score"] == 25
         assert data["dimensions"]["savings"]["rate"] == 40.0
@@ -131,7 +150,7 @@ class TestSavingsDimension:
         """储蓄率20-30% → 20分"""
         _add_tx(db_session, 10000, "工资", "income")
         _add_tx(db_session, 7500, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["savings"]["score"] == 20
 
@@ -139,7 +158,7 @@ class TestSavingsDimension:
         """储蓄率10-20% → 15分"""
         _add_tx(db_session, 10000, "工资", "income")
         _add_tx(db_session, 8500, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["savings"]["score"] == 15
 
@@ -147,7 +166,7 @@ class TestSavingsDimension:
         """储蓄率<0% → 0分"""
         _add_tx(db_session, 5000, "工资", "income")
         _add_tx(db_session, 8000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["savings"]["score"] == 0
         assert data["dimensions"]["savings"]["rate"] < 0
@@ -160,7 +179,7 @@ class TestRiskDimension:
         """应急储备≥6个月 → 25分"""
         _add_account(db_session, "应急基金", "emergency", 60000)
         _add_tx(db_session, 10000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["risk"]["score"] == 25
         assert data["dimensions"]["risk"]["months"] == 6.0
@@ -169,7 +188,7 @@ class TestRiskDimension:
         """应急储备3-6个月 → 20分"""
         _add_account(db_session, "应急基金", "emergency", 40000)
         _add_tx(db_session, 10000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["risk"]["score"] == 20
 
@@ -177,7 +196,7 @@ class TestRiskDimension:
         """应急储备1-3个月 → 12分"""
         _add_account(db_session, "应急基金", "emergency", 15000)
         _add_tx(db_session, 10000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["risk"]["score"] == 12
 
@@ -185,7 +204,7 @@ class TestRiskDimension:
         """无应急账户 → 0分"""
         _add_account(db_session, "工资卡", "consumption", 5000)
         _add_tx(db_session, 10000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["risk"]["score"] == 0
 
@@ -195,7 +214,7 @@ class TestRiskDimension:
 class TestBudgetDimension:
     def test_no_budget(self, client):
         """无预算 → 0分"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["budget"]["score"] == 0
 
@@ -203,7 +222,7 @@ class TestBudgetDimension:
         """预算内 → 高分"""
         _set_budgets(db_session, [{"category": "餐饮", "monthly_limit": 3000, "level": "L1"}])
         _add_tx(db_session, 2000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["budget"]["score"] == 20
 
@@ -211,7 +230,7 @@ class TestBudgetDimension:
         """超预算 → 低分"""
         _set_budgets(db_session, [{"category": "餐饮", "monthly_limit": 1000, "level": "L1"}])
         _add_tx(db_session, 2000, "餐饮", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["budget"]["score"] <= 10
 
@@ -223,7 +242,7 @@ class TestStructureDimension:
         """必要支出<50% → 15分"""
         _add_tx(db_session, 3000, "餐饮", "expense")
         _add_tx(db_session, 4000, "娱乐", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["structure"]["score"] == 15
         assert data["dimensions"]["structure"]["necessary_ratio"] < 50
@@ -232,7 +251,7 @@ class TestStructureDimension:
         """必要支出>80% → 0分"""
         _add_tx(db_session, 9000, "房租", "expense")
         _add_tx(db_session, 1000, "娱乐", "expense")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["structure"]["score"] == 0
 
@@ -242,21 +261,21 @@ class TestStructureDimension:
 class TestInvestmentDimension:
     def test_no_investment(self, client):
         """无投资数据 → 0分"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["investment"]["score"] == 0
 
     def test_investment_with_initial_value(self, client, db_session):
         """有投资且增长 → 高分"""
         _add_asset(db_session, "沪深300基金", "fund", 11000, initial_value=10000)
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["investment"]["score"] >= 12
 
     def test_investment_loss(self, client, db_session):
         """投资亏损 → 低分"""
         _add_asset(db_session, "股票", "stock", 8000, initial_value=10000)
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["dimensions"]["investment"]["score"] <= 4
 
@@ -276,28 +295,28 @@ class TestOverallScore:
         ])
         _add_asset(db_session, "基金", "fund", 12000, initial_value=10000)
 
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert data["total_score"] >= 75
         assert data["grade_code"] in ["excellent", "healthy"]
 
     def test_radar_data_normalized(self, client):
         """雷达图数据归一化到 0-1"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         for key, val in data["radar"].items():
             assert 0 <= val <= 1
 
     def test_top_suggestion_present(self, client):
         """综合建议非空"""
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert len(data["top_suggestion"]) > 0
         assert "最需要改善" in data["top_suggestion"]
 
     def test_year_month_params(self, client, db_session):
         """支持指定年月"""
-        resp = client.get("/reports/health-score?year=2026&month=6")
+        resp = client.get("/reports/health-score?year=2026&month=6", headers=_AUTH["headers"])
         data = resp.json()
         assert data["year"] == 2026
         assert data["month"] == 6
@@ -306,7 +325,7 @@ class TestOverallScore:
     def test_data_sources_info(self, client, db_session):
         """返回数据来源统计"""
         _add_tx(db_session, 5000, "工资", "income")
-        resp = client.get("/reports/health-score")
+        resp = client.get("/reports/health-score", headers=_AUTH["headers"])
         data = resp.json()
         assert "data_sources" in data
         assert data["data_sources"]["transaction_count"] == 1

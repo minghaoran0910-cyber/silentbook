@@ -44,7 +44,10 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 

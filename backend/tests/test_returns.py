@@ -15,6 +15,9 @@ from datetime import date
 
 from app.database import Base, get_db, Position, TradeRecord
 from app.main import app
+import app.main as main_mod
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 engine = create_engine(
     "sqlite://",
@@ -22,6 +25,36 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+_UID = {"id": None}
+
+
+class _AuthClient:
+    """给所有请求自动带 Authorization 头的薄包装（测试体无需改动）。"""
+
+    def __init__(self, tc, headers):
+        self._tc = tc
+        self._headers = headers
+
+    def _kwargs(self, kwargs):
+        kwargs = dict(kwargs)
+        headers = dict(self._headers)
+        headers.update(kwargs.pop("headers", None) or {})
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._tc.get(*args, **self._kwargs(kwargs))
+
+    def post(self, *args, **kwargs):
+        return self._tc.post(*args, **self._kwargs(kwargs))
+
+    def put(self, *args, **kwargs):
+        return self._tc.put(*args, **self._kwargs(kwargs))
+
+    def delete(self, *args, **kwargs):
+        return self._tc.delete(*args, **self._kwargs(kwargs))
 
 
 @pytest.fixture(scope="function")
@@ -43,17 +76,28 @@ def client(db_session):
         finally:
             pass
 
+    prev_override = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
+        r = c.post(
+            "/auth/register",
+            json={"email": "returns@test.local", "password": "Testpass123"},
+        )
+        assert r.status_code in (200, 201), r.text
+        body = r.json()
+        _UID["id"] = body["user"]["id"]
+        yield _AuthClient(c, {"Authorization": f"Bearer {body['access_token']}"})
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _create_position(db, name="测试基金", quantity=1000, avg_cost=1.0, current_price=1.2):
     p = Position(
         name=name, position_type="fund",
         quantity=quantity, avg_cost=avg_cost, current_price=current_price,
-        status="active"
+        status="active", user_id=_UID["id"],
     )
     db.add(p)
     db.commit()
@@ -65,7 +109,7 @@ def _add_trade(db, position_id, trade_type, quantity, price, trade_date, fee=0):
     t = TradeRecord(
         position_id=position_id, trade_type=trade_type,
         quantity=quantity, price=price, amount=quantity * price,
-        fee=fee, trade_date=trade_date
+        fee=fee, trade_date=trade_date, user_id=_UID["id"],
     )
     db.add(t)
     db.commit()

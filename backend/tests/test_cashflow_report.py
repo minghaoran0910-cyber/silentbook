@@ -1,18 +1,25 @@
 """V2-014 现金流报表测试"""
-import pytest
-import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["WEBHOOK_SECRET"] = "test-shared-secret-0123456789abcdef"
+os.environ["WEBHOOK_USER_ID"] = "1"
+os.environ["DATABASE_URL"] = "sqlite:////tmp/sb_cashflow_report_test.db"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET"] = "test-jwt-secret-0123456789abcdef-test"
+
+import pytest
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from datetime import datetime
 
-from app.database import Base, get_db, Transaction
+import app.main as main_mod
 from app.main import app
+from app.database import Base, get_db, Transaction
+
+main_mod.RATE_LIMIT_ENABLED = False
 
 SQLALCHEMY_URL = "sqlite://"
 engine = create_engine(
@@ -23,63 +30,75 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture(scope="function")
-def db_session():
-    Base.metadata.create_all(bind=engine)
+def override_get_db():
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
-        Base.metadata.drop_all(bind=engine)
+
+
+client = TestClient(app)
 
 
 @pytest.fixture(scope="function")
-def client(db_session):
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
+def auth():
+    Base.metadata.create_all(bind=engine)
+    prev = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    r = client.post(
+        "/auth/register",
+        json={"email": "cashflowreport@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    j = r.json()
+    yield {"headers": {"Authorization": f"Bearer {j['access_token']}"}, "user_id": j["user"]["id"]}
+    Base.metadata.drop_all(bind=engine)
+    if prev is not None:
+        app.dependency_overrides[get_db] = prev
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
-def add_tx(db, amount, category, tx_type, day, month=7, year=2026, account="招行"):
-    db.add(Transaction(
-        amount=amount,
-        category=category,
-        account=account,
-        transaction_type=tx_type,
-        parsed_at=datetime(year, month, day, 12, 0),
-        confidence=1.0,
-    ))
+def add_tx(uid, amount, category, tx_type, day, month=7, year=2026, account="招行"):
+    db = TestingSessionLocal()
+    try:
+        db.add(Transaction(
+            amount=amount,
+            category=category,
+            account=account,
+            transaction_type=tx_type,
+            parsed_at=datetime(year, month, day, 12, 0),
+            confidence=1.0,
+            user_id=uid,
+        ))
+        db.commit()
+    finally:
+        db.close()
 
 
 class TestCashflowReport:
 
-    def test_empty_month(self, client):
+    def test_empty_month(self, auth):
         """空月份：所有指标为0"""
-        resp = client.get("/reports/cashflow?year=2026&month=7")
-        assert resp.status_code == 200
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
+        assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["total_inflow"] == 0
         assert data["total_outflow"] == 0
         assert data["net_cashflow"] == 0
         assert data["transaction_count"] == 0
         assert data["active_days"] == 0
-        assert len(data["daily"]) == 31  # 7月有31天
+        assert len(data["daily"]) == 31
         assert data["account_breakdown"] == []
 
-    def test_basic_inflow_outflow(self, client, db_session):
-        """基本流入流出"""
-        add_tx(db_session, 10000, "工资", "income", 5)
-        add_tx(db_session, 3000, "房租", "expense", 6)
-        add_tx(db_session, 2000, "餐饮", "expense", 10)
-        db_session.commit()
+    def test_basic_inflow_outflow(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 10000, "工资", "income", 5)
+        add_tx(uid, 3000, "房租", "expense", 6)
+        add_tx(uid, 2000, "餐饮", "expense", 10)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         assert data["total_inflow"] == 10000
         assert data["total_outflow"] == 5000
@@ -87,14 +106,13 @@ class TestCashflowReport:
         assert data["transaction_count"] == 3
         assert data["active_days"] == 3
 
-    def test_daily_breakdown(self, client, db_session):
-        """日明细：每天的收入/支出/净额"""
-        add_tx(db_session, 1000, "工资", "income", 5)
-        add_tx(db_session, 500, "餐饮", "expense", 5)
-        add_tx(db_session, 200, "交通", "expense", 10)
-        db_session.commit()
+    def test_daily_breakdown(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 1000, "工资", "income", 5)
+        add_tx(uid, 500, "餐饮", "expense", 5)
+        add_tx(uid, 200, "交通", "expense", 10)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         daily = data["daily"]
 
@@ -114,28 +132,24 @@ class TestCashflowReport:
         assert day1["outflow"] == 0
         assert day1["transaction_count"] == 0
 
-    def test_days_in_month_count(self, client):
-        """不同月份天数正确"""
-        jul = client.get("/reports/cashflow?year=2026&month=7").json()
+    def test_days_in_month_count(self, auth):
+        jul = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"]).json()
         assert len(jul["daily"]) == 31
 
-        feb = client.get("/reports/cashflow?year=2026&month=2").json()
-        assert len(feb["daily"]) == 28  # 2026年2月非闰月
+        feb = client.get("/reports/cashflow?year=2026&month=2", headers=auth["headers"]).json()
+        assert len(feb["daily"]) == 28
 
-        feb_leap = client.get("/reports/cashflow?year=2024&month=2").json()
-        assert len(feb_leap["daily"]) == 29  # 2024是闰年
+        feb_leap = client.get("/reports/cashflow?year=2024&month=2", headers=auth["headers"]).json()
+        assert len(feb_leap["daily"]) == 29
 
-    def test_comparison_with_prev_month(self, client, db_session):
-        """环比：与上月对比"""
-        # 上月（6月）数据
-        add_tx(db_session, 8000, "工资", "income", 5, month=6)
-        add_tx(db_session, 4000, "房租", "expense", 6, month=6)
-        # 本月（7月）数据
-        add_tx(db_session, 10000, "工资", "income", 5)
-        add_tx(db_session, 3000, "房租", "expense", 6)
-        db_session.commit()
+    def test_comparison_with_prev_month(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 8000, "工资", "income", 5, month=6)
+        add_tx(uid, 4000, "房租", "expense", 6, month=6)
+        add_tx(uid, 10000, "工资", "income", 5)
+        add_tx(uid, 3000, "房租", "expense", 6)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         comp = data["comparison"]
         assert comp["prev_period"] == "2026年6月"
@@ -144,28 +158,26 @@ class TestCashflowReport:
         assert comp["inflow_change"] == 2000
         assert comp["outflow_change"] == -1000
         assert comp["net_change"] == 3000
-        assert comp["inflow_change_pct"] == 25.0  # (10000-8000)/8000
+        assert comp["inflow_change_pct"] == 25.0
 
-    def test_comparison_prev_month_empty(self, client, db_session):
-        """上月无数据时环比值都为0"""
-        add_tx(db_session, 1000, "工资", "income", 5)
-        db_session.commit()
+    def test_comparison_prev_month_empty(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 1000, "工资", "income", 5)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         comp = data["comparison"]
         assert comp["prev_inflow"] == 0
         assert comp["prev_outflow"] == 0
         assert comp["inflow_change_pct"] == 0
 
-    def test_account_breakdown(self, client, db_session):
-        """按账户分解"""
-        add_tx(db_session, 5000, "工资", "income", 5, account="招行")
-        add_tx(db_session, 2000, "餐饮", "expense", 6, account="微信")
-        add_tx(db_session, 1000, "购物", "expense", 10, account="招行")
-        db_session.commit()
+    def test_account_breakdown(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 5000, "工资", "income", 5, account="招行")
+        add_tx(uid, 2000, "餐饮", "expense", 6, account="微信")
+        add_tx(uid, 1000, "购物", "expense", 10, account="招行")
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         breakdown = data["account_breakdown"]
         assert len(breakdown) == 2
@@ -180,112 +192,102 @@ class TestCashflowReport:
         assert wx["outflow"] == 2000
         assert wx["net"] == -2000
 
-    def test_ytd(self, client, db_session):
-        """年初至今累计"""
-        add_tx(db_session, 10000, "工资", "income", 5, month=1)
-        add_tx(db_session, 3000, "房租", "expense", 6, month=1)
-        add_tx(db_session, 10000, "工资", "income", 5, month=7)
-        add_tx(db_session, 2000, "餐饮", "expense", 10, month=7)
-        db_session.commit()
+    def test_ytd(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 10000, "工资", "income", 5, month=1)
+        add_tx(uid, 3000, "房租", "expense", 6, month=1)
+        add_tx(uid, 10000, "工资", "income", 5, month=7)
+        add_tx(uid, 2000, "餐饮", "expense", 10, month=7)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         ytd = data["ytd"]
         assert ytd["inflow"] == 20000
         assert ytd["outflow"] == 5000
         assert ytd["net"] == 15000
 
-    def test_account_filter(self, client, db_session):
-        """账户筛选"""
-        add_tx(db_session, 5000, "工资", "income", 5, account="招行")
-        add_tx(db_session, 2000, "餐饮", "expense", 6, account="微信")
-        db_session.commit()
+    def test_account_filter(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 5000, "工资", "income", 5, account="招行")
+        add_tx(uid, 2000, "餐饮", "expense", 6, account="微信")
 
-        resp = client.get("/reports/cashflow?year=2026&month=7&account=招行")
+        resp = client.get("/reports/cashflow?year=2026&month=7&account=招行", headers=auth["headers"])
         data = resp.json()
         assert data["total_inflow"] == 5000
         assert data["total_outflow"] == 0
         assert data["account"] == "招行"
 
-    def test_default_month(self, client):
-        """默认当前月"""
-        resp = client.get("/reports/cashflow")
-        assert resp.status_code == 200
+    def test_default_month(self, auth):
+        resp = client.get("/reports/cashflow", headers=auth["headers"])
+        assert resp.status_code == 200, resp.text
         now = datetime.utcnow()
         data = resp.json()
         assert data["year"] == now.year
         assert data["month"] == now.month
 
-    def test_period_string(self, client):
-        """period 字段"""
-        data = client.get("/reports/cashflow?year=2026&month=3").json()
+    def test_period_string(self, auth):
+        data = client.get("/reports/cashflow?year=2026&month=3", headers=auth["headers"]).json()
         assert data["period"] == "2026年3月"
 
-    def test_month_boundary(self, client, db_session):
-        """月边界：6月30日属于6月，7月1日属于7月"""
-        add_tx(db_session, 500, "餐饮", "expense", 30, month=6)
-        add_tx(db_session, 1000, "工资", "income", 1, month=7)
-        db_session.commit()
+    def test_month_boundary(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 500, "餐饮", "expense", 30, month=6)
+        add_tx(uid, 1000, "工资", "income", 1, month=7)
 
-        jun = client.get("/reports/cashflow?year=2026&month=6").json()
+        jun = client.get("/reports/cashflow?year=2026&month=6", headers=auth["headers"]).json()
         assert jun["total_outflow"] == 500
         assert jun["total_inflow"] == 0
 
-        jul = client.get("/reports/cashflow?year=2026&month=7").json()
+        jul = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"]).json()
         assert jul["total_inflow"] == 1000
         assert jul["total_outflow"] == 0
 
-    def test_year_transition_comparison(self, client, db_session):
-        """跨年环比：1月 vs 去年12月"""
-        add_tx(db_session, 5000, "工资", "income", 15, month=12, year=2025)
-        add_tx(db_session, 10000, "工资", "income", 15, month=1, year=2026)
-        db_session.commit()
+    def test_year_transition_comparison(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 5000, "工资", "income", 15, month=12, year=2025)
+        add_tx(uid, 10000, "工资", "income", 15, month=1, year=2026)
 
-        resp = client.get("/reports/cashflow?year=2026&month=1")
+        resp = client.get("/reports/cashflow?year=2026&month=1", headers=auth["headers"])
         data = resp.json()
         comp = data["comparison"]
         assert comp["prev_period"] == "2025年12月"
         assert comp["prev_inflow"] == 5000
         assert comp["inflow_change"] == 5000
 
-    def test_avg_daily(self, client, db_session):
-        """日均流入流出"""
-        add_tx(db_session, 3100, "工资", "income", 1)  # 7月1日
-        db_session.commit()
+    def test_avg_daily(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 3100, "工资", "income", 1)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
-        assert data["avg_daily_inflow"] == 100.0  # 3100/31
+        assert data["avg_daily_inflow"] == 100.0
         assert data["avg_daily_outflow"] == 0.0
 
-    def test_income_only(self, client, db_session):
-        """只有流入"""
-        add_tx(db_session, 10000, "工资", "income", 5)
-        db_session.commit()
+    def test_income_only(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 10000, "工资", "income", 5)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         assert data["total_inflow"] == 10000
         assert data["total_outflow"] == 0
         assert data["net_cashflow"] == 10000
         assert len(data["account_breakdown"]) == 1
 
-    def test_expense_only(self, client, db_session):
-        """只有流出"""
-        add_tx(db_session, 2000, "房租", "expense", 6)
-        db_session.commit()
+    def test_expense_only(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 2000, "房租", "expense", 6)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         assert data["total_inflow"] == 0
         assert data["total_outflow"] == 2000
         assert data["net_cashflow"] == -2000
 
-    def test_outflow_change_pct_zero_prev(self, client, db_session):
-        """上月支出为0时变化百分比为0"""
-        add_tx(db_session, 1000, "餐饮", "expense", 5)
-        db_session.commit()
+    def test_outflow_change_pct_zero_prev(self, auth):
+        uid = auth["user_id"]
+        add_tx(uid, 1000, "餐饮", "expense", 5)
 
-        resp = client.get("/reports/cashflow?year=2026&month=7")
+        resp = client.get("/reports/cashflow?year=2026&month=7", headers=auth["headers"])
         data = resp.json()
         assert data["comparison"]["outflow_change_pct"] == 0

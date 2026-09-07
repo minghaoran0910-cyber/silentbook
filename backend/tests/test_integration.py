@@ -33,21 +33,72 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.main import app
+import app.main as main_mod
 from app.database import get_db
 from app.database import Base, Transaction, AnalysisResult
 
-# 覆盖依赖
-app.dependency_overrides[get_db] = override_get_db
+main_mod.RATE_LIMIT_ENABLED = False
 
-client = TestClient(app)
+# 覆盖依赖
+
+@pytest.fixture(autouse=True)
+def _use_module_test_db():
+    app.dependency_overrides[get_db] = override_get_db
+
+
+class _AuthProxy:
+    """模块级 client 代理：每个用例自动带上当用例注册用户的 token。"""
+
+    def __init__(self, tc):
+        self._tc = tc
+
+    def _kwargs(self, kwargs):
+        kwargs = dict(kwargs)
+        headers = dict(_CTX["headers"])
+        headers.update(kwargs.pop("headers", None) or {})
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._tc.get(*args, **self._kwargs(kwargs))
+
+    def post(self, *args, **kwargs):
+        return self._tc.post(*args, **self._kwargs(kwargs))
+
+    def put(self, *args, **kwargs):
+        return self._tc.put(*args, **self._kwargs(kwargs))
+
+    def delete(self, *args, **kwargs):
+        return self._tc.delete(*args, **self._kwargs(kwargs))
+
+
+_CTX = {"headers": {}, "user_id": None}
+
+client = _AuthProxy(TestClient(app))
 
 
 @pytest.fixture(autouse=True)
 def setup_database():
-    """每个测试前重建数据库"""
+    """每个测试前重建数据库，并注册独立用户"""
     Base.metadata.create_all(bind=engine)
+    prev_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    r = client.post(
+        "/auth/register",
+        json={"email": "integration@test.local", "password": "Testpass123"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    _CTX["headers"] = {"Authorization": f"Bearer {body['access_token']}"}
+    _CTX["user_id"] = body["user"]["id"]
     yield
     Base.metadata.drop_all(bind=engine)
+    _CTX["headers"] = {}
+    _CTX["user_id"] = None
+    if prev_override is not None:
+        app.dependency_overrides[get_db] = prev_override
+    else:
+        app.dependency_overrides.pop(get_db, None)
 
 
 class TestHealthCheck:
@@ -80,7 +131,7 @@ class TestTransactions:
         data = response.json()
         assert data["amount"] == 38.5
         assert data["category"] == "餐饮"
-        assert data["account"] == "wechat_pay"
+        assert data["account"] == "微信"  # 生产代码会把 wechat_pay 归一为中文名
         assert data["transaction_type"] == "expense"
         assert "id" in data
         assert "parsed_at" in data
@@ -146,7 +197,7 @@ class TestTransactions:
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert data[0]["account"] == "wechat_pay"
+        assert data[0]["account"] == "微信"  # wechat_pay 已归一为中文名
 
         # 按分类筛选
         response = client.get("/transactions?category=购物")
@@ -294,7 +345,8 @@ class TestDashboardStats:
         data = response.json()
         assert data["monthly_income"] == 10000.0
         assert data["monthly_expenses"] == 5000.0
-        assert data["net_assets"] == 5000.0  # 10000 - 5000
+        # 生产代码 net_assets = 资产表 - 负债表（不再由收支倒算），此处无资产故为 0
+        assert data["net_assets"] == 0
         assert data["transaction_count"] == 3
 
 
