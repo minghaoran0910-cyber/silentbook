@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db, Setting, Transaction
-from app.main import app, BudgetCreate
+from app.main import app
+from app.routers.budgets import BudgetCreate
 
 # 使用 SQLite 内存数据库
 SQLALCHEMY_URL = "sqlite://"

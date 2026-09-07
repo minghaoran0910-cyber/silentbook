@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db, Setting, Transaction
-from app.main import app, get_alert_level, ALERT_LEVELS
+from app.main import app
+from app.routers.deps import get_alert_level, ALERT_LEVELS
 from datetime import datetime
 
 # SQLite 内存数据库

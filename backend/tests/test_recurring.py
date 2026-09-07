@@ -6,7 +6,8 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date, timedelta
 
-from app.main import app, get_db
+from app.main import app
+from app.database import get_db
 from app.database import Base, RecurringTransaction, Transaction
 
 

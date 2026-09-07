@@ -32,7 +32,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.main import app, get_db
+from app.main import app
+from app.database import get_db
 from app.database import Base, Transaction, AnalysisResult
 
 # 覆盖依赖
