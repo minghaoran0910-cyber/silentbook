@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   devtools: { enabled: false },
 
-  modules: ['@vite-pwa/nuxt', '@element-plus/nuxt', '@nuxt/ui'],
+  modules: ['@vite-pwa/nuxt', '@nuxt/ui'],
 
   pwa: {
     registerType: 'autoUpdate',

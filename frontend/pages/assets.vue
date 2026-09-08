@@ -1,355 +1,380 @@
 <template>
-  <div class="container">
-    <div class="header">
-      <h1>资产管理</h1>
-      <div class="header-actions">
-        <button @click="syncAssets" class="btn btn-sync" :disabled="syncing">
+  <div class="mx-auto min-w-0 w-full max-w-5xl px-4 py-6">
+    <!-- 页头 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="mr-auto text-xl font-semibold" style="color: var(--accent)">资产管理</h1>
+      <div class="flex flex-wrap gap-2">
+        <UButton variant="outline" color="neutral" :loading="syncing" :disabled="syncing" @click="syncAssets">
           <AppIcon v-if="!syncing" icon="ArrowClockwise" :size="15" />
           {{ syncing ? '同步中...' : '同步持仓' }}
-        </button>
-        <button @click="toggleAddForm" class="btn btn-primary">
+        </UButton>
+        <UButton @click="toggleAddForm">
           <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
           {{ showAddForm ? '取消' : '添加资产' }}
-        </button>
+        </UButton>
       </div>
     </div>
 
-    <!-- 同步状态 -->
-    <div v-if="syncResult" class="sync-result" :class="syncResult.error ? 'error' : 'success'">
-      <span>{{ syncResult.message }}</span>
-      <span v-if="syncResult.updated">更新 {{ syncResult.updated }} 个</span>
-      <span v-if="syncResult.failed">失败 {{ syncResult.failed }} 个</span>
-      <button @click="syncResult = null" class="close-btn">×</button>
-    </div>
-    <div v-if="lastSyncInfo" class="sync-info">
-      上次同步：{{ lastSyncInfo }}
-    </div>
+    <!-- 同步状态（替代原 .sync-result 色块） -->
+    <UAlert
+      v-if="syncResult"
+      :color="syncResult.error ? 'error' : 'success'"
+      variant="soft"
+      :title="syncResult.message"
+      :description="(syncResult.updated ? `更新 ${syncResult.updated} 个` : '') + (syncResult.failed ? ` 失败 ${syncResult.failed} 个` : '')"
+      class="mt-4"
+      close
+      @update:open="syncResult = null"
+    />
+    <div v-if="lastSyncInfo" class="mt-2 text-xs" style="color: var(--text-secondary)">上次同步：{{ lastSyncInfo }}</div>
 
-    <!-- 加载中 -->
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
-      <p>加载资产数据...</p>
+    <!-- 操作失败提示（替代 alert） -->
+    <UAlert v-if="actionError" color="error" variant="soft" :title="actionError" class="mt-4" close @update:open="actionError = ''" />
+
+    <!-- 加载中：骨架 -->
+    <div v-if="loading" class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
+        <USkeleton v-for="i in 3" :key="i" class="h-[92px] w-full" />
+      </div>
+      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <USkeleton class="h-5 w-40" />
+        <USkeleton class="mt-3 h-44 w-full" />
+      </UCard>
     </div>
 
     <!-- 加载失败 -->
-    <div v-else-if="loadError" class="error-state">
-      <p class="error-line"><AppIcon icon="Warning" :size="16" /> {{ loadError }}</p>
-      <button @click="loadData" class="btn btn-primary">重试</button>
-    </div>
+    <UAlert
+      v-else-if="loadError"
+      class="mt-4"
+      color="error"
+      variant="soft"
+      :title="loadError"
+      :actions="[{ label: '重试', color: 'error', variant: 'solid', onClick: loadData }]"
+    />
 
-    <!-- 总览卡片 -->
-    <div class="overview" v-if="!loading && !loadError">
-      <div class="overview-card">
-        <div class="label">总资产</div>
-        <div class="value income">¥{{ totalAssets.toFixed(2) }}</div>
+    <template v-else>
+      <!-- 总览卡片 -->
+      <div class="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
+        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <div class="text-sm" style="color: var(--text-secondary)">总资产</div>
+          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--success)">¥{{ totalAssets.toFixed(2) }}</div>
+        </UCard>
+        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <div class="text-sm" style="color: var(--text-secondary)">总负债</div>
+          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--danger)">¥{{ totalLiabilities.toFixed(2) }}</div>
+        </UCard>
+        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--accent)' }" :ui="{ body: 'p-5' }">
+          <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
+          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ (totalAssets - totalLiabilities).toFixed(2) }}</div>
+        </UCard>
       </div>
-      <div class="overview-card">
-        <div class="label">总负债</div>
-        <div class="value expense">¥{{ totalLiabilities.toFixed(2) }}</div>
-      </div>
-      <div class="overview-card highlight">
-        <div class="label">净资产</div>
-        <div class="value">¥{{ (totalAssets - totalLiabilities).toFixed(2) }}</div>
-      </div>
-    </div>
 
-    <!-- 添加资产表单 -->
-    <template v-if="!loading && !loadError">
-    <div v-if="showAddForm" class="form-card">
-      <h3>{{ editingId ? '编辑资产' : '添加资产' }}</h3>
-      <form @submit.prevent="handleSubmit">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>名称</label>
-            <input v-model="form.name" type="text" required placeholder="如：招商银行储蓄卡" />
-          </div>
-          <div class="form-group">
-            <label>类型</label>
-            <select v-model="form.asset_type" required>
-              <option value="cash">现金</option>
-              <option value="savings">存款</option>
-              <option value="fund">基金</option>
-              <option value="stock">股票</option>
-              <option value="bond">债券</option>
-              <option value="pension">养老金</option>
-              <option value="gold">黄金</option>
-              <option value="property">房产</option>
-              <option value="other">其他</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>所属机构</label>
-            <input v-model="form.account" type="text" placeholder="如：招商银行" />
-          </div>
-
-          <!-- 黄金专属字段 -->
-          <template v-if="form.asset_type === 'gold'">
-            <div class="form-group">
-              <label>实时金价</label>
-              <div class="gold-price-display">
-                <span v-if="goldPrice" class="gold-price"><AppIcon icon="Coins" :size="15" /> {{ goldPrice }} 元/克</span>
-                <span v-else>加载中...</span>
+      <!-- 资产分类饼图 + 资产收益 -->
+      <div v-if="assets.length > 0" class="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分类</h3>
+          <div class="flex flex-wrap items-center gap-4">
+            <div ref="assetPieEl" class="h-[180px] w-[180px] shrink-0" role="img" aria-label="资产分类分布图" />
+            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+              <div v-for="(item, i) in pieData" :key="item.type" class="flex items-center gap-1.5 text-sm">
+                <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" :style="{ background: pieColors[i % pieColors.length] }" />
+                <span class="min-w-10" style="color: var(--text-primary)">{{ item.label }}</span>
+                <span class="tabular-nums" style="color: var(--text-secondary)">¥{{ item.value.toFixed(0) }}</span>
+                <span class="text-xs tabular-nums" style="color: var(--text-secondary)">{{ item.pct }}%</span>
               </div>
             </div>
-            <div class="form-group">
-              <label>克数</label>
-              <input v-model.number="form.goldGrams" type="number" step="0.0001" placeholder="0.00" @input="calcGoldValue" />
-            </div>
-            <div class="form-group">
-              <label>成本克价</label>
-              <input v-model.number="form.goldCostPerGram" type="number" step="0.01" placeholder="0.00" @input="calcGoldValue" />
-            </div>
-          </template>
-          <div class="form-group">
-            <label>当前价值 <span v-if="form.asset_type === 'gold'" class="auto-label">(自动计算)</span></label>
-            <input v-model="form.current_value" type="number" step="0.01" required placeholder="0.00" :readonly="form.asset_type === 'gold' && form.goldGrams > 0" />
           </div>
-          <div class="form-group">
-            <label>初始投入 <span v-if="form.asset_type === 'gold'" class="auto-label">(自动计算)</span></label>
-            <input v-model="form.initial_value" type="number" step="0.01" placeholder="0.00" :readonly="form.asset_type === 'gold' && form.goldGrams > 0" />
-          </div>
-          <div class="form-group">
-            <label>流动性</label>
-            <select v-model="form.liquidity">
-              <option value="high">高（随时可取）</option>
-              <option value="medium">中</option>
-              <option value="low">低（锁定期）</option>
-            </select>
-          </div>
-          <div class="form-group full">
-            <label>备注</label>
-            <input v-model="form.notes" type="text" placeholder="可选" />
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">{{ editingId ? '更新' : '添加' }}</button>
-          <button type="button" @click="resetForm" class="btn btn-secondary">清空</button>
-        </div>
-      </form>
-    </div>
-
-    <!-- 资产分类饼图 + 变化曲线 -->
-    <div class="charts-row" v-if="assets.length > 0">
-      <div class="chart-card">
-        <h3>资产分类</h3>
-        <div class="pie-wrapper">
-          <div ref="assetPieEl" class="pie-chart-sm"></div>
-          <div class="pie-legend">
-            <div v-for="(item, i) in pieData" :key="item.type" class="legend-item">
-              <span class="legend-dot" :style="{ background: pieColors[i % pieColors.length] }"></span>
-              <span class="legend-name">{{ item.label }}</span>
-              <span class="legend-value">¥{{ item.value.toFixed(0) }}</span>
-              <span class="legend-pct">{{ item.pct }}%</span>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产收益</h3>
+          <div class="flex flex-col gap-2.5">
+            <div v-for="item in pieData" :key="'p-' + item.type" class="flex items-center gap-2">
+              <span class="min-w-12 text-sm" style="color: var(--text-primary)">{{ item.label }}</span>
+              <UProgress :model-value="Math.min(Number(item.pct), 100)" :max="100" :color="item.profit >= 0 ? 'success' : 'error'" class="flex-1" />
+              <span
+                class="min-w-15 text-right text-sm font-semibold tabular-nums"
+                :style="{ color: item.profit >= 0 ? 'var(--success)' : 'var(--danger)' }"
+              >
+                {{ item.profit >= 0 ? '+' : '' }}{{ item.profitRate }}%
+              </span>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="chart-card">
-        <h3>资产收益</h3>
-        <div class="profit-list">
-          <div v-for="item in pieData" :key="'p-'+item.type" class="profit-item">
-            <span class="profit-label">{{ item.label }}</span>
-            <div class="profit-bar-bg">
-              <div class="profit-bar-fill" :style="{ width: item.pct + '%', background: item.profit >= 0 ? 'var(--success)' : 'var(--danger)' }"></div>
-            </div>
-            <span class="profit-value" :class="{ positive: item.profit >= 0, negative: item.profit < 0 }">
-              {{ item.profit >= 0 ? '+' : '' }}{{ item.profitRate }}%
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 资产变化曲线（真实历史，非模拟） -->
-    <div class="chart-card" v-if="assets.length > 0">
-      <h3>资产变化趋势</h3>
-      <div ref="assetCurveEl" class="chart-box"></div>
-    </div>
-
-    <!-- 资产列表 -->
-    <div class="section">
-      <div class="section-header">
-        <h2>资产列表</h2>
-        <button @click="toggleAddForm" class="btn btn-small">
-          {{ showAddForm ? '取消' : '+ 添加资产' }}
-        </button>
-      </div>
-      
-      <!-- 筛选栏 -->
-      <div class="filters">
-        <input v-model="assetSearch" type="text" placeholder="搜索名称/机构..." class="filter-search" />
-        <select v-model="assetTypeFilter" class="filter-select">
-          <option value="">全部类型</option>
-          <option value="cash">现金</option>
-          <option value="savings">存款</option>
-          <option value="fund">基金</option>
-          <option value="stock">股票</option>
-          <option value="bond">债券</option>
-          <option value="gold">黄金</option>
-          <option value="pension">养老金</option>
-          <option value="property">房产</option>
-          <option value="other">其他</option>
-        </select>
-        <select v-model="assetStatusFilter" class="filter-select">
-          <option value="">全部状态</option>
-          <option value="active">活跃</option>
-          <option value="frozen">冻结</option>
-          <option value="closed">已关闭</option>
-        </select>
-      </div>
-      
-      <div v-if="filteredAssets.length === 0" class="empty">
-        {{ assets.length === 0 ? '暂无资产，点击右上角添加' : '没有匹配的资产' }}
-      </div>
-      <div v-else class="asset-list">
-        <div v-for="asset in filteredAssets" :key="asset.id" class="asset-card">
-          <div class="asset-icon" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
-            <AppIcon :icon="getAssetIcon(asset.asset_type).icon" :color="getAssetIcon(asset.asset_type).color" :size="20" />
-          </div>
-          <div class="asset-info">
-            <div class="asset-name">{{ asset.name }}</div>
-            <div class="asset-meta">
-              <span class="tag">{{ getAssetIcon(asset.asset_type).label }}</span>
-              <span v-if="asset.account" class="tag">{{ asset.account }}</span>
-              <span class="tag" :class="`tag-${asset.liquidity}`">{{ liquidityLabels[asset.liquidity] || asset.liquidity }}</span>
-            </div>
-          </div>
-          <div class="asset-value">
-            <div class="amount">¥{{ asset.current_value.toFixed(2) }}</div>
-            <div v-if="asset.initial_value > 0" class="initial">投入: ¥{{ asset.initial_value.toFixed(2) }}</div>
-            <div v-if="asset.initial_value > 0" class="profit" :class="{ positive: asset.current_value >= asset.initial_value, negative: asset.current_value < asset.initial_value }">
-              {{ asset.current_value >= asset.initial_value ? '+' : '' }}¥{{ (asset.current_value - asset.initial_value).toFixed(2) }}
-            </div>
-          </div>
-          <div class="asset-actions">
-            <button @click="editAsset(asset)" class="btn-icon" title="编辑">✏</button>
-            <button @click="removeAsset(asset.id)" class="btn-icon danger" title="删除">🗑</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 负债列表 -->
-    <div class="section">
-      <div class="section-header">
-        <h2>负债列表</h2>
-        <button @click="showAddLiabilityForm = !showAddLiabilityForm" class="btn btn-small">
-          {{ showAddLiabilityForm ? '取消' : '+ 添加负债' }}
-        </button>
-      </div>
-      
-      <div v-if="showAddLiabilityForm" class="form-card">
-        <form @submit.prevent="handleLiabilitySubmit">
-          <div class="form-grid">
-            <div class="form-group">
-              <label>名称</label>
-              <input v-model="liabilityForm.name" type="text" required placeholder="如：京东白条" />
-            </div>
-            <div class="form-group">
-              <label>类型</label>
-              <select v-model="liabilityForm.liability_type" required>
-                <option value="credit_card">信用卡</option>
-                <option value="credit_card_installment">信用卡分期</option>
-                <option value="huabei">花呗</option>
-                <option value="baitiao">白条</option>
-                <option value="car_loan">车贷</option>
-                <option value="mortgage">房贷</option>
-                <option value="loan">贷款</option>
-                <option value="other">其他</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>总额</label>
-              <input v-model="liabilityForm.total_amount" type="number" step="0.01" required placeholder="0.00" />
-            </div>
-            <div class="form-group">
-              <label>当前待还</label>
-              <input v-model="liabilityForm.current_amount" type="number" step="0.01" required placeholder="0.00" />
-            </div>
-            <!-- 信用卡专属字段 -->
-            <template v-if="liabilityForm.liability_type === 'credit_card'">
-              <div class="form-group">
-                <label>本期应还</label>
-                <input v-model="liabilityForm.min_payment" type="number" step="0.01" placeholder="0.00" />
-              </div>
-              <div class="form-group">
-                <label>发卡银行</label>
-                <select v-model="selectedBank" @change="onBankChange">
-                  <option value="">手动设置</option>
-                  <option value="cmb">招商银行</option>
-                  <option value="icbc">工商银行</option>
-                  <option value="ccb">建设银行</option>
-                  <option value="abc">农业银行</option>
-                  <option value="boc">中国银行</option>
-                  <option value="cmbc">民生银行</option>
-                  <option value="cib">兴业银行</option>
-                  <option value="spdb">浦发银行</option>
-                  <option value="citic">中信银行</option>
-                  <option value="gdb">广发银行</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>账单日</label>
-                <select v-model="liabilityForm.billing_day" @change="onBillingDayChange">
-                  <option v-for="d in 28" :key="d" :value="d">{{ d }}号</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>还款日</label>
-                <input v-model="liabilityForm.due_date" type="date" />
-                <small style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem; display: block;">
-                  账单日后 {{ repaymentDaysOffset }} 天
-                </small>
-              </div>
-            </template>
-            <div class="form-group">
-              <label>年利率(%)</label>
-              <input v-model="liabilityForm.interest_rate" type="number" step="0.01" placeholder="0" />
-            </div>
-            <div class="form-group">
-              <label>到期日</label>
-              <input v-model="liabilityForm.due_date" type="date" />
-            </div>
-          </div>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">{{ editingLiabilityId ? '保存' : '添加' }}</button>
-            <button type="button" @click="cancelLiabilityEdit" class="btn">取消</button>
-          </div>
-        </form>
+        </UCard>
       </div>
 
-      <div v-if="liabilities.length === 0" class="empty">暂无负债</div>
-      <div v-else class="liability-list">
-        <div v-for="liab in liabilities" :key="liab.id" class="liability-card">
-          <div class="asset-icon" :style="{ background: getLiabilityIcon(liab.liability_type).color + '20' }">
-            <AppIcon :icon="getLiabilityIcon(liab.liability_type).icon" :color="getLiabilityIcon(liab.liability_type).color" :size="20" />
-          </div>
-          <div class="asset-info">
-            <div class="asset-name">{{ liab.name }}</div>
-            <div class="asset-meta">
-              <span class="tag">{{ getLiabilityIcon(liab.liability_type).label }}</span>
-              <span v-if="liab.interest_rate > 0" class="tag">利率: {{ liab.interest_rate }}%</span>
-              <span v-if="liab.due_date" class="tag">到期: {{ liab.due_date }}</span>
-            </div>
-            <div class="repay-progress" v-if="liab.total_amount > 0">
-              <div class="repay-bar-bg">
-                <div class="repay-bar-fill remaining" :style="{ width: (liab.current_amount / liab.total_amount * 100) + '%' }"></div>
+      <!-- 资产变化曲线（真实历史，非模拟） -->
+      <UCard v-if="assets.length > 0" class="mt-4" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产变化趋势</h3>
+        <div ref="assetCurveEl" class="h-60 w-full" role="img" aria-label="资产变化趋势图" />
+      </UCard>
+
+      <!-- 资产列表 -->
+      <div class="mt-8">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">资产列表</h2>
+          <UButton size="sm" variant="outline" color="neutral" @click="toggleAddForm">
+            {{ showAddForm ? '取消' : '+ 添加资产' }}
+          </UButton>
+        </div>
+
+        <!-- 筛选栏 -->
+        <div class="mb-3 grid grid-cols-1 gap-2 min-[480px]:grid-cols-3">
+          <UInput v-model="assetSearch" type="text" placeholder="搜索名称/机构..." class="w-full min-w-0" />
+          <USelect v-model="assetTypeFilter" :items="assetTypeFilterItems" value-key="value" class="w-full min-w-0" />
+          <USelect v-model="assetStatusFilter" :items="assetStatusFilterItems" value-key="value" class="w-full min-w-0" />
+        </div>
+
+        <UCard
+          v-if="filteredAssets.length === 0"
+          class="text-center"
+          :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+          :ui="{ body: 'p-8' }"
+        >
+          <p class="text-sm" style="color: var(--text-secondary)">{{ assets.length === 0 ? '暂无资产，点击右上角添加' : '没有匹配的资产' }}</p>
+        </UCard>
+        <div v-else class="flex flex-col gap-3">
+          <UCard
+            v-for="asset in filteredAssets"
+            :key="asset.id"
+            :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+            :ui="{ body: 'p-4' }"
+          >
+            <div class="flex items-center gap-3">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
+                <AppIcon :icon="getAssetIcon(asset.asset_type).icon" :color="getAssetIcon(asset.asset_type).color" :size="20" />
               </div>
-              <span class="repay-text">待还 ¥{{ liab.current_amount.toFixed(2) }} / ¥{{ liab.total_amount.toFixed(2) }} ({{ (liab.current_amount / liab.total_amount * 100).toFixed(1) }}%)</span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-semibold" style="color: var(--text-primary)">{{ asset.name }}</div>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <UBadge variant="soft" color="neutral">{{ getAssetIcon(asset.asset_type).label }}</UBadge>
+                  <UBadge v-if="asset.account" variant="soft" color="neutral">{{ asset.account }}</UBadge>
+                  <UBadge variant="soft" color="neutral">{{ liquidityLabels[asset.liquidity] || asset.liquidity }}</UBadge>
+                </div>
+              </div>
+              <div class="shrink-0 text-right">
+                <div class="text-lg font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ asset.current_value.toFixed(2) }}</div>
+                <div v-if="asset.initial_value > 0" class="text-xs tabular-nums" style="color: var(--text-secondary)">投入: ¥{{ asset.initial_value.toFixed(2) }}</div>
+                <div
+                  v-if="asset.initial_value > 0"
+                  class="text-sm font-semibold tabular-nums"
+                  :style="{ color: asset.current_value >= asset.initial_value ? 'var(--success)' : 'var(--danger)' }"
+                >
+                  {{ asset.current_value >= asset.initial_value ? '+' : '' }}¥{{ (asset.current_value - asset.initial_value).toFixed(2) }}
+                </div>
+              </div>
+              <div class="flex shrink-0 gap-1">
+                <UButton size="xs" variant="ghost" color="neutral" title="编辑" aria-label="编辑资产" @click="editAsset(asset)">
+                  <AppIcon icon="PencilSimple" :size="16" />
+                </UButton>
+                <UButton size="xs" variant="ghost" color="error" title="删除" aria-label="删除资产" @click="requestDeleteAsset(asset)">
+                  <AppIcon icon="Trash" :size="16" />
+                </UButton>
+              </div>
             </div>
-          </div>
-          <div class="asset-value">
-            <div class="amount expense">¥{{ liab.current_amount.toFixed(2) }}</div>
-            <div class="initial">总额: ¥{{ liab.total_amount.toFixed(2) }}</div>
-          </div>
-          <div class="asset-actions">
-            <button @click="editLiability(liab)" class="btn-icon" title="编辑">✏️</button>
-            <button @click="removeLiability(liab.id)" class="btn-icon danger" title="删除">🗑</button>
-          </div>
+          </UCard>
         </div>
       </div>
-    </div>
+
+      <!-- 负债列表 -->
+      <div class="mt-8">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">负债列表</h2>
+          <UButton size="sm" variant="outline" color="neutral" @click="showAddLiabilityForm = !showAddLiabilityForm">
+            {{ showAddLiabilityForm ? '取消' : '+ 添加负债' }}
+          </UButton>
+        </div>
+
+        <UCard
+          v-if="liabilities.length === 0"
+          class="text-center"
+          :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+          :ui="{ body: 'p-8' }"
+        >
+          <p class="text-sm" style="color: var(--text-secondary)">暂无负债</p>
+        </UCard>
+        <div v-else class="flex flex-col gap-3">
+          <UCard
+            v-for="liab in liabilities"
+            :key="liab.id"
+            :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+            :ui="{ body: 'p-4' }"
+          >
+            <div class="flex items-center gap-3">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" :style="{ background: getLiabilityIcon(liab.liability_type).color + '20' }">
+                <AppIcon :icon="getLiabilityIcon(liab.liability_type).icon" :color="getLiabilityIcon(liab.liability_type).color" :size="20" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-semibold" style="color: var(--text-primary)">{{ liab.name }}</div>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <UBadge variant="soft" color="neutral">{{ getLiabilityIcon(liab.liability_type).label }}</UBadge>
+                  <UBadge v-if="liab.interest_rate > 0" variant="soft" color="neutral" class="tabular-nums">利率: {{ liab.interest_rate }}%</UBadge>
+                  <UBadge v-if="liab.due_date" variant="soft" color="neutral" class="tabular-nums">到期: {{ liab.due_date }}</UBadge>
+                </div>
+                <div v-if="liab.total_amount > 0" class="mt-2">
+                  <UProgress :model-value="liab.total_amount > 0 ? (liab.current_amount / liab.total_amount * 100) : 0" :max="100" color="error" />
+                  <span class="mt-1 block text-xs tabular-nums" style="color: var(--text-secondary)">待还 ¥{{ liab.current_amount.toFixed(2) }} / ¥{{ liab.total_amount.toFixed(2) }} ({{ (liab.current_amount / liab.total_amount * 100).toFixed(1) }}%)</span>
+                </div>
+              </div>
+              <div class="shrink-0 text-right">
+                <div class="text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ liab.current_amount.toFixed(2) }}</div>
+                <div class="text-xs tabular-nums" style="color: var(--text-secondary)">总额: ¥{{ liab.total_amount.toFixed(2) }}</div>
+              </div>
+              <div class="flex shrink-0 gap-1">
+                <UButton size="xs" variant="ghost" color="neutral" title="编辑" aria-label="编辑负债" @click="editLiability(liab)">
+                  <AppIcon icon="PencilSimple" :size="16" />
+                </UButton>
+                <UButton size="xs" variant="ghost" color="error" title="删除" aria-label="删除负债" @click="requestDeleteLiability(liab)">
+                  <AppIcon icon="Trash" :size="16" />
+                </UButton>
+              </div>
+            </div>
+          </UCard>
+        </div>
+      </div>
     </template>
+
+    <!-- 添加/编辑资产弹窗 -->
+    <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑资产' : '添加资产' }}</h3>
+          <form @submit.prevent="handleSubmit">
+            <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-name">名称</label>
+                <UInput id="asset-name" v-model="form.name" type="text" required placeholder="如：招商银行储蓄卡" class="w-full min-w-0" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">类型</label>
+                <USelect v-model="form.asset_type" :items="assetTypeItems" value-key="value" class="w-full min-w-0" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-account">所属机构</label>
+                <UInput id="asset-account" v-model="form.account" type="text" placeholder="如：招商银行" class="w-full min-w-0" />
+              </div>
+              <!-- 黄金专属字段 -->
+              <template v-if="form.asset_type === 'gold'">
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">实时金价</label>
+                  <div class="rounded-md px-3 py-2 text-center text-sm font-semibold tabular-nums" style="background: var(--bg-tertiary); color: var(--text-primary)">
+                    <span v-if="goldPrice" class="inline-flex items-center gap-1.5"><AppIcon icon="Coins" :size="15" /> {{ goldPrice }} 元/克</span>
+                    <span v-else>加载中...</span>
+                  </div>
+                </div>
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-gold-grams">克数</label>
+                  <UInput id="asset-gold-grams" v-model="form.goldGrams" type="number" step="0.0001" placeholder="0.00" class="w-full min-w-0 tabular-nums" @input="calcGoldValue" />
+                </div>
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-gold-cost">成本克价</label>
+                  <UInput id="asset-gold-cost" v-model="form.goldCostPerGram" type="number" step="0.01" placeholder="0.00" class="w-full min-w-0 tabular-nums" @input="calcGoldValue" />
+                </div>
+              </template>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-current">
+                  当前价值 <span v-if="form.asset_type === 'gold'" class="text-xs font-normal">(自动计算)</span>
+                </label>
+                <UInput id="asset-current" v-model="form.current_value" type="number" step="0.01" required placeholder="0.00" :disabled="form.asset_type === 'gold' && form.goldGrams > 0" class="w-full min-w-0 tabular-nums" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-initial">
+                  初始投入 <span v-if="form.asset_type === 'gold'" class="text-xs font-normal">(自动计算)</span>
+                </label>
+                <UInput id="asset-initial" v-model="form.initial_value" type="number" step="0.01" placeholder="0.00" :disabled="form.asset_type === 'gold' && form.goldGrams > 0" class="w-full min-w-0 tabular-nums" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">流动性</label>
+                <USelect v-model="form.liquidity" :items="liquidityItems" value-key="value" class="w-full min-w-0" />
+              </div>
+              <div class="min-w-0 min-[480px]:col-span-2">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-notes">备注</label>
+                <UInput id="asset-notes" v-model="form.notes" type="text" placeholder="可选" class="w-full min-w-0" />
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton type="submit">{{ editingId ? '更新' : '添加' }}</UButton>
+              <UButton type="button" variant="outline" color="neutral" @click="resetForm">清空</UButton>
+              <UButton type="button" variant="ghost" color="neutral" @click="showAddForm = false">取消</UButton>
+            </div>
+          </form>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- 添加/编辑负债弹窗 -->
+    <UModal v-model:open="showAddLiabilityForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingLiabilityId ? '编辑负债' : '添加负债' }}</h3>
+          <form @submit.prevent="handleLiabilitySubmit">
+            <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-name">名称</label>
+                <UInput id="liab-name" v-model="liabilityForm.name" type="text" required placeholder="如：京东白条" class="w-full min-w-0" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">类型</label>
+                <USelect v-model="liabilityForm.liability_type" :items="liabilityTypeItems" value-key="value" class="w-full min-w-0" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-total">总额</label>
+                <UInput id="liab-total" v-model="liabilityForm.total_amount" type="number" step="0.01" required placeholder="0.00" class="w-full min-w-0 tabular-nums" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-current">当前待还</label>
+                <UInput id="liab-current" v-model="liabilityForm.current_amount" type="number" step="0.01" required placeholder="0.00" class="w-full min-w-0 tabular-nums" />
+              </div>
+              <!-- 信用卡专属字段 -->
+              <template v-if="liabilityForm.liability_type === 'credit_card'">
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-min">本期应还</label>
+                  <UInput id="liab-min" v-model="liabilityForm.min_payment" type="number" step="0.01" placeholder="0.00" class="w-full min-w-0 tabular-nums" />
+                </div>
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">发卡银行</label>
+                  <USelect v-model="selectedBank" :items="bankItems" value-key="value" class="w-full min-w-0" @update:model-value="onBankChange" />
+                </div>
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">账单日</label>
+                  <USelect v-model="liabilityForm.billing_day" :items="billingDayItems" value-key="value" class="w-full min-w-0" @update:model-value="onBillingDayChange" />
+                </div>
+                <div class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-due-cc">还款日</label>
+                  <UInput id="liab-due-cc" v-model="liabilityForm.due_date" type="date" class="w-full min-w-0 tabular-nums" />
+                  <small class="mt-1 block text-xs" style="color: var(--text-secondary)">账单日后 {{ repaymentDaysOffset }} 天</small>
+                </div>
+              </template>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-rate">年利率(%)</label>
+                <UInput id="liab-rate" v-model="liabilityForm.interest_rate" type="number" step="0.01" placeholder="0" class="w-full min-w-0 tabular-nums" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="liab-due">到期日</label>
+                <UInput id="liab-due" v-model="liabilityForm.due_date" type="date" class="w-full min-w-0 tabular-nums" />
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton type="submit">{{ editingLiabilityId ? '保存' : '添加' }}</UButton>
+              <UButton type="button" variant="outline" color="neutral" @click="cancelLiabilityEdit">取消</UButton>
+            </div>
+          </form>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- 删除确认（替代 confirm） -->
+    <UModal v-model:open="deleteConfirmOpen" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" style="color: var(--text-primary)">删除{{ pendingDelete?.kind === 'liability' ? '负债' : '资产' }}</h3>
+          <p class="mt-1 text-sm" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」？删除后无法恢复，此操作不可撤销。</p>
+          <div class="mt-4 flex flex-wrap justify-end gap-2">
+            <UButton variant="outline" color="neutral" @click="pendingDelete = null">取消</UButton>
+            <UButton color="error" @click="confirmDelete">确认删除</UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
   </div>
 </template>
 
@@ -368,7 +393,7 @@ const filteredAssets = computed(() => {
   return assets.value.filter(a => {
     if (assetSearch.value) {
       const search = assetSearch.value.toLowerCase()
-      if (!a.name.toLowerCase().includes(search) && 
+      if (!a.name.toLowerCase().includes(search) &&
           !(a.account && a.account.toLowerCase().includes(search))) {
         return false
       }
@@ -382,6 +407,96 @@ const liabilities = ref([])
 const showAddForm = ref(false)
 const showAddLiabilityForm = ref(false)
 const editingId = ref(null)
+const actionError = ref('')
+
+// 筛选条件客户端持久化（SSR 安全：只在客户端读写 localStorage）
+const FILTERS_KEY = 'sb-assets-filters'
+const restoreFilters = () => {
+  if (!import.meta.client) return
+  try {
+    const raw = JSON.parse(localStorage.getItem(FILTERS_KEY) || '{}')
+    if (typeof raw.assetSearch === 'string') assetSearch.value = raw.assetSearch
+    if (typeof raw.assetTypeFilter === 'string') assetTypeFilter.value = raw.assetTypeFilter
+    if (typeof raw.assetStatusFilter === 'string') assetStatusFilter.value = raw.assetStatusFilter
+  } catch {}
+}
+watch([assetSearch, assetTypeFilter, assetStatusFilter], ([s, t, st]) => {
+  if (!import.meta.client) return
+  try {
+    localStorage.setItem(FILTERS_KEY, JSON.stringify({ assetSearch: s, assetTypeFilter: t, assetStatusFilter: st }))
+  } catch {}
+})
+
+// 下拉选项（USelect items，value-key="value"）
+const assetTypeItems = [
+  { label: '现金', value: 'cash' },
+  { label: '存款', value: 'savings' },
+  { label: '基金', value: 'fund' },
+  { label: '股票', value: 'stock' },
+  { label: '债券', value: 'bond' },
+  { label: '养老金', value: 'pension' },
+  { label: '黄金', value: 'gold' },
+  { label: '房产', value: 'property' },
+  { label: '其他', value: 'other' },
+]
+const liquidityItems = [
+  { label: '高（随时可取）', value: 'high' },
+  { label: '中', value: 'medium' },
+  { label: '低（锁定期）', value: 'low' },
+]
+const assetTypeFilterItems = [{ label: '全部类型', value: '' }, ...assetTypeItems]
+const assetStatusFilterItems = [
+  { label: '全部状态', value: '' },
+  { label: '活跃', value: 'active' },
+  { label: '冻结', value: 'frozen' },
+  { label: '已关闭', value: 'closed' },
+]
+const liabilityTypeItems = [
+  { label: '信用卡', value: 'credit_card' },
+  { label: '信用卡分期', value: 'credit_card_installment' },
+  { label: '花呗', value: 'huabei' },
+  { label: '白条', value: 'baitiao' },
+  { label: '车贷', value: 'car_loan' },
+  { label: '房贷', value: 'mortgage' },
+  { label: '贷款', value: 'loan' },
+  { label: '其他', value: 'other' },
+]
+const bankItems = [
+  { label: '手动设置', value: '' },
+  { label: '招商银行', value: 'cmb' },
+  { label: '工商银行', value: 'icbc' },
+  { label: '建设银行', value: 'ccb' },
+  { label: '农业银行', value: 'abc' },
+  { label: '中国银行', value: 'boc' },
+  { label: '民生银行', value: 'cmbc' },
+  { label: '兴业银行', value: 'cib' },
+  { label: '浦发银行', value: 'spdb' },
+  { label: '中信银行', value: 'citic' },
+  { label: '广发银行', value: 'gdb' },
+]
+const billingDayItems = Array.from({ length: 28 }, (_, i) => ({ label: `${i + 1}号`, value: i + 1 }))
+
+// 删除确认弹窗（替代 confirm）
+const pendingDelete = ref<{ kind: 'asset' | 'liability', id: number, name: string } | null>(null)
+const deleteConfirmOpen = computed({
+  get: () => !!pendingDelete.value,
+  set: (v: boolean) => { if (!v) pendingDelete.value = null }
+})
+const requestDeleteAsset = (a) => { pendingDelete.value = { kind: 'asset', id: a.id, name: a.name } }
+const requestDeleteLiability = (l) => { pendingDelete.value = { kind: 'liability', id: l.id, name: l.name } }
+const confirmDelete = async () => {
+  if (!pendingDelete.value) return
+  actionError.value = ''
+  try {
+    if (pendingDelete.value.kind === 'asset') await deleteAsset(pendingDelete.value.id)
+    else await deleteLiability(pendingDelete.value.id)
+    pendingDelete.value = null
+    await loadData()
+  } catch (e) {
+    console.error(e)
+    actionError.value = '删除失败：' + (e?.message || '未知错误')
+  }
+}
 
 const goldPrice = ref(0)
 const form = ref({
@@ -434,23 +549,23 @@ const onBillingDayChange = () => {
 const updateDueDate = () => {
   const billingDay = liabilityForm.value.billing_day
   if (!billingDay) return
-  
+
   const today = new Date()
   const currentMonth = today.getMonth()
   const currentYear = today.getFullYear()
-  
+
   // 计算本月账单日
   const billDate = new Date(currentYear, currentMonth, billingDay)
-  
+
   // 如果今天已经过了本月账单日，用下月账单日
   if (today > billDate) {
     billDate.setMonth(currentMonth + 1)
   }
-  
+
   // 还款日 = 账单日 + 偏移天数
   const dueDate = new Date(billDate)
   dueDate.setDate(dueDate.getDate() + repaymentDaysOffset.value)
-  
+
   // 格式化为 YYYY-MM-DD
   const y = dueDate.getFullYear()
   const m = String(dueDate.getMonth() + 1).padStart(2, '0')
@@ -629,6 +744,7 @@ const loadSyncStatus = async () => {
 }
 
 const handleSubmit = async () => {
+  actionError.value = ''
   try {
     if (editingId.value) {
       await updateAsset(editingId.value, form.value)
@@ -636,8 +752,12 @@ const handleSubmit = async () => {
       await createAsset(form.value)
     }
     resetForm()
+    showAddForm.value = false
     await loadData()
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    actionError.value = '保存失败：' + (e?.message || '未知错误')
+  }
 }
 
 const toggleAddForm = () => {
@@ -653,14 +773,6 @@ const editAsset = (asset) => {
   editingId.value = asset.id
   form.value = { ...asset }
   showAddForm.value = true
-  // 滚动到顶部让用户看到编辑表单
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-const removeAsset = async (id) => {
-  if (!confirm('确认删除？')) return
-  await deleteAsset(id)
-  await loadData()
 }
 
 const resetForm = () => {
@@ -669,6 +781,7 @@ const resetForm = () => {
 }
 
 const handleLiabilitySubmit = async () => {
+  actionError.value = ''
   try {
     if (editingLiabilityId.value) {
       await updateLiability(editingLiabilityId.value, liabilityForm.value)
@@ -679,20 +792,16 @@ const handleLiabilitySubmit = async () => {
     editingLiabilityId.value = null
     showAddLiabilityForm.value = false
     await loadData()
-  } catch (e) { console.error(e) }
-}
-
-const removeLiability = async (id) => {
-  if (!confirm('确认删除？')) return
-  await deleteLiability(id)
-  await loadData()
+  } catch (e) {
+    console.error(e)
+    actionError.value = '保存失败：' + (e?.message || '未知错误')
+  }
 }
 
 const editLiability = (liab) => {
   editingLiabilityId.value = liab.id
   liabilityForm.value = { ...liab }
   showAddLiabilityForm.value = true
-  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const cancelLiabilityEdit = () => {
@@ -723,112 +832,6 @@ const fetchGoldPrice = async () => {
   }
 }
 
-onMounted(() => { loadData(); loadSyncStatus(); fetchGoldPrice() })
+onMounted(() => { restoreFilters(); loadData(); loadSyncStatus(); fetchGoldPrice() })
 onActivated(loadData) // 客户端路由导航回来时也重新加载
 </script>
-
-<style scoped>
-.container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-.loading-state, .error-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
-.error-line { display: inline-flex; align-items: center; gap: 0.4rem; }
-.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-.header h1 { color: var(--accent); }
-.header-actions { display: flex; gap: 0.5rem; }
-.btn-sync { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
-.btn-sync:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
-.btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
-.sync-result { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; }
-.sync-result.success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10B981; }
-.sync-result.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #EF4444; }
-.sync-result .close-btn { margin-left: auto; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: inherit; }
-.sync-info { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; }
-.overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-.overview-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; text-align: center; }
-.overview-card.highlight { border-color: var(--accent); box-shadow: 0 0 20px rgba(180,83,9,0.1); }
-.overview-card .label { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem; }
-.overview-card .value { font-size: 1.8rem; font-weight: 600; }
-.overview-card .value.income { color: var(--success); }
-.overview-card .value.expense { color: var(--danger); }
-.form-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
-.form-card h3 { color: var(--text-primary); margin-bottom: 1rem; }
-.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
-.form-group { display: flex; flex-direction: column; }
-.form-group.full { grid-column: 1 / -1; }
-.form-group label { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.3rem; }
-.form-group input, .form-group select { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; color: var(--text-primary); }
-.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
-.form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.section { margin-top: 2rem; margin-bottom: 2rem; }
-.section h2 { color: var(--text-primary); margin-bottom: 1rem; font-size: 1.25rem; }
-.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.empty { color: var(--text-secondary); text-align: center; padding: 2rem; }
-.asset-list, .liability-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.asset-card, .liability-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; justify-content: space-between; }
-.asset-card:hover, .liability-card:hover { border-color: var(--accent); }
-.asset-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.icon-emoji { font-size: 1.5rem; }
-.asset-info { flex: 1; }
-.asset-name { color: var(--text-primary); font-weight: 600; }
-.asset-meta { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
-.tag { background: var(--bg-tertiary); color: var(--text-secondary); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
-.asset-value { text-align: right; }
-.amount { color: var(--text-primary); font-size: 1.2rem; font-weight: 600; }
-.amount.expense { color: var(--danger); }
-.initial { color: var(--text-secondary); font-size: 0.8rem; }
-.profit { font-size: 0.85rem; font-weight: 600; }
-.profit.positive { color: var(--success); }
-.profit.negative { color: var(--danger); }
-.asset-actions { display: flex; gap: 0.5rem; margin-left: 1rem; }
-.btn-icon { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.1rem; padding: 0.25rem 0.5rem; border-radius: 6px; }
-.btn-icon:hover { background: var(--bg-tertiary); }
-.btn-icon.danger:hover { color: var(--danger); }
-.btn { padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; }
-.btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
-.btn-small { padding: 0.3rem 0.8rem; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-
-/* 还款进度 */
-.repay-progress { margin-top: 0.5rem; }
-.repay-bar-bg { height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
-.repay-bar-fill { height: 100%; background: var(--success); border-radius: 3px; transition: width 0.3s; }
-.repay-bar-fill.remaining { background: var(--danger); }
-.repay-text { color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.2rem; display: block; }
-
-/* 图表区 */
-.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
-@media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
-.chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-.chart-card h3 { color: var(--text-primary); margin-bottom: 1rem; font-size: 1rem; }
-.pie-wrapper { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
-.pie-chart-sm { width: 180px; height: 180px; flex-shrink: 0; }
-.pie-legend { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
-.legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
-.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.legend-name { color: var(--text-primary); min-width: 40px; }
-.legend-value { color: var(--text-secondary); }
-.legend-pct { color: var(--text-secondary); font-size: 0.8rem; }
-.profit-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.profit-item { display: flex; align-items: center; gap: 0.5rem; }
-.profit-label { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
-.profit-bar-bg { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
-.profit-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
-.profit-value { font-size: 0.85rem; font-weight: 600; min-width: 60px; text-align: right; }
-.profit-value.positive { color: var(--success); }
-.profit-value.negative { color: var(--danger); }
-
-/* 趋势图 */
-.chart-box { width: 100%; height: 240px; }
-
-.gold-price-display { padding: 0.5rem; background: linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%); color: #422006; border-radius: 6px; font-weight: 600; text-align: center; }
-.gold-price { display: inline-flex; align-items: center; gap: 0.35rem; }
-.auto-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: normal; }
-
-.filters { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }
-.filter-search { flex: 1; min-width: 150px; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
-.filter-search:focus { outline: none; border-color: var(--accent); }
-.filter-select { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; }
-.filter-select:focus { outline: none; border-color: var(--accent); }
-</style>
