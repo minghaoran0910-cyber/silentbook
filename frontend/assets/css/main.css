@@ -1,3 +1,191 @@
+/* SilentBook 设计系统 - 三品牌 × 深浅同源
+ * brand: ink（纸墨侘寂）| linear（冷峻精密）| cozy（暖绒生活），见 composables/useBrandTheme.ts
+ * 老页面沿用 bg/text/accent 变量名即自动跟品牌换肤，无需逐页改。
+ * Nuxt UI 用 .dark class（见下方 custom-variant），与 data-theme 双写。
+ */
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Songti SC", "SimSun", "Noto Serif SC", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+/* ============ BRAND: ink 纸墨侘寂（默认） ============ */
+html[data-brand="ink"][data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #f5f1e8;
+  --bg-secondary: #fdfbf6;
+  --bg-tertiary: #ece5d8;
+  --border: #e0d6c2;
+  --border-strong: #c9bda3;
+  --accent: #b42318;
+  --accent-hover: #912018;
+  --accent-soft: rgba(180, 35, 24, 0.08);
+  --accent-ink: #fff7ed;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-tertiary: #8a8177;
+  --success: #3f6212;
+  --success-soft: rgba(63, 98, 18, 0.1);
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.08);
+  --fill-ink: #fdfbf6;
+  --warning: #92400e;
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.06);
+  --shadow-md: 0 4px 12px rgba(28, 25, 23, 0.08);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-brand-display: "Songti SC", "SimSun", "Noto Serif SC", serif;
+}
+
+html[data-brand="ink"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #141210;
+  --bg-secondary: #1c1917;
+  --bg-tertiary: #292524;
+  --border: #44403c;
+  --border-strong: #57534e;
+  --accent: #e07856;
+  --accent-hover: #e88a68;
+  --accent-soft: rgba(224, 120, 86, 0.12);
+  --accent-ink: #1c0f0a;
+  --text-primary: #ede6da;
+  --text-secondary: #a8a29e;
+  --text-tertiary: #78716c;
+  --success: #a3c96b;
+  --success-soft: rgba(163, 201, 107, 0.12);
+  --danger: #e07856;
+  --danger-soft: rgba(224, 120, 86, 0.12);
+  --fill-ink: #1c1917;
+  --warning: #e3a63d;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-brand-display: "Songti SC", "SimSun", "Noto Serif SC", serif;
+}
+
+/* ============ BRAND: linear 冷峻精密 ============ */
+html[data-brand="linear"][data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: rgba(79, 70, 229, 0.08);
+  --accent-ink: #ffffff;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #a1a1aa;
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.08);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.08);
+  --fill-ink: #ffffff;
+  --warning: #b45309;
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.05);
+  --shadow-md: 0 4px 12px rgba(24, 24, 27, 0.07);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-brand-display: inherit;
+}
+
+html[data-brand="linear"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #0f1115;
+  --bg-secondary: #15181d;
+  --bg-tertiary: #1d2129;
+  --border: #262b34;
+  --border-strong: #3a4150;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-soft: rgba(129, 140, 248, 0.12);
+  --accent-ink: #0f1115;
+  --text-primary: #ededef;
+  --text-secondary: #b0b0b8;
+  --text-tertiary: #6e6e78;
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --fill-ink: #15181d;
+  --warning: #fbbf24;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-brand-display: inherit;
+}
+
+/* ============ BRAND: cozy 暖绒生活 ============ */
+html[data-brand="cozy"][data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #fdf6ee;
+  --bg-secondary: #fffdf8;
+  --bg-tertiary: #f9ebdd;
+  --border: #f0dfc9;
+  --border-strong: #e3c9ab;
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
+  --accent-soft: rgba(194, 65, 12, 0.1);
+  --accent-ink: #fff7ed;
+  --text-primary: #3f2e22;
+  --text-secondary: #8a7563;
+  --text-tertiary: #b39d88;
+  --success: #4d7c0f;
+  --success-soft: rgba(77, 124, 15, 0.1);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.08);
+  --fill-ink: #fffdf8;
+  --warning: #b45309;
+  --shadow-sm: 0 1px 2px rgba(63, 46, 34, 0.06);
+  --shadow-md: 0 6px 16px rgba(63, 46, 34, 0.09);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --font-brand-display: inherit;
+}
+
+html[data-brand="cozy"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #1a120c;
+  --bg-secondary: #241812;
+  --bg-tertiary: #322218;
+  --border: #4a3222;
+  --border-strong: #5f422c;
+  --accent: #fb923c;
+  --accent-hover: #fdba74;
+  --accent-soft: rgba(251, 146, 60, 0.14);
+  --accent-ink: #231303;
+  --text-primary: #f5e8da;
+  --text-secondary: #c4a98f;
+  --text-tertiary: #8f7159;
+  --success: #a3c96b;
+  --success-soft: rgba(163, 201, 107, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --fill-ink: #241812;
+  --warning: #fbbf24;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --font-brand-display: inherit;
+}
+
+/* 旧双主题块保留为无品牌兜底（首屏闪烁前、旧缓存 HTML），品牌块在上优先级更高 */
+
 /* SilentBook 设计系统 - 日间纸墨
  * 浅色第一，深色同源。单 accent 全站锁定：浅色 teal-700，深色 teal-400。
  * 页面沿用 bg/text/accent 系列变量名即自动换肤，无需逐页改。

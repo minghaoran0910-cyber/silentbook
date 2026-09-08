@@ -19,6 +19,20 @@
       </div>
 
       <div class="nav-right">
+        <div class="brand-switch" role="group" aria-label="切换主题气质">
+          <button
+            v-for="b in brands"
+            :key="b.id"
+            class="brand-dot"
+            :class="{ active: brand === b.id }"
+            :title="b.label + '·' + b.hint"
+            :aria-label="'切换到' + b.label + '主题'"
+            :aria-pressed="brand === b.id"
+            @click="setBrand(b.id)"
+          >
+            <span class="dot" :data-brand-dot="b.id" aria-hidden="true"></span>
+          </button>
+        </div>
         <button
           class="icon-btn"
           :title="theme === 'light' ? '切换深色' : '切换浅色'"
@@ -45,9 +59,9 @@
 </template>
 
 <script setup>
-import { useTheme } from '~/composables/useTheme'
+import { useBrandTheme } from '~/composables/useBrandTheme'
 
-const { theme, toggle } = useTheme()
+const { theme, toggle, brand, setBrand, brands } = useBrandTheme()
 
 const links = [
   { to: '/', label: '总览' },
@@ -138,6 +152,53 @@ const links = [
   gap: 0.35rem;
   flex-shrink: 0;
   align-items: center;
+}
+
+.brand-switch {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+
+.brand-dot {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease-out, background-color 0.15s;
+}
+
+.brand-dot:hover {
+  background: var(--bg-secondary);
+}
+
+.brand-dot:active {
+  transform: scale(0.92);
+}
+
+.brand-dot .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.brand-dot .dot[data-brand-dot="ink"] { background: #b42318; }
+.brand-dot .dot[data-brand-dot="linear"] { background: #4f46e5; }
+.brand-dot .dot[data-brand-dot="cozy"] { background: #c2410c; }
+
+.brand-dot.active {
+  background: var(--bg-secondary);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .icon-btn {
