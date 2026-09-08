@@ -1,151 +1,202 @@
 <template>
-  <div class="container">
-      <div class="header">
-        <h1>财务报表</h1>
-      <div class="tab-bar">
-        <button :class="{ active: activeTab === 'daily' }" @click="activeTab = 'daily'">日报</button>
-        <button :class="{ active: activeTab === 'weekly' }" @click="activeTab = 'weekly'">周报</button>
-        <button :class="{ active: activeTab === 'monthly' }" @click="activeTab = 'monthly'">月报</button>
-        <button :class="{ active: activeTab === 'yearly' }" @click="activeTab = 'yearly'">年报</button>
+  <div class="mx-auto min-w-0 w-full max-w-4xl px-4 py-6">
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+      <div class="mr-auto min-w-0">
+        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">财务报表</h1>
+        <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">按天、按周、按月、按年，看钱的进出。</p>
       </div>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <UTabs v-model="activeTab" :items="tabItems" :content="false" class="mb-4" />
+
+    <!-- 加载中：骨架 -->
+    <div v-if="loading" class="space-y-4">
+      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <USkeleton class="h-6 w-40" />
+        <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+          <USkeleton v-for="i in 4" :key="i" class="h-[76px] w-full" />
+        </div>
+        <USkeleton class="mt-4 h-4 w-full" />
+        <USkeleton class="mt-2 h-4 w-5/6" />
+      </UCard>
+    </div>
+
+    <UAlert
+      v-else-if="error"
+      color="error"
+      variant="soft"
+      :title="error"
+    >
+      <template #description>
+        <p>网络可能开小差了，稍后再试一次。</p>
+        <UButton size="sm" class="mt-2" @click="fetchReport(activeTab)">重新加载</UButton>
+      </template>
+    </UAlert>
 
     <!-- 日报 -->
-    <div v-else-if="activeTab === 'daily'" class="report-section">
-      <div class="report-header">
-        <h2>{{ dailyReport.date }} 日报</h2>
-      </div>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">总收入</div>
-          <div class="stat-value income">¥{{ dailyReport.total_income?.toFixed(2) || '0.00' }}</div>
+    <UCard
+      v-else-if="activeTab === 'daily'"
+      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      :ui="{ body: 'p-5' }"
+    >
+      <h2 class="mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ dailyReport.date }} 日报</h2>
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总收入</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--success)">¥{{ dailyReport.total_income?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">总支出</div>
-          <div class="stat-value expense">¥{{ dailyReport.total_expense?.toFixed(2) || '0.00' }}</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ dailyReport.total_expense?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">净收入</div>
-          <div class="stat-value" :class="dailyReport.net >= 0 ? 'income' : 'expense'">
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">净收入</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" :style="{ color: dailyReport.net >= 0 ? 'var(--success)' : 'var(--danger)' }">
             ¥{{ dailyReport.net?.toFixed(2) || '0.00' }}
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">交易笔数</div>
-          <div class="stat-value">{{ dailyReport.transaction_count || 0 }}</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">交易笔数</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">{{ dailyReport.transaction_count || 0 }}</div>
         </div>
       </div>
-      <div v-if="dailyReport.categories?.length" class="category-list">
-        <h3>支出分类</h3>
-        <div v-for="cat in dailyReport.categories" :key="cat.name" class="category-item">
-          <span class="category-name">{{ cat.name }}</span>
-          <span class="category-amount">¥{{ cat.amount.toFixed(2) }}</span>
-        </div>
+      <div v-if="dailyReport.categories?.length" class="mt-5">
+        <h3 class="mb-2 text-sm font-semibold" style="color: var(--text-primary)">支出分类</h3>
+        <ul class="divide-y" style="border-color: var(--border)">
+          <li v-for="cat in dailyReport.categories" :key="cat.name" class="flex items-center gap-3 py-2">
+            <span class="min-w-[80px] text-sm" style="color: var(--text-primary)">{{ cat.name }}</span>
+            <span class="ml-auto text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ cat.amount.toFixed(2) }}</span>
+          </li>
+        </ul>
       </div>
-    </div>
+      <div v-else-if="isEmpty(dailyReport)" class="py-8 text-center">
+        <AppIcon icon="Receipt" :size="28" style="color: var(--text-tertiary)" class="mx-auto" />
+        <p class="mt-2 text-sm" style="color: var(--text-secondary)">这一天还没有记账。</p>
+        <UButton to="/add" size="sm" class="mt-3">去记一笔</UButton>
+      </div>
+    </UCard>
 
     <!-- 周报 -->
-    <div v-else-if="activeTab === 'weekly'" class="report-section">
-      <div class="report-header">
-        <h2>{{ weeklyReport.week_start }} ~ {{ weeklyReport.week_end }} 周报</h2>
-      </div>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">总收入</div>
-          <div class="stat-value income">¥{{ weeklyReport.total_income?.toFixed(2) || '0.00' }}</div>
+    <UCard
+      v-else-if="activeTab === 'weekly'"
+      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      :ui="{ body: 'p-5' }"
+    >
+      <h2 class="mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ weeklyReport.week_start }} ~ {{ weeklyReport.week_end }} 周报</h2>
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总收入</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--success)">¥{{ weeklyReport.total_income?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">总支出</div>
-          <div class="stat-value expense">¥{{ weeklyReport.total_expense?.toFixed(2) || '0.00' }}</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ weeklyReport.total_expense?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">日均支出</div>
-          <div class="stat-value">¥{{ weeklyReport.daily_avg_expense?.toFixed(2) || '0.00' }}</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">日均支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ weeklyReport.daily_avg_expense?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">交易笔数</div>
-          <div class="stat-value">{{ weeklyReport.transaction_count || 0 }}</div>
-        </div>
-      </div>
-      <div v-if="weeklyReport.daily?.length" class="daily-breakdown">
-        <h3>每日明细</h3>
-        <div v-for="day in weeklyReport.daily" :key="day.date" class="daily-item">
-          <span class="daily-date">{{ day.weekday }} ({{ day.date }})</span>
-          <span class="daily-income" v-if="day.income > 0">+¥{{ day.income.toFixed(2) }}</span>
-          <span class="daily-expense" v-if="day.expense > 0">-¥{{ day.expense.toFixed(2) }}</span>
-          <span class="daily-count">{{ day.count }}笔</span>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">交易笔数</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">{{ weeklyReport.transaction_count || 0 }}</div>
         </div>
       </div>
-    </div>
+      <div v-if="weeklyReport.daily?.length" class="mt-5">
+        <h3 class="mb-2 text-sm font-semibold" style="color: var(--text-primary)">每日明细</h3>
+        <ul class="divide-y" style="border-color: var(--border)">
+          <li v-for="day in weeklyReport.daily" :key="day.date" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+            <span class="min-w-[150px] text-sm tabular-nums" style="color: var(--text-primary)">{{ day.weekday }} ({{ day.date }})</span>
+            <span v-if="day.income > 0" class="text-sm font-medium tabular-nums" style="color: var(--success)">+¥{{ day.income.toFixed(2) }}</span>
+            <span v-if="day.expense > 0" class="text-sm font-medium tabular-nums" style="color: var(--danger)">-¥{{ day.expense.toFixed(2) }}</span>
+            <span class="ml-auto text-xs tabular-nums" style="color: var(--text-secondary)">{{ day.count }}笔</span>
+          </li>
+        </ul>
+      </div>
+      <div v-else-if="isEmpty(weeklyReport)" class="py-8 text-center">
+        <AppIcon icon="Receipt" :size="28" style="color: var(--text-tertiary)" class="mx-auto" />
+        <p class="mt-2 text-sm" style="color: var(--text-secondary)">这一周还没有记账。</p>
+        <UButton to="/add" size="sm" class="mt-3">去记一笔</UButton>
+      </div>
+    </UCard>
 
     <!-- 月报 -->
-    <div v-else-if="activeTab === 'monthly'" class="report-section">
-      <div class="report-header">
-        <h2>{{ monthlyReport.year }}年{{ monthlyReport.month }}月 月报</h2>
-      </div>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">总收入</div>
-          <div class="stat-value income">¥{{ monthlyReport.total_income?.toFixed(2) || '0.00' }}</div>
+    <UCard
+      v-else-if="activeTab === 'monthly'"
+      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      :ui="{ body: 'p-5' }"
+    >
+      <h2 class="mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthlyReport.year }}年{{ monthlyReport.month }}月 月报</h2>
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总收入</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--success)">¥{{ monthlyReport.total_income?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">总支出</div>
-          <div class="stat-value expense">¥{{ monthlyReport.total_expense?.toFixed(2) || '0.00' }}</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ monthlyReport.total_expense?.toFixed(2) || '0.00' }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">储蓄率</div>
-          <div class="stat-value">{{ monthlyReport.savings_rate?.toFixed(1) || '0.0' }}%</div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">储蓄率</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthlyReport.savings_rate?.toFixed(1) || '0.0' }}%</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">交易笔数</div>
-          <div class="stat-value">{{ monthlyReport.transaction_count || 0 }}</div>
-        </div>
-      </div>
-      <div v-if="monthlyReport.expense_categories?.length" class="category-list">
-        <h3>支出分类</h3>
-        <div v-for="cat in monthlyReport.expense_categories" :key="cat.name" class="category-item">
-          <span class="category-name">{{ cat.name }}</span>
-          <div class="category-bar">
-            <div class="category-bar-fill" :style="{ width: (cat.amount / monthlyReport.total_expense * 100) + '%' }"></div>
-          </div>
-          <span class="category-amount">¥{{ cat.amount.toFixed(2) }}</span>
-          <span class="category-pct">{{ (cat.amount / monthlyReport.total_expense * 100).toFixed(1) }}%</span>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">交易笔数</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthlyReport.transaction_count || 0 }}</div>
         </div>
       </div>
-    </div>
+      <div v-if="monthlyReport.expense_categories?.length" class="mt-5">
+        <h3 class="mb-2 text-sm font-semibold" style="color: var(--text-primary)">支出分类</h3>
+        <ul class="space-y-2.5">
+          <li v-for="cat in monthlyReport.expense_categories" :key="cat.name" class="flex items-center gap-3">
+            <span class="w-16 shrink-0 truncate text-sm" style="color: var(--text-primary)">{{ cat.name }}</span>
+            <UProgress :model-value="pctOf(cat.amount, monthlyReport.total_expense)" :max="100" size="sm" class="min-w-0 flex-1" />
+            <span class="w-20 shrink-0 text-right text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ cat.amount.toFixed(2) }}</span>
+            <span class="w-12 shrink-0 text-right text-xs tabular-nums" style="color: var(--text-secondary)">{{ pctOf(cat.amount, monthlyReport.total_expense).toFixed(1) }}%</span>
+          </li>
+        </ul>
+      </div>
+      <div v-else-if="isEmpty(monthlyReport)" class="py-8 text-center">
+        <AppIcon icon="Receipt" :size="28" style="color: var(--text-tertiary)" class="mx-auto" />
+        <p class="mt-2 text-sm" style="color: var(--text-secondary)">这个月还没有记账。</p>
+        <UButton to="/add" size="sm" class="mt-3">去记一笔</UButton>
+      </div>
+    </UCard>
 
     <!-- 年报 -->
-    <div v-else-if="activeTab === 'yearly'" class="report-section">
-      <div class="report-header">
-        <h2>{{ yearlyReport.year }}年 年报</h2>
+    <UCard
+      v-else-if="activeTab === 'yearly'"
+      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      :ui="{ body: 'p-5' }"
+    >
+      <h2 class="mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ yearlyReport.year }}年 年报</h2>
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总收入</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--success)">¥{{ yearlyReport.total_income?.toFixed(2) || '0.00' }}</div>
+        </div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">总支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ yearlyReport.total_expense?.toFixed(2) || '0.00' }}</div>
+        </div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">储蓄率</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">{{ yearlyReport.savings_rate?.toFixed(1) || '0.0' }}%</div>
+        </div>
+        <div class="rounded-lg p-3 text-center" style="background: var(--bg-primary)">
+          <div class="text-xs" style="color: var(--text-secondary)">月均支出</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ yearlyReport.monthly_avg_expense?.toFixed(2) || '0.00' }}</div>
+        </div>
       </div>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">总收入</div>
-          <div class="stat-value income">¥{{ yearlyReport.total_income?.toFixed(2) || '0.00' }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">总支出</div>
-          <div class="stat-value expense">¥{{ yearlyReport.total_expense?.toFixed(2) || '0.00' }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">储蓄率</div>
-          <div class="stat-value">{{ yearlyReport.savings_rate?.toFixed(1) || '0.0' }}%</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">月均支出</div>
-          <div class="stat-value">¥{{ yearlyReport.monthly_avg_expense?.toFixed(2) || '0.00' }}</div>
-        </div>
+      <div v-if="yearlyReport.monthly?.length" class="mt-5">
+        <h3 class="mb-2 text-sm font-semibold" style="color: var(--text-primary)">月度趋势</h3>
+        <div ref="yearlyEl" class="h-[260px] w-full" role="img" aria-label="月度收支趋势图"></div>
       </div>
-      <div v-if="yearlyReport.monthly?.length" class="monthly-breakdown">
-        <h3>月度趋势</h3>
-        <div ref="yearlyEl" class="chart-box"></div>
+      <div v-else-if="isEmpty(yearlyReport)" class="py-8 text-center">
+        <AppIcon icon="Receipt" :size="28" style="color: var(--text-tertiary)" class="mx-auto" />
+        <p class="mt-2 text-sm" style="color: var(--text-secondary)">这一年还没有记账。</p>
+        <UButton to="/add" size="sm" class="mt-3">去记一笔</UButton>
       </div>
-    </div>
+    </UCard>
   </div>
 </template>
 
@@ -154,7 +205,22 @@ import { ref, watch, onMounted } from 'vue'
 import { fetchReport as fetchReportApi } from '~/utils/api'
 import { useECharts, axisCommon, tooltipCommon } from '~/composables/useECharts'
 
-const activeTab = ref('daily')
+// 当前报表页签：记住上次看到哪一份（客户端 localStorage）
+const REPORT_TAB_KEY = 'sb-reports-tab'
+const readSavedTab = () => {
+  if (!import.meta.client) return 'daily'
+  try {
+    const t = localStorage.getItem(REPORT_TAB_KEY)
+    return ['daily', 'weekly', 'monthly', 'yearly'].includes(t) ? t : 'daily'
+  } catch { return 'daily' }
+}
+const activeTab = ref(readSavedTab())
+const tabItems = [
+  { label: '日报', value: 'daily' },
+  { label: '周报', value: 'weekly' },
+  { label: '月报', value: 'monthly' },
+  { label: '年报', value: 'yearly' },
+]
 const loading = ref(false)
 const error = ref('')
 
@@ -163,7 +229,17 @@ const weeklyReport = ref({})
 const monthlyReport = ref({})
 const yearlyReport = ref({})
 
-// 年报月度趋势 echarts
+// 分类占比：分母为 0 时按 0 处理，其余与原公式一致
+const pctOf = (amount, total) => {
+  if (!total) return 0
+  return (amount / total) * 100
+}
+// 空报表：拉回来但一笔交易都没有
+const isEmpty = (report) => {
+  return report && Object.keys(report).length > 0 && (report.transaction_count || 0) === 0
+}
+
+// 年报月度趋势 echarts（图例默认可点：点中显隐对应柱）
 const { el: yearlyEl, render: renderYearly } = useECharts()
 watch(yearlyReport, (y) => {
   if (!y.monthly?.length) return
@@ -212,199 +288,13 @@ const fetchReport = async (type) => {
 }
 
 watch(activeTab, (newTab) => {
+  try {
+    if (import.meta.client) localStorage.setItem(REPORT_TAB_KEY, newTab)
+  } catch {}
   fetchReport(newTab)
 })
 
 onMounted(() => {
-  fetchReport('daily')
+  fetchReport(activeTab.value)
 })
 </script>
-
-<style scoped>
-.container {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.header {
-  margin-bottom: 2rem;
-}
-
-.header h1 {
-  color: var(--accent);
-  margin-bottom: 1rem;
-}
-
-.tab-bar {
-  display: flex;
-  gap: 0.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.tab-bar button {
-  padding: 0.75rem 1.5rem;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.tab-bar button.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.loading, .error {
-  text-align: center;
-  padding: 2rem;
-  color: var(--text-secondary);
-}
-
-.error {
-  color: var(--danger);
-}
-
-.report-section {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem;
-}
-
-.report-header h2 {
-  color: var(--text-primary);
-  margin-bottom: 1.5rem;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
-  text-align: center;
-}
-
-.stat-label {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.stat-value.income { color: var(--success); }
-.stat-value.expense { color: var(--danger); }
-
-.category-list, .daily-breakdown, .monthly-breakdown {
-  margin-top: 1.5rem;
-}
-
-.category-list h3, .daily-breakdown h3, .monthly-breakdown h3 {
-  color: var(--text-primary);
-  margin-bottom: 1rem;
-}
-
-.category-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.category-name {
-  min-width: 80px;
-  color: var(--text-primary);
-}
-
-.category-bar {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-primary);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.category-bar-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 4px;
-}
-
-.category-amount {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.category-pct {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  min-width: 50px;
-  text-align: right;
-}
-
-.daily-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.daily-date {
-  min-width: 150px;
-  color: var(--text-primary);
-}
-
-.daily-income {
-  color: var(--success);
-  font-weight: 500;
-}
-
-.daily-expense {
-  color: var(--danger);
-  font-weight: 500;
-}
-
-.daily-count {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.chart-box {
-  width: 100%;
-  height: 260px;
-}
-</style>
-
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .container {
-    padding: 1rem;
-  }
-  .grid {
-    grid-template-columns: 1fr !important;
-  }
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-}

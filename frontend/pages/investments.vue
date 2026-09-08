@@ -1,196 +1,290 @@
 <template>
-  <div class="container">
-    <div class="header">
-      <h1>投资持仓</h1>
-      <div class="header-actions">
-        <button @click="syncPositions" class="btn btn-sync" :disabled="syncing">
-          <AppIcon icon="ArrowClockwise" :size="15" />
-          {{ syncing ? '同步中...' : '同步持仓' }}
-        </button>
-        <button @click="toggleAddForm" class="btn btn-primary">
-          <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
-          {{ showAddForm ? '取消' : '添加持仓' }}
-        </button>
+  <div class="mx-auto min-w-0 w-full max-w-5xl px-4 py-6">
+    <!-- 页头 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="mr-auto min-w-0">
+        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">投资持仓</h1>
+        <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">放在场内的钱，现在值多少。</p>
       </div>
+      <UButton variant="outline" color="neutral" :loading="syncing" :disabled="syncing" @click="syncPositions">
+        <AppIcon v-if="!syncing" icon="ArrowClockwise" :size="15" />
+        {{ syncing ? '同步中...' : '同步持仓' }}
+      </UButton>
+      <UButton @click="toggleAddForm">
+        <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
+        {{ showAddForm ? '取消' : '添加持仓' }}
+      </UButton>
     </div>
 
-    <!-- 同步状态 -->
-    <div v-if="syncResult" class="sync-result" :class="syncResult.error ? 'error' : 'success'">
-      <span>{{ syncResult.message }}</span>
-      <span v-if="syncResult.updated">更新 {{ syncResult.updated }} 个</span>
-      <span v-if="syncResult.failed">失败 {{ syncResult.failed }} 个</span>
-      <button @click="syncResult = null" class="close-btn">×</button>
+    <!-- 同步结果（替代裸文字条） -->
+    <UAlert
+      v-if="syncResult"
+      :color="syncResult.error ? 'error' : 'success'"
+      variant="soft"
+      :title="syncResult.message"
+      :description="syncDetail"
+      class="mt-4"
+      close
+      @update:open="syncResult = null"
+    />
+
+    <!-- 操作失败提示（替代 alert） -->
+    <UAlert
+      v-if="actionError"
+      color="error"
+      variant="soft"
+      :title="actionError"
+      class="mt-4"
+      close
+      @update:open="actionError = ''"
+    />
+
+    <!-- 加载中：骨架 -->
+    <div v-if="loading" class="mt-4 space-y-4">
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <USkeleton v-for="i in 4" :key="i" class="h-[76px] w-full" />
+      </div>
+      <USkeleton class="h-[320px] w-full" />
     </div>
 
-    <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
-      <p>加载投资数据...</p>
-    </div>
+    <!-- 加载失败 -->
+    <UCard
+      v-else-if="loadError"
+      class="mt-4 text-center"
+      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      :ui="{ body: 'p-8' }"
+    >
+      <AppIcon icon="Warning" :size="28" style="color: var(--danger)" class="mx-auto" />
+      <p class="mt-2 text-sm" style="color: var(--text-primary)">{{ loadError }}</p>
+      <UButton class="mt-4" @click="loadData">重试</UButton>
+    </UCard>
 
-    <div v-else-if="loadError" class="error-state">
-      <p class="error-line"><AppIcon icon="Warning" :size="16" /> {{ loadError }}</p>
-      <button @click="loadData" class="btn btn-primary">重试</button>
-    </div>
+    <template v-else>
+      <!-- 总览卡片 -->
+      <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
+          <div class="text-xs" style="color: var(--text-secondary)">总市值</div>
+          <div class="mt-1 text-xl font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(summary.total_value) }}</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
+          <div class="text-xs" style="color: var(--text-secondary)">总成本</div>
+          <div class="mt-1 text-xl font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(summary.total_cost) }}</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
+          <div class="text-xs" style="color: var(--text-secondary)">总收益</div>
+          <div class="mt-1 text-xl font-bold tabular-nums" :style="{ color: summary.total_profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ summary.total_profit >= 0 ? '+' : '' }}¥{{ formatNum(summary.total_profit) }}</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
+          <div class="text-xs" style="color: var(--text-secondary)">收益率</div>
+          <div class="mt-1 text-xl font-bold tabular-nums" :style="{ color: summary.total_profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ summary.total_profit_pct >= 0 ? '+' : '' }}{{ summary.total_profit_pct.toFixed(2) }}%</div>
+        </UCard>
+      </div>
 
-    <!-- 总览卡片 -->
-    <div class="overview" v-if="!loading && !loadError">
-      <div class="overview-card">
-        <div class="label">总市值</div>
-        <div class="value">¥{{ formatNum(summary.total_value) }}</div>
-      </div>
-      <div class="overview-card">
-        <div class="label">总成本</div>
-        <div class="value">¥{{ formatNum(summary.total_cost) }}</div>
-      </div>
-      <div class="overview-card" :class="summary.total_profit >= 0 ? 'profit' : 'loss'">
-        <div class="label">总收益</div>
-        <div class="value">{{ summary.total_profit >= 0 ? '+' : '' }}¥{{ formatNum(summary.total_profit) }}</div>
-      </div>
-      <div class="overview-card" :class="summary.total_profit_pct >= 0 ? 'profit' : 'loss'">
-        <div class="label">收益率</div>
-        <div class="value">{{ summary.total_profit_pct >= 0 ? '+' : '' }}{{ summary.total_profit_pct.toFixed(2) }}%</div>
-      </div>
-    </div>
-
-    <!-- 添加/编辑持仓表单 -->
-    <div v-if="showAddForm && !loading" class="form-card">
-      <h3>{{ editingId ? '编辑持仓' : '添加持仓' }}</h3>
-      <form @submit.prevent="handleSubmit">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>名称</label>
-            <input v-model="form.name" type="text" required placeholder="如：沪深300ETF" />
-          </div>
-          <div class="form-group">
-            <label>代码</label>
-            <input v-model="form.symbol" type="text" placeholder="如：510300" />
-          </div>
-          <div class="form-group">
-            <label>类型</label>
-            <select v-model="form.position_type" required>
-              <option value="stock">股票</option>
-              <option value="fund">基金</option>
-              <option value="bond">债券</option>
-              <option value="wealth_mgmt">银行理财</option>
-              <option value="other">其他</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>持有数量</label>
-            <input v-model.number="form.quantity" type="number" step="0.01" required placeholder="股/份" />
-          </div>
-          <div class="form-group">
-            <label>买入均价</label>
-            <input v-model.number="form.avg_cost" type="number" step="0.0001" required placeholder="成本价" />
-          </div>
-          <div class="form-group">
-            <label>当前价格</label>
-            <input v-model.number="form.current_price" type="number" step="0.0001" placeholder="留空同步后自动更新" />
-          </div>
-          <div class="form-group">
-            <label>所属账户</label>
-            <input v-model="form.account" type="text" placeholder="如：东方财富证券" />
-          </div>
-          <div class="form-group">
-            <label>备注</label>
-            <input v-model="form.notes" type="text" placeholder="可选" />
-          </div>
+      <!-- 持仓明细 -->
+      <UCard
+        class="mt-4"
+        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        :ui="{ body: 'p-4 min-[480px]:p-5' }"
+      >
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <h2 class="mr-auto text-base font-semibold tabular-nums" style="color: var(--text-primary)">持仓明细 ({{ filteredPositions.length }}/{{ positions.length }})</h2>
         </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" :disabled="submitting">
-            {{ submitting ? '提交中...' : (editingId ? '保存' : '添加') }}
-          </button>
-          <button type="button" @click="resetForm" class="btn btn-secondary">重置</button>
-        </div>
-      </form>
-    </div>
 
-    <!-- 持仓列表 -->
-    <div v-if="!loading && !loadError" class="section">
-      <h2>持仓明细 ({{ filteredPositions.length }}/{{ positions.length }})</h2>
-      
-      <!-- 筛选栏 -->
-      <div class="filters">
-        <input v-model="positionSearch" type="text" placeholder="搜索名称/代码..." class="filter-search" />
-        <select v-model="positionTypeFilter" class="filter-select">
-          <option value="">全部类型</option>
-          <option value="stock">股票</option>
-          <option value="fund">基金</option>
-          <option value="bond">债券</option>
-          <option value="wealth_mgmt">银行理财</option>
-          <option value="other">其他</option>
-        </select>
-        <select v-model="positionAccountFilter" class="filter-select">
-          <option value="">全部账户</option>
-          <option v-for="acc in uniqueAccounts" :key="acc" :value="acc">{{ acc }}</option>
-        </select>
-        <select v-model="positionStatusFilter" class="filter-select">
-          <option value="">全部状态</option>
-          <option value="active">活跃</option>
-          <option value="closed">已关闭</option>
-        </select>
-      </div>
-      
-      <div v-if="filteredPositions.length === 0" class="empty-state">
-        <p>暂无投资持仓</p>
-        <p class="hint">点击"添加持仓"开始记录你的投资</p>
-      </div>
-      <div v-else class="position-list">
-        <div v-for="pos in filteredPositions" :key="pos.id" class="position-card" :class="{ closed: pos.status === 'closed' }">
-          <div class="position-header">
-            <div class="position-name">
-              <span class="type-badge" :class="pos.position_type">{{ typeLabel(pos.position_type) }}</span>
-              <span class="name">{{ pos.name }}</span>
-              <span v-if="pos.symbol" class="symbol">{{ pos.symbol }}</span>
-            </div>
-            <div class="position-actions">
-              <button @click="editPosition(pos)" class="btn-icon" title="编辑" aria-label="编辑持仓"><AppIcon icon="PencilSimple" :size="17" /></button>
-              <button @click="deletePosition(pos.id)" class="btn-icon danger" title="关闭" aria-label="关闭持仓"><AppIcon icon="Trash" :size="17" /></button>
-            </div>
-          </div>
-          <div class="position-body">
-            <div class="metric">
-              <span class="metric-label">持有数量</span>
-              <span class="metric-value">{{ pos.quantity }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">买入均价</span>
-              <span class="metric-value">¥{{ formatNum(pos.avg_cost) }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">当前价格</span>
-              <span class="metric-value">¥{{ formatNum(pos.current_price) }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">市值</span>
-              <span class="metric-value">¥{{ formatNum(pos.market_value) }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">收益</span>
-              <span class="metric-value" :class="pos.profit >= 0 ? 'text-profit' : 'text-loss'">
-                {{ pos.profit >= 0 ? '+' : '' }}¥{{ formatNum(pos.profit) }}
+        <!-- 筛选栏（条件记在客户端 localStorage） -->
+        <div class="mb-3 flex flex-wrap gap-2">
+          <UInput v-model="positionSearch" type="text" placeholder="搜索名称/代码..." aria-label="搜索持仓" class="min-w-[150px] flex-1" />
+          <USelect v-model="positionTypeFilter" :items="typeFilterItems" value-key="value" aria-label="按类型筛选" class="w-32" />
+          <USelect v-model="positionAccountFilter" :items="accountFilterItems" value-key="value" aria-label="按账户筛选" class="w-36" />
+          <USelect v-model="positionStatusFilter" :items="statusFilterItems" value-key="value" aria-label="按状态筛选" class="w-28" />
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="sortedPositions.length === 0" class="py-10 text-center">
+          <AppIcon icon="ChartPieSlice" :size="32" style="color: var(--text-tertiary)" class="mx-auto" />
+          <p class="mt-3 text-sm font-medium" style="color: var(--text-primary)">暂无投资持仓</p>
+          <p class="mt-1 text-sm" style="color: var(--text-secondary)">点右上角「添加持仓」，把第一笔记下来。</p>
+          <UButton class="mt-4" @click="showAddForm = true">添加持仓</UButton>
+        </div>
+
+        <!-- 桌面端表格（带排序） -->
+        <div v-else class="hidden md:block">
+          <UTable v-model:sorting="sorting" :data="sortedPositions" :columns="columns" empty="暂无符合条件的持仓">
+            <template #name-cell="{ row }">
+              <div class="flex min-w-0 items-center gap-2">
+                <UBadge :color="positionTypeColor(row.original.position_type)" variant="soft">{{ typeLabel(row.original.position_type) }}</UBadge>
+                <span class="truncate font-medium" style="color: var(--text-primary)">{{ row.original.name }}</span>
+                <span v-if="row.original.symbol" class="shrink-0 text-xs" style="color: var(--text-secondary)">{{ row.original.symbol }}</span>
+                <UBadge v-if="row.original.status === 'closed'" color="neutral" variant="soft">已关闭</UBadge>
+              </div>
+            </template>
+            <template #quantity-cell="{ row }">
+              <span class="tabular-nums">{{ row.original.quantity }}</span>
+            </template>
+            <template #avg_cost-cell="{ row }">
+              <span class="tabular-nums">¥{{ formatNum(row.original.avg_cost) }}</span>
+            </template>
+            <template #current_price-cell="{ row }">
+              <span class="tabular-nums">¥{{ formatNum(row.original.current_price) }}</span>
+            </template>
+            <template #market_value-cell="{ row }">
+              <span class="font-medium tabular-nums">¥{{ formatNum(row.original.market_value) }}</span>
+            </template>
+            <template #profit-cell="{ row }">
+              <span class="font-medium tabular-nums" :style="{ color: row.original.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">
+                {{ row.original.profit >= 0 ? '+' : '' }}¥{{ formatNum(row.original.profit) }}
               </span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">收益率</span>
-              <span class="metric-value" :class="pos.profit_pct >= 0 ? 'text-profit' : 'text-loss'">
-                {{ pos.profit_pct >= 0 ? '+' : '' }}{{ pos.profit_pct.toFixed(2) }}%
+            </template>
+            <template #profit_pct-cell="{ row }">
+              <span class="font-medium tabular-nums" :style="{ color: row.original.profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">
+                {{ row.original.profit_pct >= 0 ? '+' : '' }}{{ row.original.profit_pct.toFixed(2) }}%
               </span>
+            </template>
+            <template #account-cell="{ row }">
+              <div class="text-xs">
+                <div v-if="row.original.account" style="color: var(--text-primary)">{{ row.original.account }}</div>
+                <div v-if="row.original.updated_at" class="tabular-nums" style="color: var(--text-secondary)">更新于 {{ formatTime(row.original.updated_at) }}</div>
+              </div>
+            </template>
+            <template #actions-cell="{ row }">
+              <div class="flex justify-end gap-1">
+                <UButton size="xs" variant="ghost" color="neutral" square aria-label="编辑持仓" @click="editPosition(row.original)">
+                  <AppIcon icon="PencilSimple" :size="16" />
+                </UButton>
+                <UButton size="xs" variant="ghost" color="error" square aria-label="关闭持仓" @click="pendingDelete = row.original">
+                  <AppIcon icon="Trash" :size="16" />
+                </UButton>
+              </div>
+            </template>
+          </UTable>
+        </div>
+
+        <!-- 移动端卡片 -->
+        <div v-if="sortedPositions.length > 0" class="space-y-2.5 md:hidden">
+          <div
+            v-for="pos in sortedPositions"
+            :key="pos.id"
+            class="rounded-lg p-3.5"
+            :style="{ background: 'var(--bg-primary)', border: '1px solid var(--border)', opacity: pos.status === 'closed' ? 0.6 : 1 }"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex min-w-0 items-center gap-2">
+                <UBadge :color="positionTypeColor(pos.position_type)" variant="soft">{{ typeLabel(pos.position_type) }}</UBadge>
+                <span class="truncate text-sm font-semibold" style="color: var(--text-primary)">{{ pos.name }}</span>
+                <span v-if="pos.symbol" class="shrink-0 text-xs" style="color: var(--text-secondary)">{{ pos.symbol }}</span>
+              </div>
+              <div class="flex shrink-0 gap-1">
+                <UButton size="xs" variant="ghost" color="neutral" square aria-label="编辑持仓" @click="editPosition(pos)">
+                  <AppIcon icon="PencilSimple" :size="16" />
+                </UButton>
+                <UButton size="xs" variant="ghost" color="error" square aria-label="关闭持仓" @click="pendingDelete = pos">
+                  <AppIcon icon="Trash" :size="16" />
+                </UButton>
+              </div>
             </div>
-          </div>
-          <div class="position-footer" v-if="pos.account || pos.updated_at">
-            <span v-if="pos.account" class="position-account"><AppIcon icon="MapPin" :size="13" /> {{ pos.account }}</span>
-            <span v-if="pos.updated_at">更新于 {{ formatTime(pos.updated_at) }}</span>
+            <div class="mt-2.5 grid grid-cols-3 gap-2">
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">持有数量</div>
+                <div class="text-sm font-medium tabular-nums" style="color: var(--text-primary)">{{ pos.quantity }}</div>
+              </div>
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">买入均价</div>
+                <div class="text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(pos.avg_cost) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">当前价格</div>
+                <div class="text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(pos.current_price) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">市值</div>
+                <div class="text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(pos.market_value) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">收益</div>
+                <div class="text-sm font-medium tabular-nums" :style="{ color: pos.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ pos.profit >= 0 ? '+' : '' }}¥{{ formatNum(pos.profit) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px]" style="color: var(--text-secondary)">收益率</div>
+                <div class="text-sm font-medium tabular-nums" :style="{ color: pos.profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ pos.profit_pct >= 0 ? '+' : '' }}{{ pos.profit_pct.toFixed(2) }}%</div>
+              </div>
+            </div>
+            <div v-if="pos.account || pos.updated_at" class="mt-2 flex items-center justify-between border-t pt-2 text-[11px]" style="border-color: var(--border); color: var(--text-secondary)">
+              <span v-if="pos.account" class="inline-flex items-center gap-1"><AppIcon icon="MapPin" :size="13" /> {{ pos.account }}</span>
+              <span v-if="pos.updated_at" class="tabular-nums">更新于 {{ formatTime(pos.updated_at) }}</span>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </UCard>
+    </template>
+
+    <!-- 添加/编辑持仓弹窗 -->
+    <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑持仓' : '添加持仓' }}</h3>
+          <form @submit.prevent="handleSubmit">
+            <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-name">名称</label>
+                <UInput id="pos-name" v-model="form.name" type="text" required placeholder="如：沪深300ETF" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-symbol">代码</label>
+                <UInput id="pos-symbol" v-model="form.symbol" type="text" placeholder="如：510300" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-type">类型</label>
+                <USelect id="pos-type" v-model="form.position_type" :items="positionTypeItems" value-key="value" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-qty">持有数量</label>
+                <UInput id="pos-qty" v-model="form.quantity" type="number" step="0.01" required placeholder="股/份" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-cost">买入均价</label>
+                <UInput id="pos-cost" v-model="form.avg_cost" type="number" step="0.0001" required placeholder="成本价" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-price">当前价格</label>
+                <UInput id="pos-price" v-model="form.current_price" type="number" step="0.0001" placeholder="留空同步后自动更新" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-account">所属账户</label>
+                <UInput id="pos-account" v-model="form.account" type="text" placeholder="如：东方财富证券" class="w-full" />
+              </div>
+              <div class="min-w-0">
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-notes">备注</label>
+                <UInput id="pos-notes" v-model="form.notes" type="text" placeholder="可选" class="w-full" />
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton type="submit" :loading="submitting" :disabled="submitting">
+                {{ submitting ? '提交中...' : (editingId ? '保存' : '添加') }}
+              </UButton>
+              <UButton type="button" variant="outline" color="neutral" @click="resetForm">重置</UButton>
+            </div>
+          </form>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- 关闭持仓确认（替代 confirm） -->
+    <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" style="color: var(--text-primary)">关闭持仓</h3>
+          <p class="mt-1 text-sm" style="color: var(--text-secondary)">确认关闭「{{ pendingDelete?.name }}」？</p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UButton color="error" @click="confirmDeletePosition">确认关闭</UButton>
+            <UButton variant="outline" color="neutral" @click="pendingDelete = null">取消</UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import {
   fetchPositionsData,
   createPositionApi,
@@ -218,22 +312,68 @@ interface Position {
 
 const loading = ref(true)
 const loadError = ref('')
+const actionError = ref('')
 const positions = ref<Position[]>([])
-const positionSearch = ref('')
-const positionTypeFilter = ref('')
-const positionAccountFilter = ref('')
-const positionStatusFilter = ref('')
+
+// 筛选条件：记住上次的选择（客户端 localStorage）
+const INVEST_FILTERS_KEY = 'sb-invest-filters'
+const readSavedFilters = () => {
+  if (!import.meta.client) return { q: '', t: '', a: '', s: '' }
+  try {
+    const raw = JSON.parse(localStorage.getItem(INVEST_FILTERS_KEY) || '{}')
+    return { q: raw.q || '', t: raw.t || '', a: raw.a || '', s: raw.s || '' }
+  } catch { return { q: '', t: '', a: '', s: '' } }
+}
+const savedFilters = readSavedFilters()
+const positionSearch = ref(savedFilters.q)
+const positionTypeFilter = ref(savedFilters.t)
+const positionAccountFilter = ref(savedFilters.a)
+const positionStatusFilter = ref(savedFilters.s)
+watch([positionSearch, positionTypeFilter, positionAccountFilter, positionStatusFilter], () => {
+  if (!import.meta.client) return
+  try {
+    localStorage.setItem(INVEST_FILTERS_KEY, JSON.stringify({
+      q: positionSearch.value, t: positionTypeFilter.value,
+      a: positionAccountFilter.value, s: positionStatusFilter.value,
+    }))
+  } catch {}
+})
 
 const uniqueAccounts = computed(() => {
   const accounts = new Set(positions.value.map(p => p.account).filter(Boolean))
   return Array.from(accounts).sort()
 })
 
+const typeFilterItems = [
+  { label: '全部类型', value: '' },
+  { label: '股票', value: 'stock' },
+  { label: '基金', value: 'fund' },
+  { label: '债券', value: 'bond' },
+  { label: '银行理财', value: 'wealth_mgmt' },
+  { label: '其他', value: 'other' },
+]
+const accountFilterItems = computed(() => [
+  { label: '全部账户', value: '' },
+  ...uniqueAccounts.value.map((a) => ({ label: a as string, value: a as string })),
+])
+const statusFilterItems = [
+  { label: '全部状态', value: '' },
+  { label: '活跃', value: 'active' },
+  { label: '已关闭', value: 'closed' },
+]
+const positionTypeItems = [
+  { label: '股票', value: 'stock' },
+  { label: '基金', value: 'fund' },
+  { label: '债券', value: 'bond' },
+  { label: '银行理财', value: 'wealth_mgmt' },
+  { label: '其他', value: 'other' },
+]
+
 const filteredPositions = computed(() => {
   return positions.value.filter(p => {
     if (positionSearch.value) {
       const search = positionSearch.value.toLowerCase()
-      if (!p.name.toLowerCase().includes(search) && 
+      if (!p.name.toLowerCase().includes(search) &&
           !(p.symbol && p.symbol.toLowerCase().includes(search))) {
         return false
       }
@@ -244,14 +384,58 @@ const filteredPositions = computed(() => {
     return true
   })
 })
+
+// 表格排序：点表头切换升/降序
+const sorting = ref<{ id: string; desc: boolean }[]>([])
+const sortedPositions = computed(() => {
+  const list = [...filteredPositions.value]
+  const s = sorting.value[0]
+  if (!s) return list
+  const dir = s.desc ? -1 : 1
+  return list.sort((a, b) => {
+    const av = (a as unknown as Record<string, unknown>)[s.id]
+    const bv = (b as unknown as Record<string, unknown>)[s.id]
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
+    return String(av ?? '').localeCompare(String(bv ?? ''), 'zh-CN') * dir
+  })
+})
+
+const columns = [
+  { accessorKey: 'name', header: '名称' },
+  { accessorKey: 'quantity', header: '数量' },
+  { accessorKey: 'avg_cost', header: '均价' },
+  { accessorKey: 'current_price', header: '现价' },
+  { accessorKey: 'market_value', header: '市值' },
+  { accessorKey: 'profit', header: '收益' },
+  { accessorKey: 'profit_pct', header: '收益率' },
+  { accessorKey: 'account', header: '账户' },
+  { accessorKey: 'id', header: '操作', enableSorting: false },
+]
+
+const positionTypeColor = (t: string) => {
+  if (t === 'stock') return 'error'
+  if (t === 'fund') return 'info'
+  if (t === 'bond') return 'success'
+  if (t === 'wealth_mgmt') return 'primary'
+  return 'neutral'
+}
+
 const summary = ref({ count: 0, total_value: 0, total_cost: 0, total_profit: 0, total_profit_pct: 0 })
 
 const syncing = ref(false)
 const syncResult = ref<any>(null)
+const syncDetail = computed(() => {
+  if (!syncResult.value) return ''
+  const parts: string[] = []
+  if (syncResult.value.updated) parts.push(`更新 ${syncResult.value.updated} 个`)
+  if (syncResult.value.failed) parts.push(`失败 ${syncResult.value.failed} 个`)
+  return parts.join('，')
+})
 
 const showAddForm = ref(false)
 const editingId = ref<number | null>(null)
 const submitting = ref(false)
+const pendingDelete = ref<Position | null>(null)
 
 const form = ref({
   name: '',
@@ -337,11 +521,11 @@ function editPosition(pos: Position) {
     notes: '',
   }
   showAddForm.value = true
-  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function handleSubmit() {
   submitting.value = true
+  actionError.value = ''
   try {
     const body = { ...form.value }
     if (editingId.value) {
@@ -353,386 +537,23 @@ async function handleSubmit() {
     resetForm()
     await loadData()
   } catch (e: any) {
-    alert(e.message || '操作失败')
+    actionError.value = e.message || '操作失败'
   } finally {
     submitting.value = false
   }
 }
 
-async function deletePosition(id: number) {
-  if (!confirm('确认关闭此持仓？')) return
+async function confirmDeletePosition() {
+  if (!pendingDelete.value) return
   try {
-    await deletePositionApi(id)
+    await deletePositionApi(pendingDelete.value.id)
+    pendingDelete.value = null
     await loadData()
   } catch (e: any) {
-    alert(e.message || '删除失败')
+    pendingDelete.value = null
+    actionError.value = e.message || '删除失败'
   }
 }
 
 onMounted(loadData)
 </script>
-
-<style scoped>
-.container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px 16px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.header h1 {
-  font-size: 1.5rem;
-  color: var(--text-primary);
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-sync {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-}
-
-.btn-sync:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.btn-secondary {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-
-.btn-icon {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 4px;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.btn-icon:hover {
-  opacity: 1;
-}
-
-.sync-result {
-  padding: 12px 16px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.9rem;
-}
-
-.sync-result.success {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: var(--success);
-}
-
-.sync-result.error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: var(--danger);
-}
-
-.close-btn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.2rem;
-}
-
-.loading-state, .error-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text-secondary);
-}
-
-.error-line {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  margin: 0 auto 16px;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.overview-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-}
-
-.overview-card .label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.overview-card .value {
-  font-size: 1.3rem;
-  font-weight: 600;
-}
-
-.overview-card.profit .value {
-  color: var(--success);
-}
-
-.overview-card.loss .value {
-  color: var(--danger);
-}
-
-.form-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 24px;
-}
-
-.form-card h3 {
-  margin-bottom: 16px;
-  color: var(--text-primary);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-group label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.form-group input,
-.form-group select {
-  padding: 10px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-}
-
-.form-group input:focus,
-.form-group select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.form-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.section {
-  margin-top: 24px;
-}
-
-.section h2 {
-  font-size: 1.1rem;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: var(--text-secondary);
-}
-
-.empty-state .hint {
-  font-size: 0.85rem;
-  margin-top: 8px;
-}
-
-.position-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.position-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: border-color 0.2s;
-}
-
-.position-card:hover {
-  border-color: var(--accent);
-}
-
-.position-card.closed {
-  opacity: 0.5;
-}
-
-.position-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.position-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.type-badge {
-  font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.type-badge.stock { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
-.type-badge.fund { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
-.type-badge.bond { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
-.type-badge.wealth_mgmt { background: rgba(168, 85, 247, 0.15); color: #A855F7; }
-.type-badge.other { background: rgba(107, 114, 128, 0.15); color: #6B7280; }
-
-.name {
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.symbol {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.position-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.position-body {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  padding: 14px 16px;
-}
-
-.metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.metric-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.metric-value {
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.text-profit { color: var(--success); }
-.text-loss { color: var(--danger); }
-
-.position-account {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.position-footer {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 16px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  border-top: 1px solid var(--border);
-}
-
-@media (max-width: 600px) {
-  .position-body {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .overview {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.filters { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }
-.filter-search { flex: 1; min-width: 150px; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; }
-.filter-search:focus { outline: none; border-color: var(--accent); }
-.filter-select { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; }
-.filter-select:focus { outline: none; border-color: var(--accent); }
-</style>

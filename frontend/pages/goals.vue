@@ -1,150 +1,208 @@
 <template>
-  <div class="container">
-    <div class="header">
-      <h1>财务目标</h1>
-      <button @click="showAddForm = !showAddForm" class="btn btn-primary">
-        {{ showAddForm ? '取消' : '+ 新建目标' }}
-      </button>
+  <div class="mx-auto min-w-0 w-full max-w-4xl px-4 py-6">
+    <!-- 页头 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="mr-auto min-w-0">
+        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">财务目标</h1>
+        <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">先定一个数，再一笔一笔往里放。</p>
+      </div>
+      <UButton @click="showAddForm = !showAddForm">
+        <AppIcon :icon="showAddForm ? 'X' : 'Plus'" :size="15" />
+        {{ showAddForm ? '取消' : '新建目标' }}
+      </UButton>
     </div>
 
-    <!-- 总览卡片 -->
-    <div class="overview">
-      <div class="overview-card">
-        <div class="label">进行中</div>
-        <div class="value">{{ summary.active_goals }}</div>
+    <!-- 操作失败提示（替代 alert） -->
+    <UAlert
+      v-if="actionError"
+      color="error"
+      variant="soft"
+      :title="actionError"
+      class="mt-4"
+      close
+      @update:open="actionError = ''"
+    />
+
+    <!-- 加载中：骨架 -->
+    <div v-if="loading" class="mt-4 space-y-4">
+      <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <USkeleton v-for="i in 4" :key="i" class="h-[76px] w-full" />
       </div>
-      <div class="overview-card">
-        <div class="label">已完成</div>
-        <div class="value income">{{ summary.completed_goals }}</div>
-      </div>
-      <div class="overview-card highlight">
-        <div class="label">总进度</div>
-        <div class="value">{{ summary.overall_progress.toFixed(1) }}%</div>
-      </div>
-      <div class="overview-card">
-        <div class="label">已积累 / 总目标</div>
-        <div class="value">¥{{ formatMoney(summary.total_current) }} / ¥{{ formatMoney(summary.total_target) }}</div>
-      </div>
+      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <USkeleton class="h-5 w-40" />
+        <USkeleton class="mt-3 h-2.5 w-full" />
+        <USkeleton class="mt-2 h-4 w-2/3" />
+      </UCard>
     </div>
 
-    <!-- 新建目标表单 -->
-    <div v-if="showAddForm" class="form-card">
-      <h3>{{ editingId ? '编辑目标' : '新建目标' }}</h3>
-      <form @submit.prevent="handleSubmit">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>目标名称</label>
-            <input v-model="form.name" type="text" required placeholder="如：买房首付" />
-          </div>
-          <div class="form-group">
-            <label>类型</label>
-            <select v-model="form.goal_type" required>
-              <option value="savings">储蓄</option>
-              <option value="purchase">购买大件</option>
-              <option value="debt_payoff">还债</option>
-              <option value="investment">投资增值</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>目标金额</label>
-            <input v-model="form.target_amount" type="number" step="0.01" min="0.01" required placeholder="100000" />
-          </div>
-          <div class="form-group">
-            <label>已积累金额</label>
-            <input v-model="form.current_amount" type="number" step="0.01" min="0" placeholder="0" />
-          </div>
-          <div class="form-group">
-            <label>截止日期</label>
-            <input v-model="form.deadline" type="date" />
-          </div>
-          <div class="form-group">
-            <label>优先级</label>
-            <select v-model="form.priority">
-              <option value="high">高</option>
-              <option value="medium">中</option>
-              <option value="low">低</option>
-            </select>
-          </div>
-          <div class="form-group full">
-            <label>备注</label>
-            <input v-model="form.notes" type="text" placeholder="可选" />
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">{{ editingId ? '更新' : '创建' }}</button>
-          <button type="button" @click="resetForm" class="btn btn-secondary">清空</button>
-        </div>
-      </form>
-    </div>
+    <template v-else>
+      <!-- 总览卡片 -->
+      <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
+          <div class="text-xs" style="color: var(--text-secondary)">进行中</div>
+          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--text-primary)">{{ summary.active_goals }}</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
+          <div class="text-xs" style="color: var(--text-secondary)">已完成</div>
+          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--success)">{{ summary.completed_goals }}</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
+          <div class="text-xs" style="color: var(--text-secondary)">总进度</div>
+          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--accent)">{{ summary.overall_progress.toFixed(1) }}%</div>
+        </UCard>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
+          <div class="text-xs" style="color: var(--text-secondary)">已积累 / 总目标</div>
+          <div class="mt-1 truncate text-lg font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatMoney(summary.total_current) }} / ¥{{ formatMoney(summary.total_target) }}</div>
+        </UCard>
+      </div>
 
-    <!-- 目标列表 -->
-    <div class="goals-list" v-if="summary.goals && summary.goals.length > 0">
-      <div
-        v-for="goal in summary.goals"
-        :key="goal.id"
-        class="goal-card"
-        :class="{ completed: goal.status === 'completed', abandoned: goal.status === 'abandoned' }"
+      <!-- 新建/编辑目标表单 -->
+      <UCard
+        v-if="showAddForm"
+        class="mt-4"
+        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        :ui="{ body: 'p-5' }"
       >
-        <div class="goal-header">
-          <div class="goal-info">
-            <span class="goal-type-badge" :class="goal.goal_type">{{ typeLabel(goal.goal_type) }}</span>
-            <h3>{{ goal.name }}</h3>
-            <span class="priority-badge" :class="goal.priority">{{ priorityLabel(goal.priority) }}</span>
+        <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑目标' : '新建目标' }}</h3>
+        <form @submit.prevent="handleSubmit">
+          <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-name">目标名称</label>
+              <UInput id="goal-name" v-model="form.name" type="text" required placeholder="如：买房首付" class="w-full" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-type">类型</label>
+              <USelect id="goal-type" v-model="form.goal_type" :items="goalTypeItems" value-key="value" class="w-full" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-target">目标金额</label>
+              <UInput id="goal-target" v-model="form.target_amount" type="number" step="0.01" min="0.01" required placeholder="100000" class="w-full" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-current">已积累金额</label>
+              <UInput id="goal-current" v-model="form.current_amount" type="number" step="0.01" min="0" placeholder="0" class="w-full" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-deadline">截止日期</label>
+              <UInput id="goal-deadline" v-model="form.deadline" type="date" class="w-full" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-priority">优先级</label>
+              <USelect id="goal-priority" v-model="form.priority" :items="priorityItems" value-key="value" class="w-full" />
+            </div>
+            <div class="min-w-0 min-[480px]:col-span-2">
+              <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-notes">备注</label>
+              <UInput id="goal-notes" v-model="form.notes" type="text" placeholder="可选" class="w-full" />
+            </div>
           </div>
-          <div class="goal-actions">
-            <button @click="openContribute(goal)" class="btn btn-sm btn-primary" v-if="goal.status === 'active'">投入</button>
-            <button @click="startEdit(goal)" class="btn btn-sm btn-secondary">编辑</button>
-            <button @click="handleDelete(goal)" class="btn btn-sm btn-danger">删除</button>
-          </div>
-        </div>
-
-        <div class="goal-progress">
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :class="{ completed: goal.progress_percent >= 100 }"
-              :style="{ width: Math.min(goal.progress_percent, 100) + '%' }"
-            ></div>
-          </div>
-          <div class="progress-info">
-            <span>¥{{ formatMoney(goal.current_amount) }} / ¥{{ formatMoney(goal.target_amount) }}</span>
-            <span class="progress-percent">{{ goal.progress_percent.toFixed(1) }}%</span>
-          </div>
-        </div>
-
-        <div class="goal-meta" v-if="goal.deadline || goal.notes">
-          <span v-if="goal.deadline" class="meta-item meta-date"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
-          <span v-if="goal.notes" class="meta-item">{{ goal.notes }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div v-else-if="!loading" class="empty-state">
-      <p>还没有设定财务目标</p>
-      <p class="hint">设定目标后，可以追踪每笔投入的进度</p>
-    </div>
-
-    <!-- 投入弹窗 -->
-    <div v-if="contributeGoal" class="modal-overlay" @click.self="contributeGoal = null">
-      <div class="modal">
-        <h3>投入「{{ contributeGoal.name }}」</h3>
-        <p class="modal-hint">当前进度：{{ contributeGoal.progress_percent.toFixed(1) }}%</p>
-        <form @submit.prevent="handleContribute">
-          <div class="form-group">
-            <label>投入金额</label>
-            <input v-model="contributeAmount" type="number" step="0.01" min="0.01" required placeholder="1000" autofocus />
-          </div>
-          <div class="form-group">
-            <label>备注（可选）</label>
-            <input v-model="contributeDesc" type="text" placeholder="如：本月工资存入" />
-          </div>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">确认投入</button>
-            <button type="button" @click="contributeGoal = null" class="btn btn-secondary">取消</button>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UButton type="submit">{{ editingId ? '更新' : '创建' }}</UButton>
+            <UButton type="button" variant="outline" color="neutral" @click="resetForm">清空</UButton>
           </div>
         </form>
+      </UCard>
+
+      <!-- 目标列表 -->
+      <div v-if="summary.goals && summary.goals.length > 0" class="mt-4 space-y-3">
+        <UCard
+          v-for="goal in summary.goals"
+          :key="goal.id"
+          class="relative"
+          :style="{
+            background: 'var(--bg-secondary)',
+            border: goal.status === 'completed' ? '1px solid var(--success)' : '1px solid var(--border)',
+            opacity: goal.status === 'abandoned' ? 0.55 : goal.status === 'completed' ? 0.85 : 1,
+          }"
+          :ui="{ body: 'p-4' }"
+        >
+          <!-- 达成庆祝：100% 只出现一次，450ms 对勾，纯 CSS -->
+          <div v-if="celebratingId === goal.id" class="celebrate" role="status" aria-label="目标达成">
+            <span class="celebrate-ring">
+              <AppIcon icon="Check" :size="26" />
+            </span>
+          </div>
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
+              <h3 class="text-base font-semibold" style="color: var(--text-primary)">{{ goal.name }}</h3>
+              <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
+              <UBadge v-if="goal.status === 'completed'" color="success" variant="soft">已完成</UBadge>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-1.5">
+              <UButton v-if="goal.status === 'active'" size="xs" @click="openContribute(goal)">投入</UButton>
+              <UButton size="xs" variant="outline" color="neutral" @click="startEdit(goal)">编辑</UButton>
+              <UButton size="xs" variant="outline" color="error" @click="pendingDelete = goal">删除</UButton>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <UProgress :model-value="Math.min(goal.progress_percent, 100)" :max="100" :color="goal.progress_percent >= 100 ? 'success' : 'primary'" />
+            <div class="mt-1.5 flex items-center justify-between text-xs tabular-nums">
+              <span style="color: var(--text-secondary)">¥{{ formatMoney(goal.current_amount) }} / ¥{{ formatMoney(goal.target_amount) }}</span>
+              <span class="font-semibold" style="color: var(--accent)">{{ goal.progress_percent.toFixed(1) }}%</span>
+            </div>
+          </div>
+
+          <div v-if="goal.deadline || goal.notes" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color: var(--text-secondary)">
+            <span v-if="goal.deadline" class="inline-flex items-center gap-1 tabular-nums"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
+            <span v-if="goal.notes">{{ goal.notes }}</span>
+          </div>
+        </UCard>
       </div>
-    </div>
+
+      <!-- 空状态 -->
+      <UCard
+        v-else
+        class="mt-4 text-center"
+        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        :ui="{ body: 'p-8' }"
+      >
+        <AppIcon icon="PiggyBank" :size="32" style="color: var(--text-tertiary)" class="mx-auto" />
+        <p class="mt-3 text-sm font-medium" style="color: var(--text-primary)">还没有设定财务目标</p>
+        <p class="mt-1 text-sm" style="color: var(--text-secondary)">定一个数，之后每笔投入都能看到进度。</p>
+        <UButton class="mt-4" @click="showAddForm = true">新建目标</UButton>
+      </UCard>
+    </template>
+
+    <!-- 投入弹窗 -->
+    <UModal :open="!!contributeGoal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) contributeGoal = null }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" style="color: var(--text-primary)">投入「{{ contributeGoal?.name }}」</h3>
+          <p class="mb-3 mt-1 text-xs tabular-nums" style="color: var(--text-secondary)">当前进度：{{ contributeGoal?.progress_percent.toFixed(1) }}%</p>
+          <form @submit.prevent="handleContribute">
+            <div class="space-y-3">
+              <div>
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="contribute-amount">投入金额</label>
+                <UInput id="contribute-amount" v-model="contributeAmount" type="number" step="0.01" min="0.01" required placeholder="1000" autofocus class="w-full" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="contribute-desc">备注（可选）</label>
+                <UInput id="contribute-desc" v-model="contributeDesc" type="text" placeholder="如：本月工资存入" class="w-full" />
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton type="submit">确认投入</UButton>
+              <UButton type="button" variant="outline" color="neutral" @click="contributeGoal = null">取消</UButton>
+            </div>
+          </form>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- 删除确认（替代 confirm） -->
+    <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
+      <template #content>
+        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" style="color: var(--text-primary)">删除目标</h3>
+          <p class="mt-1 text-sm" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」？所有投入记录也会被删除。</p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UButton color="error" @click="confirmDelete">确认删除</UButton>
+            <UButton variant="outline" color="neutral" @click="pendingDelete = null">取消</UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
   </div>
 </template>
 
@@ -161,6 +219,7 @@ const summary = ref({
 const loading = ref(true)
 const showAddForm = ref(false)
 const editingId = ref(null)
+const actionError = ref('')
 
 const defaultForm = {
   name: '', goal_type: 'savings', target_amount: null, current_amount: 0,
@@ -168,15 +227,70 @@ const defaultForm = {
 }
 const form = ref({ ...defaultForm })
 
+const goalTypeItems = [
+  { label: '储蓄', value: 'savings' },
+  { label: '购买大件', value: 'purchase' },
+  { label: '还债', value: 'debt_payoff' },
+  { label: '投资增值', value: 'investment' },
+]
+const priorityItems = [
+  { label: '高', value: 'high' },
+  { label: '中', value: 'medium' },
+  { label: '低', value: 'low' },
+]
+
 // 投入弹窗
 const contributeGoal = ref(null)
 const contributeAmount = ref(null)
 const contributeDesc = ref('')
 
+// 删除确认（替代 confirm）
+const pendingDelete = ref(null)
+
+// 达成庆祝：每个目标只庆祝一次，记录在客户端 localStorage
+const CELEBRATED_KEY = 'sb-goals-celebrated'
+const celebratingId = ref(null)
+const readCelebrated = () => {
+  if (!import.meta.client) return []
+  try {
+    const raw = JSON.parse(localStorage.getItem(CELEBRATED_KEY) || '[]')
+    return Array.isArray(raw) ? raw : []
+  } catch { return [] }
+}
+const markCelebrated = (ids) => {
+  if (!import.meta.client) return
+  try {
+    const merged = Array.from(new Set([...readCelebrated(), ...ids]))
+    localStorage.setItem(CELEBRATED_KEY, JSON.stringify(merged))
+  } catch {}
+}
+const maybeCelebrate = () => {
+  const done = readCelebrated()
+  const fresh = (summary.value.goals || []).filter(
+    (g) => g.progress_percent >= 100 && !done.includes(g.id)
+  )
+  if (!fresh.length) return
+  celebratingId.value = fresh[0].id
+  markCelebrated(fresh.map((g) => g.id))
+  setTimeout(() => { celebratingId.value = null }, 450)
+}
+
 const typeLabels = { savings: '储蓄', purchase: '购买', debt_payoff: '还债', investment: '投资' }
 const priorityLabels = { high: '高优先', medium: '中优先', low: '低优先' }
 const typeLabel = (t) => typeLabels[t] || t
 const priorityLabel = (p) => priorityLabels[p] || p
+const goalTypeColor = (t) => {
+  if (t === 'savings') return 'success'
+  if (t === 'purchase') return 'info'
+  if (t === 'debt_payoff') return 'warning'
+  if (t === 'investment') return 'primary'
+  return 'neutral'
+}
+const priorityColor = (p) => {
+  if (p === 'high') return 'error'
+  if (p === 'medium') return 'warning'
+  return 'neutral'
+}
 
 const formatMoney = (v) => {
   if (!v && v !== 0) return '0.00'
@@ -187,6 +301,7 @@ async function loadData() {
   loading.value = true
   try {
     summary.value = await fetchGoalsSummary()
+    maybeCelebrate()
   } catch (e) {
     console.error('Failed to load goals:', e)
   } finally {
@@ -195,6 +310,7 @@ async function loadData() {
 }
 
 async function handleSubmit() {
+  actionError.value = ''
   try {
     const data = { ...form.value }
     if (!data.deadline) delete data.deadline
@@ -206,7 +322,7 @@ async function handleSubmit() {
     resetForm()
     await loadData()
   } catch (e) {
-    alert('操作失败: ' + e.message)
+    actionError.value = '保存失败：' + e.message
   }
 }
 
@@ -231,13 +347,15 @@ function resetForm() {
   showAddForm.value = false
 }
 
-async function handleDelete(goal) {
-  if (!confirm(`确定删除目标「${goal.name}」？所有投入记录也会被删除。`)) return
+async function confirmDelete() {
+  if (!pendingDelete.value) return
   try {
-    await deleteGoal(goal.id)
+    await deleteGoal(pendingDelete.value.id)
+    pendingDelete.value = null
     await loadData()
   } catch (e) {
-    alert('删除失败: ' + e.message)
+    pendingDelete.value = null
+    actionError.value = '删除失败：' + e.message
   }
 }
 
@@ -249,12 +367,13 @@ function openContribute(goal) {
 
 async function handleContribute() {
   if (!contributeAmount.value || contributeAmount.value <= 0) return
+  actionError.value = ''
   try {
     await contributeToGoal(contributeGoal.value.id, contributeAmount.value, contributeDesc.value || undefined)
     contributeGoal.value = null
     await loadData()
   } catch (e) {
-    alert('投入失败: ' + e.message)
+    actionError.value = '投入失败：' + e.message
   }
 }
 
@@ -263,298 +382,36 @@ onActivated(loadData)
 </script>
 
 <style scoped>
-.container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.header h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.overview-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.2rem;
-}
-
-.overview-card.highlight {
-  border-color: var(--accent);
-  background: var(--accent-glow);
-}
-
-.overview-card .label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.4rem;
-}
-
-.overview-card .value {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.overview-card .value.income { color: #22c55e; }
-
-.form-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.form-card h3 {
-  margin-bottom: 1rem;
-  color: var(--text-primary);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.form-group.full { grid-column: 1 / -1; }
-
-.form-group label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.form-group input,
-.form-group select {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.goals-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.goal-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.2rem;
-  transition: border-color 0.15s;
-}
-
-.goal-card:hover { border-color: var(--accent); }
-.goal-card.completed { opacity: 0.7; border-color: #22c55e; }
-.goal-card.abandoned { opacity: 0.5; }
-
-.goal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.goal-info {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.goal-info h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.goal-type-badge {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 6px;
-  font-weight: 500;
-}
-
-.goal-type-badge.savings { background: #22c55e20; color: #22c55e; }
-.goal-type-badge.purchase { background: #3b82f620; color: #3b82f6; }
-.goal-type-badge.debt_payoff { background: #f59e0b20; color: #f59e0b; }
-.goal-type-badge.investment { background: #8b5cf620; color: #8b5cf6; }
-
-.priority-badge {
-  font-size: 0.7rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-}
-
-.priority-badge.high { background: #ef444420; color: #ef4444; }
-.priority-badge.medium { background: #f59e0b20; color: #f59e0b; }
-.priority-badge.low { background: #6b728020; color: #6b7280; }
-
-.goal-actions {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.goal-progress { margin-bottom: 0.8rem; }
-
-.progress-bar {
-  height: 8px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.05));
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 0.4rem;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), #60a5fa);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-fill.completed {
-  background: linear-gradient(90deg, #22c55e, #4ade80);
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-.progress-percent {
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.goal-meta {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.meta-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-secondary);
-}
-
-.empty-state .hint {
-  font-size: 0.85rem;
-  margin-top: 0.5rem;
-  opacity: 0.7;
-}
-
-/* Modal */
-.modal-overlay {
-  position: fixed;
+/* 达成庆祝：对勾弹入 + 光环扩散，450ms 内收尾，纯 CSS 无库 */
+.celebrate {
+  position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  pointer-events: none;
+  z-index: 10;
 }
-
-.modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.5rem;
-  width: 90%;
-  max-width: 400px;
-}
-
-.modal h3 {
-  margin-bottom: 0.3rem;
-  color: var(--text-primary);
-}
-
-.modal-hint {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-}
-
-/* Buttons */
-.btn {
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: all 0.15s;
-}
-
-.btn-primary {
-  background: var(--accent);
+.celebrate-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
   color: var(--accent-ink);
+  background: var(--success);
+  animation: celebrate-pop 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes celebrate-pop {
+  0% { opacity: 0; transform: scale(0.4); box-shadow: 0 0 0 0 var(--success-soft); }
+  55% { opacity: 1; transform: scale(1.08); box-shadow: 0 0 0 14px var(--success-soft); }
+  100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 transparent; }
 }
 
-.btn-primary:hover { opacity: 0.9; }
-
-.btn-secondary {
-  background: var(--bg-tertiary, rgba(255,255,255,0.1));
-  color: var(--text-primary);
-}
-
-.btn-danger {
-  background: #ef444420;
-  color: #ef4444;
-}
-
-.btn-sm {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8rem;
-}
-
-@media (max-width: 640px) {
-  .form-grid { grid-template-columns: 1fr; }
-  .goal-header { flex-direction: column; gap: 0.8rem; }
-  .overview { grid-template-columns: 1fr 1fr; }
+@media (prefers-reduced-motion: reduce) {
+  .celebrate-ring {
+    animation: none;
+  }
 }
 </style>
