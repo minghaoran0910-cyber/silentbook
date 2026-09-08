@@ -75,19 +75,16 @@
 
       <div class="form-group">
         <label>分类</label>
-        <select v-model="form.category" required>
-          <option value="">选择分类</option>
-          <option value="餐饮">餐饮</option>
-          <option value="交通">交通</option>
-          <option value="购物">购物</option>
-          <option value="娱乐">娱乐</option>
-          <option value="生活">生活</option>
-          <option value="医疗">医疗</option>
-          <option value="教育">教育</option>
-          <option value="投资">投资</option>
-          <option value="工资">工资</option>
-          <option value="其他">其他</option>
-        </select>
+        <el-select
+          v-model="form.category"
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或输入新分类"
+          @change="onCategoryChange"
+        >
+          <el-option v-for="c in categoryOptions" :key="c" :value="c" :label="c" />
+        </el-select>
       </div>
 
       <div class="form-group">
@@ -130,9 +127,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { createTransaction, parseNotification } from '~/utils/api'
+import { getAllKnownCategories, assignAutoStyle } from '~/utils/icons'
 
 const router = useRouter()
 
@@ -152,6 +150,19 @@ const form = ref({
 const submitting = ref(false)
 const message = ref('')
 const messageType = ref('success')
+
+// 已知全量分类：输入新词时自动配色并落盘（颜色稳定不跳变）
+const customTick = ref(0)
+const categoryOptions = computed(() => {
+  void customTick.value
+  return getAllKnownCategories()
+})
+const onCategoryChange = (val) => {
+  const name = (val || '').trim()
+  if (!name) return
+  assignAutoStyle(name)
+  customTick.value++
+}
 
 const submitTransaction = async () => {
   if (!form.value.amount || form.value.amount <= 0) {

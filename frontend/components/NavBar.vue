@@ -94,7 +94,7 @@ const links = [
 .brand-mark {
   width: 14px;
   height: 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   flex-shrink: 0;
 }

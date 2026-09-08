@@ -17,10 +17,10 @@
         <div class="form-row">
           <div class="form-group">
             <label>类型</label>
-            <select v-model="form.transaction_type" required>
-              <option value="expense">支出</option>
-              <option value="income">收入</option>
-            </select>
+            <el-select v-model="form.transaction_type" style="width: 100%">
+              <el-option value="expense" label="支出" />
+              <el-option value="income" label="收入" />
+            </el-select>
           </div>
           <div class="form-group">
             <label>金额</label>
@@ -31,31 +31,28 @@
         <div class="form-row">
           <div class="form-group">
             <label>账户</label>
-            <select v-model="form.account" required>
-              <option value="cmb">招商银行</option>
-              <option value="icbc">工商银行</option>
-              <option value="ccb">建设银行</option>
-              <option value="alipay">支付宝</option>
-              <option value="wechat_pay">微信支付</option>
-              <option value="cash">现金</option>
-              <option value="other">其他</option>
-            </select>
+            <el-select v-model="form.account" style="width: 100%">
+              <el-option value="cmb" label="招商银行" />
+              <el-option value="icbc" label="工商银行" />
+              <el-option value="ccb" label="建设银行" />
+              <el-option value="alipay" label="支付宝" />
+              <el-option value="wechat_pay" label="微信支付" />
+              <el-option value="cash" label="现金" />
+              <el-option value="other" label="其他" />
+            </el-select>
           </div>
           <div class="form-group">
             <label>分类</label>
-            <select v-model="form.category" required>
-              <option value="餐饮">餐饮</option>
-              <option value="交通">交通</option>
-              <option value="购物">购物</option>
-              <option value="娱乐">娱乐</option>
-              <option value="生活">生活</option>
-              <option value="医疗">医疗</option>
-              <option value="教育">教育</option>
-              <option value="投资">投资</option>
-              <option value="金融">金融</option>
-              <option value="通讯">通讯</option>
-              <option value="其他">其他</option>
-            </select>
+            <el-select
+              v-model="form.category"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入新分类"
+              @change="onCategoryCreate"
+            >
+              <el-option v-for="c in allCategories" :key="c" :value="c" :label="c" />
+            </el-select>
           </div>
         </div>
 
@@ -117,21 +114,9 @@
         <el-option value="cash" label="现金" />
       </el-select>
 
-      <el-select v-model="filterCategory" @change="loadTransactions" placeholder="全部分类" class="filter-el">
+      <el-select v-model="filterCategory" @change="loadTransactions" placeholder="全部分类" class="filter-el" filterable clearable>
         <el-option value="" label="全部分类" />
-        <el-option value="餐饮" label="餐饮" />
-        <el-option value="交通" label="交通" />
-        <el-option value="购物" label="购物" />
-        <el-option value="娱乐" label="娱乐" />
-        <el-option value="生活" label="生活" />
-        <el-option value="通讯" label="通讯" />
-        <el-option value="医疗" label="医疗" />
-        <el-option value="教育" label="教育" />
-        <el-option value="投资" label="投资" />
-        <el-option value="金融" label="金融" />
-        <el-option value="转账" label="转账" />
-        <el-option value="工资" label="工资" />
-        <el-option value="其他" label="其他" />
+        <el-option v-for="c in allCategories" :key="c" :value="c" :label="c" />
       </el-select>
 
       <el-select v-model="filterType" @change="loadTransactions" placeholder="全部类型" class="filter-el filter-el-sm">
@@ -148,27 +133,30 @@
       </el-select>
     </div>
 
-    <!-- Loading skeleton -->
+    <!-- Loading：el-skeleton，布局按现有 skeleton-list 对齐 -->
     <div v-if="loading" class="skeleton-list">
-      <div v-for="i in 6" :key="i" class="skeleton-item">
-        <div class="skeleton-icon skeleton-pulse"></div>
-        <div class="skeleton-info">
-          <div class="skeleton-line skeleton-pulse" style="width: 60%"></div>
-          <div class="skeleton-line skeleton-pulse short" style="width: 40%"></div>
-        </div>
-        <div class="skeleton-amount skeleton-pulse"></div>
-      </div>
+      <el-skeleton v-for="i in 6" :key="i" animated class="skeleton-item">
+        <template #template>
+          <el-skeleton-item variant="image" class="skeleton-icon" />
+          <div class="skeleton-info">
+            <el-skeleton-item variant="text" style="width: 60%" />
+            <el-skeleton-item variant="text" style="width: 40%" />
+          </div>
+          <el-skeleton-item variant="text" class="skeleton-amount" />
+        </template>
+      </el-skeleton>
     </div>
 
-    <div v-else-if="transactions.length === 0" class="empty">
-      <div class="empty-icon"><AppIcon icon="Package" :size="36" /></div>
-      <div class="empty-text">暂无交易记录</div>
-      <button @click="showAddForm = true" class="btn btn-primary" style="margin-top: 1rem;">记一笔</button>
-    </div>
+    <!-- 空态：el-empty，保留文案与插画位 -->
+    <el-empty v-else-if="transactions.length === 0" description="暂无交易记录" class="tx-empty">
+      <template #image>
+        <div class="empty-icon"><AppIcon icon="Package" :size="36" /></div>
+      </template>
+      <el-button type="primary" @click="showAddForm = true">记一笔</el-button>
+    </el-empty>
 
-    <div v-else class="transaction-list">
-      <div v-for="(tx, i) in transactions" :key="tx.id" class="transaction-item reveal"
-           :style="{ '--reveal-delay': Math.min(i, 12) * 40 + 'ms' }"
+    <TransitionGroup v-else name="tx-list" tag="div" class="transaction-list">
+      <div v-for="tx in transactions" :key="tx.id" class="transaction-item"
            :class="{ editing: editingId === tx.id }"
            @click="startEdit(tx)">
         <div class="tx-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
@@ -188,7 +176,16 @@
         </div>
         <button @click.stop="handleDelete(tx.id)" class="tx-delete" title="删除">×</button>
       </div>
-    </div>
+    </TransitionGroup>
+
+    <!-- 删除确认：el-dialog，颜色经 --el-* 桥接自动跟主题 -->
+    <el-dialog v-model="deleteDialogVisible" title="删除交易" width="400" align-center>
+      <span>确定要删除这条交易记录吗？此操作不可撤销。</span>
+      <template #footer>
+        <el-button @click="deleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmDelete">删除</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 编辑弹窗 -->
     <div v-if="editingId" class="edit-overlay" @click.self="cancelEdit">
@@ -198,10 +195,10 @@
           <div class="form-row">
             <div class="form-group">
               <label>类型</label>
-              <select v-model="editForm.transaction_type">
-                <option value="expense">支出</option>
-                <option value="income">收入</option>
-              </select>
+              <el-select v-model="editForm.transaction_type" style="width: 100%">
+                <el-option value="expense" label="支出" />
+                <el-option value="income" label="收入" />
+              </el-select>
             </div>
             <div class="form-group">
               <label>金额</label>
@@ -211,31 +208,28 @@
           <div class="form-row">
             <div class="form-group">
               <label>账户</label>
-              <select v-model="editForm.account">
-                <option value="cmb">招商银行</option>
-                <option value="icbc">工商银行</option>
-                <option value="ccb">建设银行</option>
-                <option value="alipay">支付宝</option>
-                <option value="wechat_pay">微信支付</option>
-                <option value="cash">现金</option>
-                <option value="other">其他</option>
-              </select>
+              <el-select v-model="editForm.account" style="width: 100%">
+                <el-option value="cmb" label="招商银行" />
+                <el-option value="icbc" label="工商银行" />
+                <el-option value="ccb" label="建设银行" />
+                <el-option value="alipay" label="支付宝" />
+                <el-option value="wechat_pay" label="微信支付" />
+                <el-option value="cash" label="现金" />
+                <el-option value="other" label="其他" />
+              </el-select>
             </div>
             <div class="form-group">
               <label>分类</label>
-              <select v-model="editForm.category">
-                <option value="餐饮">餐饮</option>
-                <option value="交通">交通</option>
-                <option value="购物">购物</option>
-                <option value="娱乐">娱乐</option>
-                <option value="生活">生活</option>
-                <option value="医疗">医疗</option>
-                <option value="教育">教育</option>
-                <option value="投资">投资</option>
-                <option value="金融">金融</option>
-                <option value="通讯">通讯</option>
-                <option value="其他">其他</option>
-              </select>
+              <el-select
+                v-model="editForm.category"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择或输入新分类"
+                @change="onCategoryCreate"
+              >
+                <el-option v-for="c in allCategories" :key="c" :value="c" :label="c" />
+              </el-select>
             </div>
           </div>
           <div class="form-group full-width">
@@ -257,7 +251,7 @@
 <script setup>
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { fetchTransactions, createTransaction, updateTransaction, deleteTransaction } from '~/utils/api'
-import { getCategoryIcon } from '~/utils/icons'
+import { getCategoryIcon, getAllKnownCategories, assignAutoStyle } from '~/utils/icons'
 
 const transactions = ref([])
 const loading = ref(true)
@@ -274,6 +268,19 @@ const summaryIncome = computed(() =>
 const summaryExpense = computed(() => 
   transactions.value.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + t.amount, 0)
 )
+
+// 已知全量分类（内置 + 生产种子 + 用户自定义，去重排序）；新建词自动配色落盘
+const customTick = ref(0)
+const allCategories = computed(() => {
+  void customTick.value
+  return getAllKnownCategories()
+})
+const onCategoryCreate = (val) => {
+  const name = (val || '').trim()
+  if (!name) return
+  assignAutoStyle(name)
+  customTick.value++
+}
 
 // 手动记账
 const showAddForm = ref(false)
@@ -408,13 +415,28 @@ const formatTime = (time) => {
   return date.toLocaleDateString('zh-CN')
 }
 
-const handleDelete = async (id) => {
-  if (!confirm('确定要删除这条交易记录吗？')) return
+// 删除确认（el-dialog）
+const deleteDialogVisible = ref(false)
+const pendingDeleteId = ref(null)
+const deleting = ref(false)
+
+const handleDelete = (id) => {
+  pendingDeleteId.value = id
+  deleteDialogVisible.value = true
+}
+
+const confirmDelete = async () => {
+  if (!pendingDeleteId.value) return
+  deleting.value = true
   try {
-    await deleteTransaction(id)
+    await deleteTransaction(pendingDeleteId.value)
+    deleteDialogVisible.value = false
+    pendingDeleteId.value = null
     await loadTransactions()
   } catch (error) {
     console.error('删除失败:', error)
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -450,7 +472,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 .btn {
   padding: 0.5rem 1.5rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
@@ -484,7 +506,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 .add-form {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -516,20 +538,19 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   font-size: 0.85rem;
 }
 
-.form-group input,
-.form-group select {
+.form-group input {
   padding: 0.5rem 0.75rem;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 0.95rem;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.form-group input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .form-actions {
@@ -544,7 +565,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   padding: 1rem 1.5rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   margin-bottom: 1.5rem;
 }
 
@@ -577,15 +598,6 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   align-items: center;
 }
 
-.filters select {
-  padding: 0.5rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
 .filter-el {
   width: 132px;
 }
@@ -603,7 +615,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   padding: 0.5rem 1rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   user-select: none;
 }
 
@@ -622,10 +634,10 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 
 .noise-filter-toggle:has(input:checked) {
   border-color: var(--accent);
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+  background: var(--accent-soft);
 }
 
-/* Skeleton loading */
+/* Skeleton：el-skeleton，布局按原 skeleton-list 对齐 */
 .skeleton-list {
   display: flex;
   flex-direction: column;
@@ -638,14 +650,14 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   gap: 1rem;
   padding: 1rem;
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
-.skeleton-icon {
+.skeleton-item .el-skeleton__image.skeleton-icon {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  border-radius: var(--radius-lg);
   flex-shrink: 0;
 }
 
@@ -656,41 +668,17 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   gap: 0.4rem;
 }
 
-.skeleton-line {
-  height: 14px;
-  border-radius: 4px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.05));
-}
-
-.skeleton-line.short {
-  height: 10px;
-}
-
-.skeleton-amount {
+.skeleton-item .el-skeleton__text.skeleton-amount {
   width: 80px;
   height: 20px;
-  border-radius: 4px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.05));
   flex-shrink: 0;
 }
 
-.skeleton-pulse {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
-}
-
-.empty {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-secondary);
+.tx-empty {
+  padding: 3rem 1rem;
 }
 
 .empty-icon { display: flex; justify-content: center; margin-bottom: 0.5rem; color: var(--text-tertiary); }
-.empty-text { font-size: 1.1rem; }
 
 /* Transaction list */
 .transaction-list {
@@ -705,7 +693,8 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   gap: 1rem;
   padding: 1rem;
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
   transition: all 0.2s;
   cursor: pointer;
 }
@@ -721,7 +710,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 .tx-icon {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -770,7 +759,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition: all 0.2s;
 }
@@ -781,7 +770,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 
 .tx-delete:hover {
   color: var(--danger);
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--danger-soft);
 }
 
 /* Edit modal */
@@ -798,7 +787,7 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 .edit-modal {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 2rem;
   width: 90%;
   max-width: 500px;
@@ -818,8 +807,19 @@ onActivated(init) // 客户端路由导航回来时也重新加载
 
 @media (max-width: 768px) {
   .form-row { flex-direction: column; }
-  .filters { flex-direction: column; }
+  .filters { flex-direction: column; align-items: stretch; }
   .summary-bar { flex-wrap: wrap; gap: 1rem; }
   .tx-meta { flex-wrap: wrap; gap: 0.5rem; }
+}
+
+@media (max-width: 480px) {
+  .filter-el,
+  .filter-el-sm { width: 100%; }
+  .edit-modal { width: calc(100vw - 2rem); padding: 1.25rem; }
+}
+
+/* 触屏无 hover：删除按钮常显 */
+@media (hover: none) {
+  .transaction-item .tx-delete { opacity: 1; }
 }
 </style>

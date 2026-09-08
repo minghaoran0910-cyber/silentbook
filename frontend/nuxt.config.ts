@@ -32,6 +32,8 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   app: {
+    pageTransition: { name: 'sb-page', mode: 'out-in' },
+    layoutTransition: { name: 'sb-layout', mode: 'out-in' },
     head: {
       title: 'SilentBook - 财务自由，不是终点',
       meta: [

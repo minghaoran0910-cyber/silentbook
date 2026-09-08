@@ -8,34 +8,34 @@
     <!-- 核心指标 -->
     <div class="stats-head">
       <span class="stats-note">以人民币记账{{ displayCurrency === 'CNY' ? '' : ` · 按${fxDate || '实时'}汇率折算为 ${displayCurrency} 展示` }}</span>
-      <select v-model="displayCurrency" class="currency-select" aria-label="展示币种">
-        <option v-for="c in currencyOptions" :key="c" :value="c">{{ fxSymbols[c] || '' }} {{ c }}</option>
-      </select>
+      <el-select v-model="displayCurrency" class="currency-select" aria-label="展示币种" style="width: 132px">
+        <el-option v-for="c in currencyOptions" :key="c" :value="c" :label="`${fxSymbols[c] || ''} ${c}`" />
+      </el-select>
     </div>
     <div class="stats">
       <div class="stat-card reveal" style="--reveal-delay: 0ms">
         <div class="stat-label">净资产</div>
-        <div class="stat-value">{{ fmtMoney(stats.net_assets) }}</div>
+        <div class="stat-value tnum">{{ netAssets.display.value }}</div>
       </div>
       <div class="stat-card reveal" style="--reveal-delay: 60ms">
         <div class="stat-label">总资产</div>
-        <div class="stat-value income">{{ fmtMoney(stats.total_assets || 0) }}</div>
+        <div class="stat-value income tnum">{{ totalAssets.display.value }}</div>
       </div>
       <div class="stat-card reveal" style="--reveal-delay: 120ms">
         <div class="stat-label">总负债</div>
-        <div class="stat-value expense">{{ fmtMoney(stats.total_liabilities || 0) }}</div>
+        <div class="stat-value expense tnum">{{ totalLiabilities.display.value }}</div>
       </div>
       <div class="stat-card reveal" style="--reveal-delay: 180ms">
         <div class="stat-label">本月支出</div>
-        <div class="stat-value expense">{{ fmtMoney(stats.monthly_expenses) }}</div>
+        <div class="stat-value expense tnum">{{ monthlyExpenses.display.value }}</div>
       </div>
       <div class="stat-card reveal" style="--reveal-delay: 240ms">
         <div class="stat-label">本月收入</div>
-        <div class="stat-value income">{{ fmtMoney(stats.monthly_income) }}</div>
+        <div class="stat-value income tnum">{{ monthlyIncome.display.value }}</div>
       </div>
       <div class="stat-card reveal" style="--reveal-delay: 300ms">
         <div class="stat-label">交易笔数</div>
-        <div class="stat-value">{{ stats.transaction_count }}</div>
+        <div class="stat-value tnum">{{ txCount.display.value }}</div>
       </div>
     </div>
 
@@ -253,6 +253,7 @@ import sanitizeHtml from 'sanitize-html'
 import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities, fetchFxRates, fetchFxCurrencies } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 import { useECharts, axisCommon, tooltipCommon } from '~/composables/useECharts'
+import { useCountUp } from '~/composables/useCountUp'
 
 const stats = ref({
   net_assets: 0,
@@ -312,6 +313,14 @@ const loadFx = async () => {
 }
 
 watch(displayCurrency, loadFx)
+
+// 首页 stat 数字 count-up：金额×5 + 整数×1，reduced-motion 下直接终值
+const netAssets = useCountUp(() => Number(stats.value.net_assets) || 0, 'money', (v) => fmtMoney(v))
+const totalAssets = useCountUp(() => Number(stats.value.total_assets) || 0, 'money', (v) => fmtMoney(v))
+const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) || 0, 'money', (v) => fmtMoney(v))
+const monthlyExpenses = useCountUp(() => Number(stats.value.monthly_expenses) || 0, 'money', (v) => fmtMoney(v))
+const monthlyIncome = useCountUp(() => Number(stats.value.monthly_income) || 0, 'money', (v) => fmtMoney(v))
+const txCount = useCountUp(() => Number(stats.value.transaction_count) || 0, 'int')
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
 const recentTransactions = ref([])
@@ -526,7 +535,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .stat-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   text-align: center;
   transition: all 0.2s;
@@ -534,7 +543,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 
 .stat-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 20px rgba(180, 83, 9, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-label {
@@ -576,7 +585,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .btn {
   padding: 0.5rem 1.5rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
@@ -605,7 +614,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .insight-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
 }
 
@@ -653,7 +662,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .insight-content :deep(code) {
   background: var(--bg-tertiary);
   padding: 0.1rem 0.3rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9em;
 }
 
@@ -672,32 +681,32 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 
 /* 资产概览 */
 .asset-section { margin-bottom: 3rem; }
-.asset-summary { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+.asset-summary { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; }
 .asset-bar-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .asset-bar-label { color: var(--text-secondary); font-size: 0.9rem; }
 .asset-bar-value { font-size: 1.5rem; font-weight: 700; }
 .asset-bar-value.income { color: var(--success); }
 .asset-bar-value.expense { color: var(--danger); }
-.asset-compare-bar { display: flex; height: 24px; border-radius: 12px; overflow: hidden; gap: 2px; }
+.asset-compare-bar { display: flex; height: 24px; border-radius: var(--radius-lg); overflow: hidden; gap: 2px; }
 .asset-fill { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--fill-ink); font-weight: 500; transition: width 0.5s; min-width: 0; overflow: hidden; white-space: nowrap; }
 .asset-green { background: var(--success); }
 .asset-red { background: var(--danger); }
 .asset-breakdown { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-.asset-detail-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; }
+.asset-detail-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .asset-detail-icon { display: inline-flex; flex-shrink: 0; }
 .asset-detail-name { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
-.asset-detail-bar-bg { flex: 1; height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden; }
-.asset-detail-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.asset-detail-bar-bg { flex: 1; height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: var(--radius-sm); overflow: hidden; }
+.asset-detail-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s; }
 .asset-detail-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 70px; text-align: right; }
 .asset-detail-count { color: var(--text-secondary); font-size: 0.75rem; min-width: 30px; }
-.liability-mini { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+.liability-mini { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; }
 .liability-mini-title { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; font-size: 0.9rem; }
 .liability-mini-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; }
 .liability-mini-icon { display: inline-flex; flex-shrink: 0; }
 .liability-mini-info { flex: 1; min-width: 0; }
 .liability-mini-name { color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.2rem; }
-.liability-mini-bar { height: 4px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: 2px; overflow: hidden; }
-.liability-mini-fill { height: 100%; background: var(--success); border-radius: 2px; transition: width 0.3s; }
+.liability-mini-bar { height: 4px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: var(--radius-sm); overflow: hidden; }
+.liability-mini-fill { height: 100%; background: var(--success); border-radius: var(--radius-sm); transition: width 0.3s; }
 .liability-mini-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
 .liability-mini-total { color: var(--text-secondary); font-weight: 400; }
 
@@ -713,12 +722,12 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
   padding: 0.8rem 1rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   transition: all 0.2s;
 }
 .recent-item:hover { border-color: var(--accent); }
 .recent-icon {
-  width: 36px; height: 36px; border-radius: 10px;
+  width: 36px; height: 36px; border-radius: var(--radius-md);
   display: flex; align-items: center; justify-content: center;
   font-size: 1.1rem; flex-shrink: 0;
 }
@@ -748,7 +757,7 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
   gap: 0.75rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.6rem 1rem;
 }
 .cat-icon { display: inline-flex; flex-shrink: 0; }
@@ -757,28 +766,28 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
   flex: 1;
   height: 8px;
   background: var(--bg-tertiary, rgba(255,255,255,0.05));
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
-.cat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.cat-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s; }
 .cat-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
 .cat-percent { color: var(--text-secondary); font-size: 0.8rem; min-width: 50px; text-align: right; }
 
 /* 月报 */
 .monthly-section { margin-bottom: 3rem; }
 .monthly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-.monthly-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; text-align: center; }
+.monthly-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.2rem; text-align: center; }
 .monthly-label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.3rem; }
 .monthly-value { color: var(--text-primary); font-size: 1.4rem; font-weight: 600; }
 .monthly-value.income { color: var(--success); }
 .monthly-value.expense { color: var(--danger); }
-.weekly-comparison { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; }
+.weekly-comparison { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.2rem; }
 .weekly-header { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; }
 .weekly-bars { display: flex; flex-direction: column; gap: 0.5rem; }
 .weekly-item { display: flex; align-items: center; gap: 0.75rem; }
 .weekly-label { color: var(--text-secondary); font-size: 0.85rem; min-width: 50px; }
 .weekly-bar-group { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.weekly-bar { height: 6px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+.weekly-bar { height: 6px; border-radius: var(--radius-sm); min-width: 2px; transition: width 0.3s; }
 .weekly-bar.income { background: var(--success); }
 .weekly-bar.expense { background: var(--danger); }
 .weekly-text { color: var(--text-secondary); font-size: 0.8rem; min-width: 120px; text-align: right; }
@@ -786,14 +795,14 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 .feature-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 2rem;
   transition: all 0.2s;
 }
 
 .feature-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 20px rgba(180, 83, 9, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .feature-card h3 {

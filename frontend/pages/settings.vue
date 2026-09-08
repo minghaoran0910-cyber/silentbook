@@ -27,11 +27,11 @@
       <div class="mode-selector">
         <div class="setting-row">
           <span>分析模式</span>
-          <select v-model="agentMode" class="select" @change="saveAgentMode">
-            <option value="auto">自动（优先 OpenClaw）</option>
-            <option value="openclaw">OpenClaw（三 Agent）</option>
-            <option value="local">本地 LLM</option>
-          </select>
+          <el-select v-model="agentMode" style="width: 220px" @change="saveAgentMode" aria-label="分析模式">
+            <el-option value="auto" label="自动（优先 OpenClaw）" />
+            <el-option value="openclaw" label="OpenClaw（三 Agent）" />
+            <el-option value="local" label="本地 LLM" />
+          </el-select>
         </div>
       </div>
       
@@ -214,12 +214,29 @@
         <div class="demo-title">分类颜色 <span class="demo-hint">未知分类自动配色，可手动覆盖</span></div>
         <p class="section-desc">给任意分类（含 AI 自建的）指定颜色，图标按关键词自动匹配</p>
         <div class="color-edit-row">
-          <input v-model="colorEdit.name" type="text" placeholder="分类名，如：宠物医疗" list="sb-cat-list" />
+          <input v-model="colorEdit.name" type="text" placeholder="分类名，如：宠物医疗" list="sb-cat-list" @change="onColorEditName" />
           <datalist id="sb-cat-list">
             <option v-for="c in knownCategories" :key="c" :value="c" />
           </datalist>
-          <input v-model="colorEdit.color" type="color" class="color-swatch" aria-label="选择颜色" />
+          <el-select v-model="colorEdit.icon" placeholder="图标" class="icon-picker" aria-label="选择图标">
+            <el-option v-for="opt in iconChoices" :key="opt.value" :value="opt.value" :label="opt.label">
+              <span class="icon-option"><AppIcon :icon="opt.value" :size="15" /> {{ opt.label }}</span>
+            </el-option>
+          </el-select>
+          <input v-model="colorEdit.color" type="color" class="color-swatch" aria-label="微调颜色" />
           <button @click="saveColorEdit" class="btn-secondary" :disabled="!colorEdit.name.trim()">保存</button>
+        </div>
+        <div class="palette-row" role="group" aria-label="预设色板">
+          <button
+            v-for="c in categoryPalette"
+            :key="c"
+            class="palette-dot"
+            :class="{ active: colorEdit.color.toUpperCase() === c.toUpperCase() }"
+            :style="{ background: c }"
+            :title="c"
+            :aria-label="'选择颜色 ' + c"
+            @click="colorEdit.color = c"
+          />
         </div>
         <div v-if="customColorList.length > 0" class="custom-color-list">
           <div v-for="item in customColorList" :key="item.name" class="custom-color-item">
@@ -248,7 +265,7 @@
 <script setup>
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth, fetchDemoStatus, seedDemoData } from '~/utils/api'
-import { categoryIcons, getCategoryIcon, loadCustomCategoryStyles, saveCustomCategoryStyle, resetCustomCategoryStyle } from '~/utils/icons'
+import { categoryIcons, getCategoryIcon, loadCustomCategoryStyles, saveCustomCategoryStyle, resetCustomCategoryStyle, CATEGORY_PALETTE, ICON_CHOICES, getAllKnownCategories } from '~/utils/icons'
 
 const sources = ref([
   { id: 'cmb', name: '招商银行', icon: 'Bank', enabled: true },
@@ -270,21 +287,31 @@ const effectiveApiBase = ref('/api')
 const importResult = ref(null)
 
 // 分类颜色自定义（覆盖内置精选与自动配色，存 localStorage）
-const colorEdit = ref({ name: '', color: '#0EA5E9' })
+const colorEdit = ref({ name: '', color: '#0D9488', icon: 'Tag' })
 const customColorList = ref([])
-const knownCategories = computed(() => Object.keys(categoryIcons))
+const categoryPalette = CATEGORY_PALETTE
+const iconChoices = ICON_CHOICES
+const knownCategories = computed(() => getAllKnownCategories())
 
 const refreshCustomColors = () => {
   const all = loadCustomCategoryStyles()
   customColorList.value = Object.entries(all).map(([name, style]) => ({ name, style }))
 }
 
-const saveColorEdit = () => {
+// 输入分类名后，预填当前生效的 icon+color（自定义 > 内置 > 自动），再由用户点选覆盖
+const onColorEditName = () => {
   const name = colorEdit.value.name.trim()
   if (!name) return
   const current = getCategoryIcon(name)
-  saveCustomCategoryStyle(name, { icon: current.icon, color: colorEdit.value.color })
-  colorEdit.value = { name: '', color: '#0EA5E9' }
+  colorEdit.value.icon = current.icon || 'Tag'
+  colorEdit.value.color = current.color || '#0D9488'
+}
+
+const saveColorEdit = () => {
+  const name = colorEdit.value.name.trim()
+  if (!name) return
+  saveCustomCategoryStyle(name, { icon: colorEdit.value.icon || 'Tag', color: colorEdit.value.color })
+  colorEdit.value = { name: '', color: '#0D9488', icon: 'Tag' }
   refreshCustomColors()
 }
 
@@ -621,7 +648,7 @@ h1 {
 .settings-section {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
 }
@@ -649,7 +676,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-primary);
 }
 
@@ -746,7 +773,7 @@ h1 {
   padding: 0.5rem 0.75rem;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   width: 240px;
 }
@@ -754,20 +781,7 @@ h1 {
 .input:focus {
   outline: none;
   border-color: var(--accent);
-}
-
-.select {
-  padding: 0.5rem 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.select:focus {
-  outline: none;
-  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .agent-icon {
@@ -867,7 +881,7 @@ h1 {
   padding: 0.75rem 1.5rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
@@ -885,7 +899,7 @@ h1 {
 .import-result {
   margin-top: 1rem;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
 }
 
@@ -906,7 +920,7 @@ h1 {
   margin: 1rem 0;
   padding: 1rem;
   background: var(--bg-primary);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -949,7 +963,7 @@ h1 {
   padding: 0.5rem;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -964,7 +978,7 @@ h1 {
   background: var(--accent);
   color: var(--accent-ink);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
 }
@@ -979,7 +993,7 @@ h1 {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -991,7 +1005,7 @@ h1 {
 .config-message {
   margin-top: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
 }
 
@@ -1010,7 +1024,7 @@ h1 {
   margin: 1rem 0;
   padding: 1rem;
   background: var(--bg-primary);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -1024,7 +1038,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-top: 0.5rem;
 }
 
@@ -1044,7 +1058,7 @@ h1 {
 .btn-small {
   padding: 0.3rem 0.75rem;
   font-size: 0.85rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   cursor: pointer;
   background: var(--bg-secondary);
@@ -1070,7 +1084,7 @@ h1 {
   padding: 0.75rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -1129,7 +1143,7 @@ h1 {
   font-weight: 500;
   color: var(--success);
   background: var(--success-soft);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0.1rem 0.4rem;
   margin-left: 0.4rem;
 }
@@ -1167,6 +1181,37 @@ h1 {
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
   cursor: pointer;
+}
+
+.palette-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.palette-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.palette-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--text-primary);
+}
+
+.icon-picker {
+  width: 130px;
+}
+
+.icon-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .custom-color-list {
@@ -1216,4 +1261,7 @@ h1 {
   .stats-grid {
     grid-template-columns: 1fr;
   }
+  .setting-row { flex-wrap: wrap; gap: 0.5rem; }
+  .setting-row .el-select { width: 100% !important; }
+  .data-actions { flex-wrap: wrap; }
 }
