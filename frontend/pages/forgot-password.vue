@@ -1,85 +1,184 @@
 <template>
-  <div class="auth-container">
-    <div class="auth-card">
-      <div class="auth-header">
-        <h1>密码找回</h1>
-        <p>输入注册邮箱或手机号，获取重置链接</p>
+  <div
+    class="auth-page flex min-h-screen items-center justify-center px-4 py-8"
+    :style="{ background: 'var(--bg-primary)' }"
+  >
+    <UCard
+      class="auth-enter w-full max-w-md"
+      :style="{
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+      }"
+      :ui="{ body: 'p-6 sm:p-10' }"
+    >
+      <div class="mb-6 text-center">
+        <h1
+          class="brand-title text-xl font-semibold"
+          :style="{ color: 'var(--accent)' }"
+        >
+          密码找回
+        </h1>
+        <p class="mt-2 text-sm" :style="{ color: 'var(--text-secondary)' }">
+          输入注册邮箱或手机号，获取重置链接
+        </p>
       </div>
 
       <!-- Step 1: 输入账号 -->
-      <form v-if="step === 1" @submit.prevent="handleRequest">
-        <div class="form-group">
-          <label>邮箱或手机号</label>
-          <input
+      <UForm
+        v-if="step === 1"
+        :state="requestState"
+        class="flex min-w-0 flex-col gap-4"
+        @submit="handleRequest"
+      >
+        <UFormField label="邮箱或手机号" name="account" required>
+          <UInput
             v-model="account"
             type="text"
             required
             placeholder="user@example.com / 13800138000"
             :disabled="loading"
-          >
+            class="sb-focus w-full"
+          />
+        </UFormField>
+        <UButton
+          type="submit"
+          block
+          :loading="loading"
+          :disabled="!account || loading"
+          class="pressable"
+          :label="loading ? '发送中...' : '发送重置链接'"
+        />
+        <div class="text-center">
+          <UButton
+            variant="link"
+            label="返回登录"
+            @click="navigateTo('/auth')"
+          />
         </div>
-        <button type="submit" class="btn-primary" :disabled="!account || loading">
-          <span v-if="loading" class="spinner" />
-          {{ loading ? '发送中...' : '发送重置链接' }}
-        </button>
-        <div class="back-link">
-          <button type="button" class="link-btn" @click="navigateTo('/auth')">返回登录</button>
-        </div>
-      </form>
+      </UForm>
 
       <!-- Step 2: 设置新密码 -->
-      <form v-else-if="step === 2" @submit.prevent="handleReset">
-        <div class="form-group">
-          <label>新密码</label>
-          <div class="password-wrapper">
-            <input
-              v-model="newPassword"
-              :type="showPwd ? 'text' : 'password'"
-              required
-              minlength="6"
-              placeholder="至少6位"
-              :disabled="loading"
-            >
-            <button type="button" class="toggle-pwd" @click="showPwd = !showPwd" tabindex="-1" :aria-label="showPwd ? '隐藏密码' : '显示密码'">
-              <AppIcon :icon="showPwd ? 'EyeSlash' : 'Eye'" :size="17" />
-            </button>
-          </div>
-          <span v-if="newPassword && newPassword.length < 6" class="field-hint field-warn">密码至少6位</span>
-        </div>
-        <div class="form-group">
-          <label>确认密码</label>
-          <div class="password-wrapper">
-            <input
-              v-model="confirmPassword"
-              :type="showConfirm ? 'text' : 'password'"
-              required
-              placeholder="再次输入"
-              :disabled="loading"
-            >
-            <button type="button" class="toggle-pwd" @click="showConfirm = !showConfirm" tabindex="-1" :aria-label="showConfirm ? '隐藏密码' : '显示密码'">
-              <AppIcon :icon="showConfirm ? 'EyeSlash' : 'Eye'" :size="17" />
-            </button>
-          </div>
-          <span v-if="confirmPassword && newPassword !== confirmPassword" class="field-hint field-warn">两次密码不一致</span>
-        </div>
-        <button type="submit" class="btn-primary" :disabled="!canReset || loading">
-          <span v-if="loading" class="spinner" />
-          {{ loading ? '重置中...' : '重置密码' }}
-        </button>
-      </form>
+      <UForm
+        v-else-if="step === 2"
+        :state="resetState"
+        class="flex min-w-0 flex-col gap-4"
+        @submit="handleReset"
+      >
+        <UFormField
+          label="新密码"
+          name="newPassword"
+          required
+          :error="newPassword && newPassword.length < 6 ? '密码至少6位' : undefined"
+        >
+          <UInput
+            v-model="newPassword"
+            :type="showPwd ? 'text' : 'password'"
+            required
+            minlength="6"
+            placeholder="至少6位"
+            :disabled="loading"
+            class="sb-focus w-full"
+          >
+            <template #trailing>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                square
+                tabindex="-1"
+                :aria-label="showPwd ? '隐藏密码' : '显示密码'"
+                @click="showPwd = !showPwd"
+              >
+                <template #leading>
+                  <AppIcon :icon="showPwd ? 'EyeSlash' : 'Eye'" :size="17" />
+                </template>
+              </UButton>
+            </template>
+          </UInput>
+        </UFormField>
+        <UFormField
+          label="确认密码"
+          name="confirmPassword"
+          required
+          :error="confirmPassword && newPassword !== confirmPassword ? '两次密码不一致' : undefined"
+        >
+          <UInput
+            v-model="confirmPassword"
+            :type="showConfirm ? 'text' : 'password'"
+            required
+            placeholder="再次输入"
+            :disabled="loading"
+            class="sb-focus w-full"
+          >
+            <template #trailing>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                square
+                tabindex="-1"
+                :aria-label="showConfirm ? '隐藏密码' : '显示密码'"
+                @click="showConfirm = !showConfirm"
+              >
+                <template #leading>
+                  <AppIcon :icon="showConfirm ? 'EyeSlash' : 'Eye'" :size="17" />
+                </template>
+              </UButton>
+            </template>
+          </UInput>
+        </UFormField>
+        <UButton
+          type="submit"
+          block
+          :loading="loading"
+          :disabled="!canReset || loading"
+          class="pressable"
+          :label="loading ? '重置中...' : '重置密码'"
+        />
+      </UForm>
 
       <!-- Step 3: 成功 -->
-      <div v-else class="success-block">
-        <div class="success-icon"><AppIcon icon="Check" :size="34" /></div>
-        <p>密码重置成功！</p>
-        <button class="btn-primary" @click="navigateTo('/auth')">前往登录</button>
+      <div v-else class="py-6 text-center">
+        <div
+          class="mb-4 flex justify-center"
+          :style="{ color: 'var(--accent)' }"
+        >
+          <AppIcon icon="Check" :size="34" />
+        </div>
+        <p
+          class="mb-6 text-base font-medium"
+          :style="{ color: 'var(--text-primary)' }"
+        >
+          密码重置成功！
+        </p>
+        <UButton
+          block
+          label="前往登录"
+          class="pressable"
+          @click="navigateTo('/auth')"
+        />
       </div>
 
-      <div v-if="error" class="error-message">
-        <span class="error-line"><AppIcon icon="Warning" :size="15" /> {{ error }}</span>
-      </div>
-      <div v-if="info" class="info-message">{{ info }}</div>
-    </div>
+      <UAlert
+        v-if="error"
+        class="alert-pop mt-4"
+        color="error"
+        variant="soft"
+        :title="error"
+      >
+        <template #leading>
+          <AppIcon icon="Warning" :size="15" />
+        </template>
+      </UAlert>
+      <UAlert
+        v-if="info"
+        class="alert-pop mt-4"
+        color="info"
+        variant="soft"
+        :title="info"
+      />
+    </UCard>
   </div>
 </template>
 
@@ -98,6 +197,13 @@ const error = ref('')
 const info = ref('')
 const showPwd = ref(false)
 const showConfirm = ref(false)
+
+// UForm 绑定的 state 对象（字段与原逻辑一一对应）
+const requestState = computed(() => ({ account: account.value }))
+const resetState = computed(() => ({
+  newPassword: newPassword.value,
+  confirmPassword: confirmPassword.value,
+}))
 
 const canReset = computed(() => {
   return newPassword.value.length >= 6 && newPassword.value === confirmPassword.value
@@ -179,199 +285,77 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auth-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-primary);
-  padding: 2rem;
+/* 品牌标题：ink 下为衬线体，其余品牌跟随正文字体 */
+.brand-title {
+  font-family: var(--font-brand-display);
+  letter-spacing: 0.01em;
 }
 
-.auth-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 3rem;
-  max-width: 420px;
-  width: 100%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+/* 卡片入场：250ms 上浮 8px（仅 transform/opacity） */
+.auth-enter {
+  animation: sb-auth-rise 250ms ease-out both;
+}
+@keyframes sb-auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.auth-header {
-  text-align: center;
-  margin-bottom: 2rem;
+/* 表单聚焦环：品牌 accent 描边，不引入新色 */
+.sb-focus:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-.auth-header h1 {
-  color: var(--accent);
-  font-size: 1.6rem;
-  margin-bottom: 0.5rem;
+/* 按钮按压缩放：160ms ease-out 到 .97；键盘聚焦激活时零动画 */
+.pressable {
+  transition: transform 160ms ease-out;
+}
+.pressable:active:where(:not(:focus-visible)) {
+  transform: scale(0.97);
 }
 
-.auth-header p {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+/* 错误/成功提示：从触发处展开感（顶部 origin，微缩放 + 位移） */
+.alert-pop {
+  transform-origin: top center;
+  animation: sb-alert-pop 180ms ease-out both;
 }
-
-.form-group {
-  margin-bottom: 1.2rem;
-}
-
-.form-group label {
-  display: block;
-  color: var(--text-secondary);
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 1rem;
-  transition: border-color 0.2s;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.password-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.password-wrapper input {
-  padding-right: 2.5rem;
-}
-
-.toggle-pwd {
-  position: absolute;
-  right: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 0.25rem;
-  opacity: 0.7;
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 0.75rem;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.spinner {
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.field-hint {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-tertiary, #888);
-  margin-top: 0.25rem;
-}
-
-.field-warn {
-  color: #f59e0b;
-}
-
-.error-message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger, #ef4444);
-  border: 1px solid var(--danger, #ef4444);
-  border-radius: 8px;
-  font-size: 0.9rem;
-}
-
-.error-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.info-message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: rgba(59, 130, 246, 0.1);
-  color: var(--accent, #3b82f6);
-  border: 1px solid var(--accent, #3b82f6);
-  border-radius: 8px;
-  font-size: 0.9rem;
-}
-
-.success-block {
-  text-align: center;
-  padding: 1.5rem 0;
-}
-
-.success-icon {
-  display: flex;
-  justify-content: center;
-  color: var(--success);
-  margin-bottom: 1rem;
-}
-
-.back-link,
-.forgot-link {
-  text-align: center;
-  margin-top: 1rem;
-}
-
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0.25rem;
-}
-
-.link-btn:hover {
-  text-decoration: underline;
+@keyframes sb-alert-pop {
+  from {
+    opacity: 0;
+    transform: scaleY(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
 }
 
 @media (max-width: 480px) {
-  .auth-card {
-    padding: 2rem 1.5rem;
+  .auth-page {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    align-items: flex-start;
+    padding-top: 3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-enter,
+  .alert-pop {
+    animation: none;
+  }
+  .pressable {
+    transition: none;
+  }
+  .pressable:active:where(:not(:focus-visible)) {
+    transform: none;
   }
 }
 </style>

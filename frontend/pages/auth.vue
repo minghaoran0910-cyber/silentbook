@@ -1,159 +1,235 @@
 <template>
-  <div class="auth-container">
-    <div class="auth-card">
-      <div class="auth-header">
-        <h1>SilentBook</h1>
-        <p>财务自由，不是终点，是每一步的选择</p>
+  <div
+    class="auth-page flex min-h-screen items-center justify-center px-4 py-8"
+    :style="{ background: 'var(--bg-primary)' }"
+  >
+    <UCard
+      class="auth-enter w-full max-w-md"
+      :style="{
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+      }"
+      :ui="{ body: 'p-6 sm:p-10' }"
+    >
+      <div class="mb-6 text-center">
+        <h1
+          class="brand-title text-2xl font-semibold"
+          :style="{ color: 'var(--accent)' }"
+        >
+          SilentBook
+        </h1>
+        <p class="mt-2 text-sm" :style="{ color: 'var(--text-secondary)' }">
+          财务自由，不是终点，是每一步的选择
+        </p>
       </div>
 
-      <!-- Tab 切换 -->
-      <div class="tab-switch">
-        <button
-          :class="{ active: mode === 'login' }"
-          @click="switchMode('login')"
-          type="button"
-        >登录</button>
-        <button
-          :class="{ active: mode === 'register' }"
-          @click="switchMode('register')"
-          type="button"
-        >注册</button>
-      </div>
+      <UTabs
+        :model-value="mode"
+        :items="tabItems"
+        :content="false"
+        class="mb-6 w-full"
+        @update:model-value="(v) => switchMode(v as 'login' | 'register')"
+      />
 
       <!-- 注册模式 -->
-      <form v-if="mode === 'register'" @submit.prevent="handleRegister">
-        <div class="form-group">
-          <label>邮箱</label>
-          <input
+      <UForm
+        v-if="mode === 'register'"
+        :state="regForm"
+        class="flex min-w-0 flex-col gap-4"
+        @submit="handleRegister"
+      >
+        <UFormField label="邮箱" name="email" hint="或填手机号，至少填一个">
+          <UInput
             v-model="regForm.email"
             type="email"
             placeholder="user@example.com"
             autocomplete="email"
             :disabled="loading"
-          >
-          <span class="field-hint">或填手机号，至少填一个</span>
-        </div>
-        <div class="form-group">
-          <label>手机号</label>
-          <input
+            class="sb-focus w-full"
+          />
+        </UFormField>
+        <UFormField label="手机号" name="phone">
+          <UInput
             v-model="regForm.phone"
             type="tel"
             placeholder="13800138000"
             autocomplete="tel"
             :disabled="loading"
-          >
-        </div>
-        <div class="form-group">
-          <label>昵称（可选）</label>
-          <input
+            class="sb-focus w-full"
+          />
+        </UFormField>
+        <UFormField label="昵称（可选）" name="nickname">
+          <UInput
             v-model="regForm.nickname"
             type="text"
             placeholder="怎么称呼你"
             maxlength="50"
             :disabled="loading"
+            class="sb-focus w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="密码"
+          name="password"
+          required
+          :error="regForm.password && regForm.password.length < 6 ? '密码至少6位' : undefined"
+        >
+          <UInput
+            v-model="regForm.password"
+            :type="showRegPassword ? 'text' : 'password'"
+            required
+            minlength="6"
+            placeholder="至少6位"
+            autocomplete="new-password"
+            :disabled="loading"
+            class="sb-focus w-full"
+            @input="clearError"
           >
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <div class="password-wrapper">
-            <input
-              v-model="regForm.password"
-              :type="showRegPassword ? 'text' : 'password'"
-              required
-              minlength="6"
-              placeholder="至少6位"
-              autocomplete="new-password"
-              :disabled="loading"
-              @input="clearError"
-            >
-            <button
-              type="button"
-              class="toggle-pwd"
-              @click="showRegPassword = !showRegPassword"
-              tabindex="-1"
-              :aria-label="showRegPassword ? '隐藏密码' : '显示密码'"
-            ><AppIcon :icon="showRegPassword ? 'EyeSlash' : 'Eye'" :size="17" /></button>
-          </div>
-          <span v-if="regForm.password && regForm.password.length < 6" class="field-hint field-warn">密码至少6位</span>
-        </div>
-        <div class="form-group">
-          <label>确认密码</label>
-          <div class="password-wrapper">
-            <input
-              v-model="regForm.confirmPassword"
-              :type="showRegConfirm ? 'text' : 'password'"
-              required
-              placeholder="再次输入"
-              autocomplete="new-password"
-              :disabled="loading"
-              @input="clearError"
-            >
-            <button
-              type="button"
-              class="toggle-pwd"
-              @click="showRegConfirm = !showRegConfirm"
-              tabindex="-1"
-              :aria-label="showRegConfirm ? '隐藏密码' : '显示密码'"
-            ><AppIcon :icon="showRegConfirm ? 'EyeSlash' : 'Eye'" :size="17" /></button>
-          </div>
-          <span v-if="regForm.confirmPassword && regForm.password !== regForm.confirmPassword" class="field-hint field-warn">两次密码不一致</span>
-        </div>
-        <button type="submit" class="btn-primary" :disabled="!canRegister || loading">
-          <span v-if="loading" class="spinner" />
-          {{ loading ? '注册中...' : '注册' }}
-        </button>
-      </form>
+            <template #trailing>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                square
+                tabindex="-1"
+                :aria-label="showRegPassword ? '隐藏密码' : '显示密码'"
+                @click="showRegPassword = !showRegPassword"
+              >
+                <template #leading>
+                  <AppIcon :icon="showRegPassword ? 'EyeSlash' : 'Eye'" :size="17" />
+                </template>
+              </UButton>
+            </template>
+          </UInput>
+        </UFormField>
+        <UFormField
+          label="确认密码"
+          name="confirmPassword"
+          required
+          :error="regForm.confirmPassword && regForm.password !== regForm.confirmPassword ? '两次密码不一致' : undefined"
+        >
+          <UInput
+            v-model="regForm.confirmPassword"
+            :type="showRegConfirm ? 'text' : 'password'"
+            required
+            placeholder="再次输入"
+            autocomplete="new-password"
+            :disabled="loading"
+            class="sb-focus w-full"
+            @input="clearError"
+          >
+            <template #trailing>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                square
+                tabindex="-1"
+                :aria-label="showRegConfirm ? '隐藏密码' : '显示密码'"
+                @click="showRegConfirm = !showRegConfirm"
+              >
+                <template #leading>
+                  <AppIcon :icon="showRegConfirm ? 'EyeSlash' : 'Eye'" :size="17" />
+                </template>
+              </UButton>
+            </template>
+          </UInput>
+        </UFormField>
+        <UButton
+          type="submit"
+          block
+          :loading="loading"
+          :disabled="!canRegister || loading"
+          class="pressable"
+          :label="loading ? '注册中...' : '注册'"
+        />
+      </UForm>
 
       <!-- 登录模式 -->
-      <form v-else @submit.prevent="handleLogin">
-        <div class="form-group">
-          <label>邮箱或手机号</label>
-          <input
+      <UForm
+        v-else
+        :state="loginForm"
+        class="flex min-w-0 flex-col gap-4"
+        @submit="handleLogin"
+      >
+        <UFormField label="邮箱或手机号" name="account" required>
+          <UInput
             v-model="loginForm.account"
             type="text"
             required
             placeholder="user@example.com / 13800138000"
             autocomplete="username"
             :disabled="loading"
+            class="sb-focus w-full"
+            @input="clearError"
+          />
+        </UFormField>
+        <UFormField label="密码" name="password" required>
+          <UInput
+            v-model="loginForm.password"
+            :type="showPassword ? 'text' : 'password'"
+            required
+            placeholder="输入密码"
+            autocomplete="current-password"
+            :disabled="loading"
+            class="sb-focus w-full"
             @input="clearError"
           >
+            <template #trailing>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                square
+                tabindex="-1"
+                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                @click="showPassword = !showPassword"
+              >
+                <template #leading>
+                  <AppIcon :icon="showPassword ? 'EyeSlash' : 'Eye'" :size="17" />
+                </template>
+              </UButton>
+            </template>
+          </UInput>
+        </UFormField>
+        <UButton
+          type="submit"
+          block
+          :loading="loading"
+          :disabled="!canLogin || loading"
+          class="pressable"
+          :label="loading ? '登录中...' : '登录'"
+        />
+        <div class="text-center">
+          <UButton
+            variant="link"
+            :disabled="loading"
+            label="忘记密码?"
+            @click="navigateTo('/forgot-password')"
+          />
         </div>
-        <div class="form-group">
-          <label>密码</label>
-          <div class="password-wrapper">
-            <input
-              v-model="loginForm.password"
-              :type="showPassword ? 'text' : 'password'"
-              required
-              placeholder="输入密码"
-              autocomplete="current-password"
-              :disabled="loading"
-              @input="clearError"
-              @keydown.enter="handleLogin"
-            >
-            <button
-              type="button"
-              class="toggle-pwd"
-              @click="showPassword = !showPassword"
-              tabindex="-1"
-              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
-            ><AppIcon :icon="showPassword ? 'EyeSlash' : 'Eye'" :size="17" /></button>
-          </div>
-        </div>
-        <button type="submit" class="btn-primary" :disabled="!canLogin || loading">
-          <span v-if="loading" class="spinner" />
-          {{ loading ? '登录中...' : '登录' }}
-        </button>
-        <div class="forgot-link">
-          <button type="button" class="link-btn" @click="navigateTo('/forgot-password')" :disabled="loading">忘记密码?</button>
-        </div>
-      </form>
+      </UForm>
 
-      <div v-if="error" class="error-message">
-        <span class="error-line"><AppIcon icon="Warning" :size="15" /> {{ error }}</span>
-      </div>
-      <div v-if="success" class="success-message">{{ success }}</div>
-    </div>
+      <UAlert
+        v-if="error"
+        class="alert-pop mt-4"
+        color="error"
+        variant="soft"
+        :title="error"
+      >
+        <template #leading>
+          <AppIcon icon="Warning" :size="15" />
+        </template>
+      </UAlert>
+      <UAlert
+        v-if="success"
+        class="alert-pop mt-4"
+        color="success"
+        variant="soft"
+        :title="success"
+      />
+    </UCard>
   </div>
 </template>
 
@@ -167,6 +243,11 @@ const mode = ref<'login' | 'register'>('login')
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+
+const tabItems = [
+  { label: '登录', value: 'login' },
+  { label: '注册', value: 'register' },
+]
 
 // Password visibility toggles
 const showPassword = ref(false)
@@ -306,233 +387,77 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.auth-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-primary);
-  padding: 2rem;
+/* 品牌标题：ink 下为衬线体，其余品牌跟随正文字体 */
+.brand-title {
+  font-family: var(--font-brand-display);
+  letter-spacing: 0.01em;
 }
 
-.auth-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 3rem;
-  max-width: 420px;
-  width: 100%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+/* 卡片入场：250ms 上浮 8px（仅 transform/opacity） */
+.auth-enter {
+  animation: sb-auth-rise 250ms ease-out both;
+}
+@keyframes sb-auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.auth-header {
-  text-align: center;
-  margin-bottom: 2rem;
+/* 表单聚焦环：品牌 accent 描边，不引入新色 */
+.sb-focus:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-.auth-header h1 {
-  color: var(--accent);
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+/* 按钮按压缩放：160ms ease-out 到 .97；键盘聚焦激活时零动画 */
+.pressable {
+  transition: transform 160ms ease-out;
+}
+.pressable:active:where(:not(:focus-visible)) {
+  transform: scale(0.97);
 }
 
-.auth-header p {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+/* 错误/成功提示：从触发处展开感（顶部 origin，微缩放 + 位移） */
+.alert-pop {
+  transform-origin: top center;
+  animation: sb-alert-pop 180ms ease-out both;
 }
-
-.tab-switch {
-  display: flex;
-  gap: 0;
-  margin-bottom: 1.5rem;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.tab-switch button {
-  flex: 1;
-  padding: 0.6rem;
-  background: var(--bg-primary);
-  border: none;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tab-switch button.active {
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-
-.form-group {
-  margin-bottom: 1.2rem;
-}
-
-.form-group label {
-  display: block;
-  color: var(--text-secondary);
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 1rem;
-  transition: border-color 0.2s, opacity 0.2s;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.form-group input:disabled {
-  opacity: 0.6;
-}
-
-.field-hint {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-tertiary, #888);
-  margin-top: 0.25rem;
-}
-
-.field-warn {
-  color: #f59e0b;
-}
-
-.password-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.password-wrapper input {
-  padding-right: 2.5rem;
-}
-
-.toggle-pwd {
-  position: absolute;
-  right: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-  color: var(--text-secondary);
-}
-
-.toggle-pwd:hover {
-  opacity: 1;
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 0.75rem;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.spinner {
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error-message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger, #ef4444);
-  border: 1px solid var(--danger, #ef4444);
-  border-radius: 8px;
-  font-size: 0.9rem;
-}
-
-.error-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.success-message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: rgba(34, 197, 94, 0.1);
-  color: var(--success, #22c55e);
-  border: 1px solid var(--success, #22c55e);
-  border-radius: 8px;
-  font-size: 0.9rem;
+@keyframes sb-alert-pop {
+  from {
+    opacity: 0;
+    transform: scaleY(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
 }
 
 @media (max-width: 480px) {
-  .auth-card {
-    padding: 2rem 1.5rem;
-    border-radius: 12px;
-  }
-
-  .auth-header h1 {
-    font-size: 1.6rem;
-  }
-
-  .form-group input {
-    font-size: 0.95rem;
-    padding: 0.65rem;
+  .auth-page {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    align-items: flex-start;
+    padding-top: 3rem;
   }
 }
 
-.forgot-link {
-  text-align: center;
-  margin-top: 1rem;
-}
-
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0.25rem;
-}
-
-.link-btn:hover {
-  text-decoration: underline;
+@media (prefers-reduced-motion: reduce) {
+  .auth-enter,
+  .alert-pop {
+    animation: none;
+  }
+  .pressable {
+    transition: none;
+  }
+  .pressable:active:where(:not(:focus-visible)) {
+    transform: none;
+  }
 }
 </style>

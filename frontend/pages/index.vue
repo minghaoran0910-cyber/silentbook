@@ -1,248 +1,313 @@
 <template>
-  <div class="container">
-    <div class="hero">
-      <h1>SilentBook</h1>
-      <p class="tagline">财务自由，不是终点，是每一步的选择。</p>
+  <div class="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+    <!-- 顶栏：标题 + 币种 + 一键记一笔 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="mr-auto min-w-0">
+        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">总览</h1>
+        <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">钱在哪里，今天发生了什么，下一步做什么。</p>
+      </div>
+      <USelect
+        v-model="displayCurrency"
+        :items="currencyItems"
+        aria-label="展示币种"
+        class="w-36"
+      />
+      <UButton to="/add" class="cta-press">
+        <AppIcon icon="Plus" :size="16" />
+        记一笔
+      </UButton>
     </div>
-    
-    <!-- 核心指标 -->
-    <div class="stats-head">
-      <span class="stats-note">以人民币记账{{ displayCurrency === 'CNY' ? '' : ` · 按${fxDate || '实时'}汇率折算为 ${displayCurrency} 展示` }}</span>
-      <el-select v-model="displayCurrency" class="currency-select" aria-label="展示币种" style="width: 132px">
-        <el-option v-for="c in currencyOptions" :key="c" :value="c" :label="`${fxSymbols[c] || ''} ${c}`" />
-      </el-select>
-    </div>
-    <div class="stats">
-      <div class="stat-card reveal" style="--reveal-delay: 0ms">
-        <div class="stat-label">净资产</div>
-        <div class="stat-value tnum">{{ netAssets.display.value }}</div>
-      </div>
-      <div class="stat-card reveal" style="--reveal-delay: 60ms">
-        <div class="stat-label">总资产</div>
-        <div class="stat-value income tnum">{{ totalAssets.display.value }}</div>
-      </div>
-      <div class="stat-card reveal" style="--reveal-delay: 120ms">
-        <div class="stat-label">总负债</div>
-        <div class="stat-value expense tnum">{{ totalLiabilities.display.value }}</div>
-      </div>
-      <div class="stat-card reveal" style="--reveal-delay: 180ms">
-        <div class="stat-label">本月支出</div>
-        <div class="stat-value expense tnum">{{ monthlyExpenses.display.value }}</div>
-      </div>
-      <div class="stat-card reveal" style="--reveal-delay: 240ms">
-        <div class="stat-label">本月收入</div>
-        <div class="stat-value income tnum">{{ monthlyIncome.display.value }}</div>
-      </div>
-      <div class="stat-card reveal" style="--reveal-delay: 300ms">
-        <div class="stat-label">交易笔数</div>
-        <div class="stat-value tnum">{{ txCount.display.value }}</div>
-      </div>
-    </div>
+    <p class="text-xs" style="color: var(--text-tertiary)">
+      以人民币记账{{ displayCurrency === 'CNY' ? '' : ` · 按${fxDate || '实时'}汇率折算为 ${displayCurrency} 展示` }}
+    </p>
 
-    <!-- AI 洞察 -->
-    <div class="ai-section" v-if="mounted">
-      <div class="section-header">
-        <h2>AI 洞察</h2>
-        <button @click="analyze" class="btn btn-primary" :disabled="analyzing">
-          {{ analyzing ? '分析中...' : '立即分析' }}
-        </button>
-      </div>
-      
-      <div class="insights">
-        <div class="insight-card">
-          <div class="insight-header">
-            <AppIcon icon="ChartLine" :size="20" class="insight-icon" />
-            <span class="insight-title">消费分析</span>
+    <!-- 一、 increases 有多少钱：净资产置顶 + 面积图 -->
+    <section aria-label="有多少钱" class="space-y-4">
+      <UCard :class="['sb-surface', playEnter && 'reveal']" :style="{ '--reveal-delay': '0ms' }">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
+            <div class="brand-display mt-1 text-4xl font-semibold tabular-nums" style="color: var(--text-primary)">
+              {{ netAssets.display.value }}
+            </div>
+            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums">
+              <span style="color: var(--text-secondary)">
+                总资产 <span class="font-medium" style="color: var(--success)">{{ totalAssets.display.value }}</span>
+              </span>
+              <span style="color: var(--text-secondary)">
+                总负债 <span class="font-medium" style="color: var(--danger)">{{ totalLiabilities.display.value }}</span>
+              </span>
+            </div>
           </div>
-          <div class="insight-content" v-html="renderedAnalysis.consumption"></div>
+          <UButton to="/assets" variant="ghost" color="neutral">
+            管理资产
+          </UButton>
         </div>
-        
-        <div class="insight-card">
-          <div class="insight-header">
-            <AppIcon icon="TrendUp" :size="20" class="insight-icon" />
-            <span class="insight-title">投资分析</span>
+        <div
+          v-if="mounted && (assets.length > 0 || liabilities.length > 0)"
+          class="mt-4 flex h-6 w-full gap-0.5 overflow-hidden"
+          style="border-radius: var(--radius-md)"
+          role="img"
+          aria-label="资产与负债占比"
+        >
+          <div
+            class="flex h-full items-center justify-center overflow-hidden text-xs font-medium whitespace-nowrap"
+            style="background: var(--success); color: var(--fill-ink)"
+            :style="{ width: (totalAssetValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }"
+          >
+            <span v-if="totalAssetValue > 0" class="px-2">资产 ¥{{ totalAssetValue.toFixed(0) }}</span>
           </div>
-          <div class="insight-content" v-html="renderedAnalysis.investment"></div>
-        </div>
-        
-        <div class="insight-card">
-          <div class="insight-header">
-            <AppIcon icon="BookOpen" :size="20" class="insight-icon" />
-            <span class="insight-title">建议</span>
+          <div
+            class="flex h-full items-center justify-center overflow-hidden text-xs font-medium whitespace-nowrap"
+            style="background: var(--danger); color: var(--fill-ink)"
+            :style="{ width: (totalLiabilityValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }"
+          >
+            <span v-if="totalLiabilityValue > 0" class="px-2">负债 ¥{{ totalLiabilityValue.toFixed(0) }}</span>
           </div>
-          <div class="insight-content" v-html="renderedAnalysis.suggestion"></div>
         </div>
-      </div>
-    </div>
+      </UCard>
 
-    <!-- 资产概览 -->
-    <div class="asset-section" v-if="mounted && (assets.length > 0 || liabilities.length > 0)">
-      <div class="section-header">
-        <h2>资产概览</h2>
-        <NuxtLink to="/assets" class="view-all">管理资产 →</NuxtLink>
+      <!-- stat 卡：stagger 40ms 上浮进入 -->
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <UCard
+          v-for="(s, i) in statCards"
+          :key="s.key"
+          :class="['sb-surface', playEnter && 'reveal']"
+          :style="{ '--reveal-delay': `${i * 40}ms` }"
+        >
+          <div class="text-xs" style="color: var(--text-secondary)">{{ s.label }}</div>
+          <div class="mt-1 truncate text-xl font-semibold tabular-nums" :style="{ color: s.color }">
+            {{ s.text }}
+          </div>
+        </UCard>
       </div>
-      <div class="asset-summary">
-        <div class="asset-bar-row">
-          <div class="asset-bar-label">净资产</div>
-          <div class="asset-bar-value" :class="(totalAssetValue - totalLiabilityValue) >= 0 ? 'income' : 'expense'">
-            ¥{{ (totalAssetValue - totalLiabilityValue).toFixed(2) }}
-          </div>
+
+      <!-- 消费趋势面积图 -->
+      <UCard class="sb-surface">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-base font-semibold" style="color: var(--text-primary)">近{{ trendDays }}天资金流动</h2>
+          <span class="text-xs tabular-nums" style="color: var(--text-secondary)">
+            支出 ¥{{ trend.total_expense.toFixed(2) }} · 收入 ¥{{ trend.total_income.toFixed(2) }}
+          </span>
         </div>
-        <div class="asset-compare-bar">
-          <div class="asset-fill asset-green" :style="{ width: (totalAssetValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }">
-            <span v-if="totalAssetValue > 0">资产 ¥{{ totalAssetValue.toFixed(0) }}</span>
-          </div>
-          <div class="asset-fill asset-red" :style="{ width: (totalLiabilityValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }">
-            <span v-if="totalLiabilityValue > 0">负债 ¥{{ totalLiabilityValue.toFixed(0) }}</span>
-          </div>
-        </div>
-      </div>
+        <USkeleton v-if="!trendLoaded" class="h-[260px] w-full" />
+        <div v-else-if="trend.daily.length > 0" ref="trendEl" class="h-[260px] w-full"></div>
+        <p v-else class="py-12 text-center text-sm" style="color: var(--text-secondary)">暂无交易数据，先记第一笔吧。</p>
+      </UCard>
+
       <!-- 资产分类明细 -->
-      <div class="asset-breakdown" v-if="assetBreakdown.length > 0">
-        <div v-for="item in assetBreakdown" :key="item.type" class="asset-detail-item">
-          <AppIcon :icon="getAssetIcon(item.type).icon" :color="getAssetIcon(item.type).color" :size="18" class="asset-detail-icon" />
-          <span class="asset-detail-name">{{ getAssetIcon(item.type).label }}</span>
-          <div class="asset-detail-bar-bg">
-            <div class="asset-detail-bar-fill" :style="{ width: (item.value / Math.max(totalAssetValue, 1) * 100) + '%', background: getAssetIcon(item.type).color }"></div>
-          </div>
-          <span class="asset-detail-amount">¥{{ item.value.toFixed(0) }}</span>
-          <span class="asset-detail-count">{{ item.count }}项</span>
-        </div>
-      </div>
-      <!-- 负债列表 -->
-      <div class="liability-mini" v-if="liabilities.length > 0">
-        <div class="liability-mini-title">负债进度</div>
-        <div v-for="l in liabilities.slice(0, 3)" :key="l.id" class="liability-mini-item">
-          <AppIcon :icon="getLiabilityIcon(l.liability_type).icon" :color="getLiabilityIcon(l.liability_type).color" :size="16" class="liability-mini-icon" />
-          <div class="liability-mini-info">
-            <div class="liability-mini-name">{{ l.name }}</div>
-            <div class="liability-mini-bar">
-              <div class="liability-mini-fill" :style="{ width: ((l.total_amount - l.current_amount) / Math.max(l.total_amount, 1) * 100) + '%' }"></div>
+      <UCard v-if="mounted && assetBreakdown.length > 0" class="sb-surface">
+        <h2 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分布</h2>
+        <ul class="space-y-2">
+          <li v-for="item in assetBreakdown" :key="item.type" class="flex items-center gap-3">
+            <AppIcon :icon="getAssetIcon(item.type).icon" :color="getAssetIcon(item.type).color" :size="18" class="shrink-0" />
+            <span class="w-12 shrink-0 text-sm" style="color: var(--text-primary)">{{ getAssetIcon(item.type).label }}</span>
+            <div class="h-1.5 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
+              <div
+                class="h-full"
+                style="border-radius: var(--radius-sm)"
+                :style="{ width: (item.value / Math.max(totalAssetValue, 1) * 100) + '%', background: getAssetIcon(item.type).color }"
+              ></div>
             </div>
-          </div>
-          <span class="liability-mini-amount">¥{{ l.current_amount.toFixed(0) }}<span class="liability-mini-total">/¥{{ l.total_amount.toFixed(0) }}</span></span>
-        </div>
-      </div>
-    </div>
+            <span class="w-20 shrink-0 text-right text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ item.value.toFixed(0) }}</span>
+            <span class="w-10 shrink-0 text-right text-xs" style="color: var(--text-secondary)">{{ item.count }}项</span>
+          </li>
+        </ul>
+      </UCard>
+    </section>
 
-    <!-- 最近交易 -->
-    <div class="recent-section" v-if="mounted && recentTransactions.length > 0">
-      <div class="section-header">
-        <h2>最近交易</h2>
-        <NuxtLink to="/transactions" class="view-all">查看全部 →</NuxtLink>
-      </div>
-      <div class="recent-list">
-        <div v-for="tx in recentTransactions" :key="tx.id" class="recent-item">
-          <div class="recent-icon" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
-            <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
+    <!-- 二、最近发生什么：今日动态 -->
+    <section aria-label="最近发生什么" class="grid gap-4 lg:grid-cols-2">
+      <UCard class="sb-surface">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-base font-semibold" style="color: var(--text-primary)">最近交易</h2>
+          <NuxtLink to="/transactions" class="text-sm font-medium" style="color: var(--accent)">查看全部</NuxtLink>
+        </div>
+        <ul v-if="mounted && recentTransactions.length > 0" class="-mx-1 space-y-1">
+          <li v-for="tx in recentTransactions" :key="tx.id">
+            <NuxtLink
+              to="/transactions"
+              class="tx-row flex items-center gap-3 px-2 py-2"
+              style="border-radius: var(--radius-md)"
+            >
+              <span
+                class="flex h-9 w-9 shrink-0 items-center justify-center"
+                style="border-radius: var(--radius-md)"
+                :style="{ background: getCategoryIcon(tx.category).color + '20' }"
+              >
+                <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-medium" style="color: var(--text-primary)">{{ tx.description || tx.category }}</span>
+                <span class="mt-0.5 block text-xs" style="color: var(--text-secondary)">{{ getAccountName(tx.account) }} · {{ formatTime(tx.parsed_at) }}</span>
+              </span>
+              <span
+                class="shrink-0 text-sm font-semibold tabular-nums"
+                :style="{ color: tx.transaction_type === 'income' ? 'var(--success)' : 'var(--danger)' }"
+              >
+                {{ tx.transaction_type === 'income' ? '+' : '-' }}¥{{ tx.amount.toFixed(2) }}
+              </span>
+            </NuxtLink>
+          </li>
+        </ul>
+        <p v-else class="py-8 text-center text-sm" style="color: var(--text-secondary)">还没有交易，记下第一笔支出或收入。</p>
+      </UCard>
+
+      <UCard class="sb-surface">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-base font-semibold" style="color: var(--text-primary)">消费分类榜</h2>
+          <NuxtLink to="/analysis" class="text-sm font-medium" style="color: var(--accent)">更多解读</NuxtLink>
+        </div>
+        <ul v-if="mounted && trend.categories.length > 0" class="space-y-2.5">
+          <li v-for="cat in trend.categories" :key="cat.name">
+            <NuxtLink
+              :to="{ path: '/transactions', query: { category: cat.name } }"
+              class="tx-row flex items-center gap-3 px-2 py-1.5"
+              style="border-radius: var(--radius-md)"
+            >
+              <AppIcon :icon="getCategoryIcon(cat.name).icon" :color="getCategoryIcon(cat.name).color" :size="18" class="shrink-0" />
+              <span class="w-16 shrink-0 truncate text-sm" style="color: var(--text-primary)">{{ cat.name }}</span>
+              <span class="h-2 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
+                <span
+                  class="block h-full"
+                  style="border-radius: var(--radius-sm)"
+                  :style="{ width: (cat.amount / totalCategoryAmount * 100) + '%', background: getCategoryIcon(cat.name).color }"
+                ></span>
+              </span>
+              <span class="w-20 shrink-0 text-right text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ cat.amount.toFixed(2) }}</span>
+              <span class="w-12 shrink-0 text-right text-xs tabular-nums" style="color: var(--text-secondary)">{{ (cat.amount / totalCategoryAmount * 100).toFixed(1) }}%</span>
+            </NuxtLink>
+          </li>
+        </ul>
+        <p v-else class="py-8 text-center text-sm" style="color: var(--text-secondary)">近30天还没有支出分类。</p>
+      </UCard>
+    </section>
+
+    <!-- 三、下一步干什么：CTA + 待办感 -->
+    <section aria-label="下一步干什么" class="space-y-4">
+      <UCard class="sb-surface">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="mr-auto min-w-0">
+            <h2 class="text-base font-semibold" style="color: var(--text-primary)">今天，先记一笔</h2>
+            <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">花了多少、进了多少，10 秒记下来，账就不会乱。</p>
           </div>
-          <div class="recent-info">
-            <div class="recent-desc">{{ tx.description || tx.category }}</div>
-            <div class="recent-meta">
-              <span>{{ getAccountName(tx.account) }}</span>
-              <span>·</span>
-              <span>{{ formatTime(tx.parsed_at) }}</span>
+          <UButton to="/add" class="cta-press">
+            <AppIcon icon="Plus" :size="16" />
+            记一笔
+          </UButton>
+        </div>
+        <div v-if="liabilities.length > 0" class="mt-4 space-y-2 border-t pt-4" style="border-color: var(--border)">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium" style="color: var(--text-primary)">待办：还有 {{ liabilities.length }} 笔负债在还</h3>
+            <UBadge color="neutral" variant="soft">{{ liabilities.slice(0, 3).length }} 项进行中</UBadge>
+          </div>
+          <ul class="space-y-2">
+            <li v-for="l in liabilities.slice(0, 3)" :key="l.id" class="flex items-center gap-3">
+              <AppIcon :icon="getLiabilityIcon(l.liability_type).icon" :color="getLiabilityIcon(l.liability_type).color" :size="16" class="shrink-0" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm" style="color: var(--text-primary)">{{ l.name }}</span>
+                <span class="mt-1 block h-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
+                  <span
+                    class="block h-full"
+                    style="background: var(--success); border-radius: var(--radius-sm)"
+                    :style="{ width: ((l.total_amount - l.current_amount) / Math.max(l.total_amount, 1) * 100) + '%' }"
+                  ></span>
+                </span>
+              </span>
+              <span class="shrink-0 text-sm font-medium tabular-nums" style="color: var(--text-primary)">
+                ¥{{ l.current_amount.toFixed(0) }}<span class="font-normal" style="color: var(--text-secondary)">/¥{{ l.total_amount.toFixed(0) }}</span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </UCard>
+
+      <UCard v-if="mounted" class="sb-surface">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-base font-semibold" style="color: var(--text-primary)">AI 洞察</h2>
+          <UButton :loading="analyzing" variant="soft" color="neutral" class="cta-press" @click="analyze">
+            {{ analyzing ? '分析中' : '立即分析' }}
+          </UButton>
+        </div>
+        <div class="grid gap-3 md:grid-cols-3">
+          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+            <div class="mb-1.5 flex items-center gap-1.5">
+              <AppIcon icon="ChartLine" :size="18" style="color: var(--accent)" />
+              <span class="text-sm font-medium" style="color: var(--text-primary)">消费分析</span>
             </div>
+            <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.consumption"></div>
           </div>
-          <div class="recent-amount" :class="tx.transaction_type">
-            {{ tx.transaction_type === 'income' ? '+' : '-' }}¥{{ tx.amount.toFixed(2) }}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 消费趋势图 -->
-    <div class="trend-section" v-if="mounted">
-      <div class="section-header">
-        <h2>消费趋势</h2>
-        <span class="trend-summary">近{{ trendDays }}天支出 ¥{{ trend.total_expense.toFixed(2) }} · 收入 ¥{{ trend.total_income.toFixed(2) }}</span>
-      </div>
-      <div v-if="trend.daily.length > 0" class="card chart-card">
-        <div ref="trendEl" class="chart-box"></div>
-      </div>
-      <div v-else class="empty-trend">暂无交易数据</div>
-    </div>
-
-    <!-- 消费分类 -->
-    <div class="category-section" v-if="mounted && trend.categories.length > 0">
-      <div class="section-header">
-        <h2>消费分类</h2>
-      </div>
-      <div class="category-bars">
-        <div v-for="cat in trend.categories" :key="cat.name" class="category-item">
-          <AppIcon :icon="getCategoryIcon(cat.name).icon" :color="getCategoryIcon(cat.name).color" :size="18" class="cat-icon" />
-          <span class="cat-name">{{ cat.name }}</span>
-          <div class="cat-bar-bg">
-            <div class="cat-bar-fill" :style="{ width: (cat.amount / totalCategoryAmount * 100) + '%', background: getCategoryIcon(cat.name).color }"></div>
-          </div>
-          <span class="cat-amount">¥{{ cat.amount.toFixed(2) }}</span>
-          <span class="cat-percent">{{ (cat.amount / totalCategoryAmount * 100).toFixed(1) }}%</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 月度报表 -->
-    <div class="monthly-section" v-if="mounted && monthly">
-      <div class="section-header">
-        <h2>{{ monthly.year }}年{{ monthly.month }}月报表</h2>
-      </div>
-      <div class="monthly-grid">
-        <div class="monthly-card">
-          <div class="monthly-label">总收入</div>
-          <div class="monthly-value income">¥{{ monthly.total_income.toFixed(2) }}</div>
-        </div>
-        <div class="monthly-card">
-          <div class="monthly-label">总支出</div>
-          <div class="monthly-value expense">¥{{ monthly.total_expense.toFixed(2) }}</div>
-        </div>
-        <div class="monthly-card">
-          <div class="monthly-label">净收支</div>
-          <div class="monthly-value" :class="monthly.net >= 0 ? 'income' : 'expense'">¥{{ monthly.net.toFixed(2) }}</div>
-        </div>
-        <div class="monthly-card">
-          <div class="monthly-label">储蓄率</div>
-          <div class="monthly-value">{{ monthly.savings_rate }}%</div>
-        </div>
-        <div class="monthly-card">
-          <div class="monthly-label">日均支出</div>
-          <div class="monthly-value">¥{{ monthly.daily_avg_expense.toFixed(2) }}</div>
-        </div>
-        <div class="monthly-card">
-          <div class="monthly-label">交易笔数</div>
-          <div class="monthly-value">{{ monthly.transaction_count }}</div>
-        </div>
-      </div>
-      <!-- 周对比 -->
-      <div class="weekly-comparison" v-if="monthly.weekly">
-        <div class="weekly-header">周对比</div>
-        <div class="weekly-bars">
-          <div v-for="w in monthly.weekly" :key="w.week" class="weekly-item">
-            <span class="weekly-label">第{{ w.week }}周</span>
-            <div class="weekly-bar-group">
-              <div class="weekly-bar income" :style="{ width: Math.min(w.income / Math.max(...monthly.weekly.map(x => x.income), 1) * 100, 100) + '%' }"></div>
-              <div class="weekly-bar expense" :style="{ width: Math.min(w.expense / Math.max(...monthly.weekly.map(x => x.expense), 1) * 100, 100) + '%' }"></div>
+          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+            <div class="mb-1.5 flex items-center gap-1.5">
+              <AppIcon icon="TrendUp" :size="18" style="color: var(--accent)" />
+              <span class="text-sm font-medium" style="color: var(--text-primary)">投资分析</span>
             </div>
-            <span class="weekly-text">入¥{{ w.income.toFixed(0) }} 出¥{{ w.expense.toFixed(0) }}</span>
+            <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.investment"></div>
+          </div>
+          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+            <div class="mb-1.5 flex items-center gap-1.5">
+              <AppIcon icon="BookOpen" :size="18" style="color: var(--accent)" />
+              <span class="text-sm font-medium" style="color: var(--text-primary)">建议</span>
+            </div>
+            <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.suggestion"></div>
           </div>
         </div>
-      </div>
-    </div>
+      </UCard>
 
-    <!-- 功能特性 -->
-    <div class="features">
-      <div class="feature-card">
-        <h3>全自动无感记账</h3>
-        <p>银行通知自动解析，无需手动分类</p>
-      </div>
-      <div class="feature-card">
-        <h3>多 Agent 协同</h3>
-        <p>可配置多个 AI Agent，各自独立分析</p>
-      </div>
-      <div class="feature-card">
-        <h3 class="feature-title"><AppIcon icon="BookOpen" :size="18" /> 日间纸墨</h3>
-        <p>浅色第一、深色同源，双主题可切换</p>
-      </div>
-    </div>
+      <UCard v-if="mounted && monthly" class="sb-surface">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-base font-semibold" style="color: var(--text-primary)">{{ monthly.year }}年{{ monthly.month }}月小结</h2>
+          <UBadge color="neutral" variant="soft">储蓄率 {{ monthly.savings_rate }}%</UBadge>
+        </div>
+        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">总收入</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" style="color: var(--success)">¥{{ monthly.total_income.toFixed(2) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">总支出</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" style="color: var(--danger)">¥{{ monthly.total_expense.toFixed(2) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">净收支</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" :style="{ color: monthly.net >= 0 ? 'var(--success)' : 'var(--danger)' }">¥{{ monthly.net.toFixed(2) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">日均支出</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ monthly.daily_avg_expense.toFixed(2) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">交易笔数</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthly.transaction_count }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs" style="color: var(--text-secondary)">储蓄率</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthly.savings_rate }}%</dd>
+          </div>
+        </dl>
+        <div v-if="monthly.weekly" class="mt-4 space-y-2 border-t pt-4" style="border-color: var(--border)">
+          <h3 class="text-sm font-medium" style="color: var(--text-primary)">周对比</h3>
+          <ul class="space-y-2">
+            <li v-for="w in monthly.weekly" :key="w.week" class="flex items-center gap-3">
+              <span class="w-12 shrink-0 text-xs" style="color: var(--text-secondary)">第{{ w.week }}周</span>
+              <span class="flex min-w-0 flex-1 flex-col gap-1">
+                <span
+                  class="block h-1.5"
+                  style="background: var(--success); border-radius: var(--radius-sm)"
+                  :style="{ width: Math.min(w.income / Math.max(...monthly.weekly.map(x => x.income), 1) * 100, 100) + '%' }"
+                ></span>
+                <span
+                  class="block h-1.5"
+                  style="background: var(--danger); border-radius: var(--radius-sm)"
+                  :style="{ width: Math.min(w.expense / Math.max(...monthly.weekly.map(x => x.expense), 1) * 100, 100) + '%' }"
+                ></span>
+              </span>
+              <span class="w-32 shrink-0 text-right text-xs tabular-nums" style="color: var(--text-secondary)">入¥{{ w.income.toFixed(0) }} 出¥{{ w.expense.toFixed(0) }}</span>
+            </li>
+          </ul>
+        </div>
+      </UCard>
+    </section>
   </div>
 </template>
 
@@ -278,13 +343,21 @@ const renderedAnalysis = computed(() => ({
 
 const analyzing = ref(false)
 const mounted = ref(false)
+const trendLoaded = ref(false)
+// 首屏一次：入场 stagger 播完即撤掉 reveal，避免路由回来重播
+const playEnter = ref(true)
 
-// 展示币种（仅折算显示，账本仍记人民币）
+// 展示币种（仅折算显示，账本仍记人民币；选择落盘，下次打开沿用）
+const CURRENCY_KEY = 'sb-display-currency'
 const displayCurrency = ref('CNY')
 const currencyOptions = ref(['CNY'])
 const fxSymbols = ref({ CNY: '¥' })
 const fxRates = ref({})
 const fxDate = ref('')
+
+const currencyItems = computed(() =>
+  currencyOptions.value.map(c => ({ label: `${fxSymbols.value[c] || ''} ${c}`, value: c }))
+)
 
 const fmtMoney = (v) => {
   const n = Number(v) || 0
@@ -312,7 +385,14 @@ const loadFx = async () => {
   }
 }
 
-watch(displayCurrency, loadFx)
+watch(displayCurrency, async (v) => {
+  try {
+    if (import.meta.client) localStorage.setItem(CURRENCY_KEY, v)
+  } catch {}
+  await loadFx()
+  // 币种变化时以新格式重播 count-up（target 引用变化触发 useCountUp 内部 watch）
+  stats.value = { ...stats.value }
+})
 
 // 首页 stat 数字 count-up：金额×5 + 整数×1，reduced-motion 下直接终值
 const netAssets = useCountUp(() => Number(stats.value.net_assets) || 0, 'money', (v) => fmtMoney(v))
@@ -321,6 +401,15 @@ const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) 
 const monthlyExpenses = useCountUp(() => Number(stats.value.monthly_expenses) || 0, 'money', (v) => fmtMoney(v))
 const monthlyIncome = useCountUp(() => Number(stats.value.monthly_income) || 0, 'money', (v) => fmtMoney(v))
 const txCount = useCountUp(() => Number(stats.value.transaction_count) || 0, 'int')
+
+const statCards = computed(() => [
+  { key: 'assets', label: '总资产', text: totalAssets.display.value, color: 'var(--success)' },
+  { key: 'liab', label: '总负债', text: totalLiabilities.display.value, color: 'var(--danger)' },
+  { key: 'exp', label: '本月支出', text: monthlyExpenses.display.value, color: 'var(--danger)' },
+  { key: 'inc', label: '本月收入', text: monthlyIncome.display.value, color: 'var(--success)' },
+  { key: 'count', label: '交易笔数', text: txCount.display.value, color: 'var(--text-primary)' },
+])
+
 const trend = ref({ daily: [], categories: [], total_expense: 0, total_income: 0 })
 const monthly = ref(null)
 const recentTransactions = ref([])
@@ -330,12 +419,12 @@ const liabilities = ref([])
 const trendDays = computed(() => trend.value.daily.length)
 const totalCategoryAmount = computed(() => trend.value.categories.reduce((s, c) => s + c.amount, 0) || 1)
 
-// 消费趋势 echarts（主题跟随、窗口自适应）
+// 消费趋势：面积图置顶（支出/收入双面积，语义色），饼图只留分析页
 const { el: trendEl, render: renderTrend } = useECharts()
 watch(trend, (t) => {
   if (!t.daily.length) return
   renderTrend((p) => ({
-    grid: { left: 8, right: 8, top: 24, bottom: 0, containLabel: true },
+    grid: { left: 8, right: 8, top: 28, bottom: 0, containLabel: true },
     tooltip: { ...tooltipCommon(p), valueFormatter: (v) => `¥${Number(v).toFixed(2)}` },
     legend: {
       top: 0, right: 0, textStyle: { color: p.subtext, fontSize: 11 },
@@ -350,12 +439,16 @@ watch(trend, (t) => {
     yAxis: { type: 'value', ...axisCommon(p) },
     series: [
       {
-        name: '支出', type: 'bar', data: t.daily.map((d) => d.expense),
-        itemStyle: { color: p.danger, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 14,
+        name: '支出', type: 'line', smooth: true, symbol: 'none',
+        data: t.daily.map((d) => d.expense),
+        lineStyle: { color: p.danger, width: 2 },
+        areaStyle: { color: p.danger, opacity: 0.12 },
       },
       {
-        name: '收入', type: 'bar', data: t.daily.map((d) => d.income),
-        itemStyle: { color: p.success, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 14,
+        name: '收入', type: 'line', smooth: true, symbol: 'none',
+        data: t.daily.map((d) => d.income),
+        lineStyle: { color: p.success, width: 2 },
+        areaStyle: { color: p.success, opacity: 0.12 },
       },
     ],
   }))
@@ -374,6 +467,8 @@ const loadTrend = async () => {
     trend.value = await fetchTrend(30)
   } catch (error) {
     console.error('加载趋势失败:', error)
+  } finally {
+    trendLoaded.value = true
   }
 }
 
@@ -469,369 +564,94 @@ const loadAll = () => {
   loadFx()
 }
 
-onMounted(loadAll)
+onMounted(() => {
+  try {
+    if (import.meta.client) {
+      const saved = localStorage.getItem(CURRENCY_KEY)
+      if (saved) displayCurrency.value = saved
+    }
+  } catch {}
+  loadAll()
+  // 首屏一次：stagger 播完撤掉 reveal，后续切回来不再重播
+  setTimeout(() => { playEnter.value = false }, 1200)
+})
 onActivated(loadAll) // 客户端路由导航回来时也重新加载
 </script>
 
 <style scoped>
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.hero {
-  text-align: center;
-  margin-bottom: 3rem;
-}
-
-.hero h1 {
-  font-size: 2.5rem;
-  color: var(--accent);
-  margin-bottom: 0.5rem;
-}
-
-.tagline {
-  font-size: 1.1rem;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.stats-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-  gap: 1rem;
-}
-
-.stats-note {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-}
-
-.currency-select {
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.currency-select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-bottom: 3rem;
-}
-
-.stat-card {
+/* 卡片表面跟品牌走：只用 var(--*)，不写死色 */
+.sb-surface {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  text-align: center;
-  transition: all 0.2s;
 }
 
-.stat-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-md);
+/* ink 品牌金额标题用衬线展示字体，其他品牌回退继承，不引入新字 */
+.brand-display {
+  font-family: var(--font-brand-display);
 }
 
-.stat-label {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
+/* CTA 按压缩放；只动 transform，不新增颜色 */
+.cta-press {
+  transition: transform 0.12s ease-out;
+}
+.cta-press:active {
+  transform: scale(0.96);
 }
 
-.stat-value {
-  color: var(--text-primary);
-  font-size: 1.8rem;
-  font-weight: 600;
+/* 行 hover 只用品牌柔光底，不引入新色 */
+.tx-row {
+  transition: background-color 0.15s ease;
+}
+.tx-row:hover {
+  background: var(--accent-soft);
 }
 
-.stat-value.income {
-  color: var(--success);
-}
-
-.stat-value.expense {
-  color: var(--danger);
-}
-
-.ai-section {
-  margin-bottom: 3rem;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.section-header h2 {
-  color: var(--text-primary);
-  font-size: 1.5rem;
-}
-
-.btn {
-  padding: 0.5rem 1.5rem;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.insights {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.insight-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-}
-
-.insight-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.insight-icon {
-  display: inline-flex;
-  color: var(--accent);
-}
-
-.insight-title {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.insight-content {
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.insight-content :deep(p) {
+/* AI 洞察 markdown 富文本：沿用原排版比例，颜色只用文本变量 */
+.insight-md :deep(p) {
   margin: 0.5rem 0;
 }
-
-.insight-content :deep(ul),
-.insight-content :deep(ol) {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
+.insight-md :deep(p):first-child {
+  margin-top: 0;
 }
-
-.insight-content :deep(li) {
+.insight-md :deep(ul),
+.insight-md :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.insight-md :deep(li) {
   margin: 0.25rem 0;
 }
-
-.insight-content :deep(strong) {
+.insight-md :deep(strong) {
   color: var(--text-primary);
   font-weight: 600;
 }
-
-.insight-content :deep(code) {
+.insight-md :deep(code) {
   background: var(--bg-tertiary);
   padding: 0.1rem 0.3rem;
   border-radius: var(--radius-sm);
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
-
-.insight-content :deep(h1),
-.insight-content :deep(h2),
-.insight-content :deep(h3) {
+.insight-md :deep(h1),
+.insight-md :deep(h2),
+.insight-md :deep(h3) {
   color: var(--text-primary);
-  margin: 1rem 0 0.5rem;
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.95em;
 }
 
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
+/* 键盘焦点：描边即时出现，零动画 */
+a:focus-visible,
+button:focus-visible {
+  transition: none;
 }
 
-/* 资产概览 */
-.asset-section { margin-bottom: 3rem; }
-.asset-summary { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; }
-.asset-bar-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.asset-bar-label { color: var(--text-secondary); font-size: 0.9rem; }
-.asset-bar-value { font-size: 1.5rem; font-weight: 700; }
-.asset-bar-value.income { color: var(--success); }
-.asset-bar-value.expense { color: var(--danger); }
-.asset-compare-bar { display: flex; height: 24px; border-radius: var(--radius-lg); overflow: hidden; gap: 2px; }
-.asset-fill { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--fill-ink); font-weight: 500; transition: width 0.5s; min-width: 0; overflow: hidden; white-space: nowrap; }
-.asset-green { background: var(--success); }
-.asset-red { background: var(--danger); }
-.asset-breakdown { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-.asset-detail-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.asset-detail-icon { display: inline-flex; flex-shrink: 0; }
-.asset-detail-name { color: var(--text-primary); font-size: 0.85rem; min-width: 50px; }
-.asset-detail-bar-bg { flex: 1; height: 6px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: var(--radius-sm); overflow: hidden; }
-.asset-detail-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s; }
-.asset-detail-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 70px; text-align: right; }
-.asset-detail-count { color: var(--text-secondary); font-size: 0.75rem; min-width: 30px; }
-.liability-mini { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; }
-.liability-mini-title { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; font-size: 0.9rem; }
-.liability-mini-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; }
-.liability-mini-icon { display: inline-flex; flex-shrink: 0; }
-.liability-mini-info { flex: 1; min-width: 0; }
-.liability-mini-name { color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.2rem; }
-.liability-mini-bar { height: 4px; background: var(--bg-tertiary, rgba(255,255,255,0.05)); border-radius: var(--radius-sm); overflow: hidden; }
-.liability-mini-fill { height: 100%; background: var(--success); border-radius: var(--radius-sm); transition: width 0.3s; }
-.liability-mini-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
-.liability-mini-total { color: var(--text-secondary); font-weight: 400; }
-
-/* 最近交易 */
-.recent-section { margin-bottom: 3rem; }
-.view-all { color: var(--accent); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
-.view-all:hover { text-decoration: underline; }
-.recent-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.recent-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.8rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition: all 0.2s;
-}
-.recent-item:hover { border-color: var(--accent); }
-.recent-icon {
-  width: 36px; height: 36px; border-radius: var(--radius-md);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; flex-shrink: 0;
-}
-.recent-info { flex: 1; min-width: 0; }
-.recent-desc {
-  color: var(--text-primary); font-weight: 500; font-size: 0.95rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.recent-meta { display: flex; gap: 0.4rem; font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem; }
-.recent-amount { font-size: 1.1rem; font-weight: 600; flex-shrink: 0; }
-.recent-amount.income { color: var(--success); }
-.recent-amount.expense { color: var(--danger); }
-
-/* 趋势图 */
-.trend-section { margin-bottom: 3rem; }
-.trend-summary { color: var(--text-secondary); font-size: 0.9rem; }
-.chart-card { padding: 1rem 0.5rem 0.5rem; }
-.chart-box { width: 100%; height: 260px; }
-.empty-trend { color: var(--text-secondary); text-align: center; padding: 3rem; }
-
-/* 分类 */
-.category-section { margin-bottom: 3rem; }
-.category-bars { display: flex; flex-direction: column; gap: 0.6rem; }
-.category-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.6rem 1rem;
-}
-.cat-icon { display: inline-flex; flex-shrink: 0; }
-.cat-name { color: var(--text-primary); font-size: 0.9rem; min-width: 70px; }
-.cat-bar-bg {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.05));
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-.cat-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s; }
-.cat-amount { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; min-width: 80px; text-align: right; }
-.cat-percent { color: var(--text-secondary); font-size: 0.8rem; min-width: 50px; text-align: right; }
-
-/* 月报 */
-.monthly-section { margin-bottom: 3rem; }
-.monthly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-.monthly-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.2rem; text-align: center; }
-.monthly-label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.3rem; }
-.monthly-value { color: var(--text-primary); font-size: 1.4rem; font-weight: 600; }
-.monthly-value.income { color: var(--success); }
-.monthly-value.expense { color: var(--danger); }
-.weekly-comparison { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.2rem; }
-.weekly-header { color: var(--text-primary); font-weight: 600; margin-bottom: 0.8rem; }
-.weekly-bars { display: flex; flex-direction: column; gap: 0.5rem; }
-.weekly-item { display: flex; align-items: center; gap: 0.75rem; }
-.weekly-label { color: var(--text-secondary); font-size: 0.85rem; min-width: 50px; }
-.weekly-bar-group { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.weekly-bar { height: 6px; border-radius: var(--radius-sm); min-width: 2px; transition: width 0.3s; }
-.weekly-bar.income { background: var(--success); }
-.weekly-bar.expense { background: var(--danger); }
-.weekly-text { color: var(--text-secondary); font-size: 0.8rem; min-width: 120px; text-align: right; }
-
-.feature-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 2rem;
-  transition: all 0.2s;
-}
-
-.feature-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-md);
-}
-
-.feature-card h3 {
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-}
-
-.feature-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.feature-card p {
-  color: var(--text-secondary);
-}
-
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .stats {
-    grid-template-columns: repeat(2, 1fr);
+@media (prefers-reduced-motion: reduce) {
+  .cta-press,
+  .tx-row {
+    transition: none;
   }
-  .charts-row {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 480px) {
-  .stats {
-    grid-template-columns: 1fr;
+  .cta-press:active {
+    transform: none;
   }
 }
 </style>
