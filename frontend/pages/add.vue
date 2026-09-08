@@ -1,140 +1,195 @@
 <template>
-  <div class="container">
-    <div class="header">
-      <h1>手动记账</h1>
+  <div class="mx-auto w-full max-w-[600px] px-4 py-6">
+    <div class="mb-4">
+      <h1 class="text-2xl font-semibold" style="color: var(--text-primary)">手动记账</h1>
     </div>
 
     <!-- Tab 切换 -->
-    <div class="tab-bar">
-      <button :class="{ active: tab === 'manual' }" @click="tab = 'manual'" class="tab-btn">手动输入</button>
-      <button :class="{ active: tab === 'paste' }" @click="tab = 'paste'" class="tab-btn">粘贴通知</button>
-    </div>
+    <UTabs v-model="tab" :items="tabItems" :content="false" class="mb-6 w-full" />
 
     <!-- 粘贴通知解析 -->
-    <div v-if="tab === 'paste'" class="paste-section">
-      <div class="form-group">
-        <label>粘贴通知文本</label>
-        <textarea
+    <UCard
+      v-if="tab === 'paste'"
+      class="sb-surface"
+      :ui="{ body: 'p-4 sm:p-6 flex flex-col gap-4' }"
+    >
+      <UFormField label="粘贴通知文本" name="notification">
+        <UTextarea
+          id="add-notify"
           v-model="notificationText"
-          class="textarea"
+          :rows="6"
           placeholder="在此粘贴银行或支付平台的通知短信...&#10;例如：&#10;招商银行&#10;您尾号1234的储蓄卡于12月25日在星巴克消费人民币38.50元"
-          rows="6"
-        ></textarea>
-      </div>
-      <button type="button" @click="parseAndCreate" class="btn-primary" :disabled="parsing || !notificationText.trim()">
-        <AppIcon v-if="!parsing" icon="MagnifyingGlass" :size="15" />
+          class="w-full"
+        />
+      </UFormField>
+      <UButton
+        type="button"
+        class="pressable"
+        :loading="parsing"
+        :disabled="parsing || !notificationText.trim()"
+        @click="parseAndCreate"
+      >
+        <template v-if="!parsing" #leading>
+          <AppIcon icon="MagnifyingGlass" :size="15" />
+        </template>
         {{ parsing ? '解析中...' : '解析并创建' }}
-      </button>
-      <div v-if="parseResult" class="parse-result">
-        <div v-if="parseResult.status === 'created'" class="parse-success">
-          <AppIcon icon="Check" :size="16" /> 解析成功！
-          <span class="parse-detail">{{ parseResult.category }} | ¥{{ parseResult.amount }} | {{ parseResult.type === 'income' ? '收入' : '支出' }}</span>
-          <span v-if="parseResult.abnormal_alert?.triggered" class="abnormal-badge"><AppIcon icon="Warning" :size="14" /> 异常消费已触发分析</span>
-        </div>
-        <div v-else class="parse-fail">
-          <AppIcon icon="X" :size="16" /> {{ parseResult.reason || parseResult.status }}
-        </div>
-      </div>
-    </div>
+      </UButton>
+      <UAlert
+        v-if="parseResult && parseResult.status === 'created'"
+        class="alert-pop"
+        color="success"
+        variant="soft"
+        title="解析成功！"
+      >
+        <template #leading>
+          <span class="check-pop"><AppIcon icon="Check" :size="16" /></span>
+        </template>
+        <template #description>
+          <span class="font-medium tabular-nums">{{ parseResult.category }} | ¥{{ parseResult.amount }} | {{ parseResult.type === 'income' ? '收入' : '支出' }}</span>
+          <span v-if="parseResult.abnormal_alert?.triggered" class="mt-1 inline-flex items-center gap-1 text-xs">
+            <AppIcon icon="Warning" :size="14" /> 异常消费已触发分析
+          </span>
+        </template>
+      </UAlert>
+      <UAlert
+        v-else-if="parseResult"
+        class="alert-pop"
+        color="error"
+        variant="soft"
+        :title="parseResult.reason || parseResult.status"
+      >
+        <template #leading>
+          <AppIcon icon="X" :size="16" />
+        </template>
+      </UAlert>
+    </UCard>
 
     <!-- 手动输入表单 -->
-    <form v-if="tab === 'manual'" @submit.prevent="submitTransaction" class="form">
-      <div class="form-group">
-        <label>类型</label>
-        <div class="type-toggle">
-          <button 
-            type="button" 
-            :class="{ active: form.transaction_type === 'expense' }"
-            @click="form.transaction_type = 'expense'"
-            class="toggle-btn expense"
-          >
-            支出
-          </button>
-          <button 
-            type="button" 
-            :class="{ active: form.transaction_type === 'income' }"
-            @click="form.transaction_type = 'income'"
-            class="toggle-btn income"
-          >
-            收入
-          </button>
-        </div>
-      </div>
+    <UCard
+      v-if="tab === 'manual'"
+      class="sb-surface"
+      :ui="{ body: 'p-4 sm:p-6' }"
+    >
+      <form class="flex flex-col gap-5" @submit.prevent="submitTransaction">
+        <UFormField label="类型" name="transaction_type">
+          <div class="grid grid-cols-2 gap-3" role="group" aria-label="记账类型">
+            <UButton
+              type="button"
+              class="pressable"
+              :color="form.transaction_type === 'expense' ? 'error' : 'neutral'"
+              :variant="form.transaction_type === 'expense' ? 'solid' : 'outline'"
+              @click="form.transaction_type = 'expense'"
+            >
+              支出
+            </UButton>
+            <UButton
+              type="button"
+              class="pressable"
+              :color="form.transaction_type === 'income' ? 'success' : 'neutral'"
+              :variant="form.transaction_type === 'income' ? 'solid' : 'outline'"
+              @click="form.transaction_type = 'income'"
+            >
+              收入
+            </UButton>
+          </div>
+        </UFormField>
 
-      <div class="form-group">
-        <label>金额</label>
-        <input 
-          v-model.number="form.amount" 
-          type="number" 
-          step="0.01" 
-          min="0"
-          placeholder="0.00"
-          required
-        />
-      </div>
+        <UFormField label="金额" name="amount" :error="amountError || undefined" required>
+          <UInput
+            id="add-amount"
+            v-model.number="form.amount"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            required
+            autofocus
+            class="amount-field w-full"
+            @update:model-value="amountError = ''"
+          />
+        </UFormField>
 
-      <div class="form-group">
-        <label>分类</label>
-        <el-select
-          v-model="form.category"
-          filterable
-          allow-create
-          default-first-option
-          placeholder="选择或输入新分类"
-          @change="onCategoryChange"
+        <UFormField label="分类" name="category">
+          <USelectMenu
+            v-model="form.category"
+            :items="categoryOptions"
+            placeholder="选择或输入新分类"
+            search-input
+            create-item="always"
+            class="w-full"
+            @create="onCreateCategory"
+            @update:model-value="onCategoryChange"
+          >
+            <template #item-leading="{ item }">
+              <AppIcon :icon="categoryStyleOf(item).icon" :color="categoryStyleOf(item).color" :size="16" />
+            </template>
+          </USelectMenu>
+          <div v-if="form.category && form.category.trim()" class="mt-2 flex items-center gap-2 text-sm" style="color: var(--text-secondary)">
+            <AppIcon :icon="selectedStyle.icon" :color="selectedStyle.color" :size="18" />
+            <span class="inline-block size-2.5 rounded-full" :style="{ background: selectedStyle.color }" aria-hidden="true" />
+            <span>{{ form.category.trim() }}</span>
+          </div>
+        </UFormField>
+
+        <UFormField label="账户" name="account" required>
+          <USelect
+            v-model="form.account"
+            :items="accountOptions"
+            placeholder="选择账户"
+            required
+            class="w-full"
+          />
+        </UFormField>
+
+        <UFormField label="描述" name="description">
+          <UInput
+            v-model="form.description"
+            type="text"
+            placeholder="例如：星巴克咖啡"
+            class="w-full"
+          />
+        </UFormField>
+
+        <UButton type="submit" block class="pressable" :loading="submitting" :disabled="submitting">
+          {{ submitting ? '保存中...' : '保存' }}
+        </UButton>
+
+        <UAlert
+          v-if="messageType === 'success' && message"
+          class="alert-pop"
+          color="success"
+          variant="soft"
+          :title="message"
         >
-          <el-option v-for="c in categoryOptions" :key="c" :value="c" :label="c" />
-        </el-select>
-      </div>
-
-      <div class="form-group">
-        <label>账户</label>
-        <select v-model="form.account" required>
-          <option value="">选择账户</option>
-          <option value="招商银行">招商银行</option>
-          <option value="工商银行">工商银行</option>
-          <option value="建设银行">建设银行</option>
-          <option value="农业银行">农业银行</option>
-          <option value="中国银行">中国银行</option>
-          <option value="交通银行">交通银行</option>
-          <option value="浦发银行">浦发银行</option>
-          <option value="支付宝">支付宝</option>
-          <option value="微信">微信支付</option>
-          <option value="美团">美团</option>
-          <option value="京东">京东</option>
-          <option value="现金">现金</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>描述</label>
-        <input 
-          v-model="form.description" 
-          type="text" 
-          placeholder="例如：星巴克咖啡"
+          <template #leading>
+            <span class="check-pop"><AppIcon icon="Check" :size="16" /></span>
+          </template>
+        </UAlert>
+        <UAlert
+          v-if="messageType === 'error' && message"
+          class="alert-pop"
+          color="error"
+          variant="soft"
+          :title="message"
         />
-      </div>
-
-      <button type="submit" class="btn btn-primary" :disabled="submitting">
-        {{ submitting ? '保存中...' : '保存' }}
-      </button>
-
-      <div v-if="message" :class="['message', messageType]">
-        {{ message }}
-      </div>
-    </form>
+      </form>
+    </UCard>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { createTransaction, parseNotification } from '~/utils/api'
-import { getAllKnownCategories, assignAutoStyle } from '~/utils/icons'
+import { getAllKnownCategories, assignAutoStyle, getCategoryIcon } from '~/utils/icons'
 
 const router = useRouter()
 
 const tab = ref('manual')
+const tabItems = [
+  { label: '手动输入', value: 'manual' },
+  { label: '粘贴通知', value: 'paste' }
+]
 const notificationText = ref('')
 const parsing = ref(false)
 const parseResult = ref(null)
@@ -147,9 +202,17 @@ const form = ref({
   transaction_type: 'expense'
 })
 
+// 12 个固定账户：与原原生 select 的 option 顺序/文案一字不差
+const accountOptions = [
+  '招商银行', '工商银行', '建设银行', '农业银行', '中国银行', '交通银行',
+  '浦发银行', '支付宝', '微信支付', '美团', '京东', '现金'
+]
+
 const submitting = ref(false)
 const message = ref('')
 const messageType = ref('success')
+// 金额校验失败的 inline 错误（字段下方展示，原 message 文案不变）
+const amountError = ref('')
 
 // 已知全量分类：输入新词时自动配色并落盘（颜色稳定不跳变）
 const customTick = ref(0)
@@ -163,16 +226,27 @@ const onCategoryChange = (val) => {
   assignAutoStyle(name)
   customTick.value++
 }
+// USelectMenu 新建词入口：等价原可建项下拉行为，照旧调 assignAutoStyle 落盘
+const onCreateCategory = (term) => {
+  const name = (term || '').trim()
+  if (!name) return
+  form.value.category = name
+  onCategoryChange(name)
+}
+// 只读预览：不落盘，落盘只走 onCategoryChange / onCreateCategory
+const categoryStyleOf = (name) => getCategoryIcon((name || '').trim() || '其他')
+const selectedStyle = computed(() => categoryStyleOf(form.value.category))
 
 const submitTransaction = async () => {
   if (!form.value.amount || form.value.amount <= 0) {
-    message.value = '请输入有效金额'
-    messageType.value = 'error'
+    amountError.value = '请输入有效金额'
+    message.value = ''
     return
   }
 
   submitting.value = true
   message.value = ''
+  amountError.value = ''
 
   try {
     await createTransaction({
@@ -224,224 +298,108 @@ const parseAndCreate = async () => {
     parsing.value = false
   }
 }
+
+// 动线：Cmd/Ctrl+K 聚焦首字段；切 Tab 后聚焦对应首字段；挂载 autofocus 由金额 UInput 承担
+const focusField = (id) => {
+  if (typeof document === 'undefined') return
+  const el = document.getElementById(id)
+  if (el) el.focus({ preventScroll: false })
+}
+const onGlobalKeydown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    focusField(tab.value === 'paste' ? 'add-notify' : 'add-amount')
+  }
+}
+watch(tab, (v) => {
+  nextTick(() => focusField(v === 'paste' ? 'add-notify' : 'add-amount'))
+})
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
 </script>
 
 <style scoped>
-.container {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.header {
-  margin-bottom: 1rem;
-}
-
-.tab-bar {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.tab-btn {
-  padding: 0.6rem 1.2rem;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.paste-section {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.textarea {
-  width: 100%;
-  padding: 0.75rem;
+/* 卡片表面跟品牌走：只用 var(--*)，不写死色 */
+.sb-surface {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  resize: vertical;
-  font-family: inherit;
 }
 
-.textarea:focus {
-  outline: none;
-  border-color: var(--accent);
+/* 金额大字等宽：inner input 经 :deep 定死，不受 U* 主题字号覆盖；ink 下衬线展示体 */
+.amount-field :deep(input) {
+  font-family: var(--font-brand-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.parse-result {
-  padding: 1rem;
-  border-radius: 8px;
+/* 成功确认感：alert 由触发处展开（180ms）；对勾 0.45s 缩放淡入，不许 confetti */
+.alert-pop {
+  transform-origin: top center;
+  animation: sb-alert-pop 180ms ease-out both;
 }
-
-.parse-success {
-  color: var(--success);
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.5rem;
+@keyframes sb-alert-pop {
+  from {
+    opacity: 0;
+    transform: scaleY(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
 }
-
-.parse-detail {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.abnormal-badge {
-  color: var(--warning, #f59e0b);
-  font-size: 0.85rem;
+.check-pop {
   display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+  animation: sb-check-pop 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes sb-check-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.parse-fail {
-  color: var(--danger);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
+/* 提交按钮按压缩放；键盘聚焦激活时零动画 */
+.pressable {
+  transition: transform 160ms ease-out;
+}
+.pressable:active:where(:not(:focus-visible)) {
+  transform: scale(0.97);
+}
+a:focus-visible,
+button:focus-visible {
+  transition: none;
 }
 
-.header h1 {
-  font-size: 1.8rem;
-  color: var(--text-primary);
+/* 480px 单列：收紧内边距，金额字号略降，类型双钮不断裂 */
+@media (max-width: 480px) {
+  .amount-field :deep(input) {
+    font-size: 1.5rem;
+  }
 }
 
-.form {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 2rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  color: var(--text-primary);
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 0.75rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 1rem;
-}
-
-.form-group input:focus,
-.form-group select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.type-toggle {
-  display: flex;
-  gap: 1rem;
-}
-
-.toggle-btn {
-  flex: 1;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.toggle-btn.expense.active {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--fill-ink);
-}
-
-.toggle-btn.income.active {
-  background: var(--success);
-  border-color: var(--success);
-  color: var(--fill-ink);
-}
-
-.btn {
-  width: 100%;
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.message.success {
-  background: rgba(34, 197, 94, 0.1);
-  color: var(--success);
-}
-
-.message.error {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger);
+@media (prefers-reduced-motion: reduce) {
+  .alert-pop,
+  .check-pop {
+    animation: none;
+  }
+  .pressable {
+    transition: none;
+  }
+  .pressable:active:where(:not(:focus-visible)) {
+    transform: none;
+  }
 }
 </style>
-
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .container {
-    padding: 1rem;
-  }
-  .grid {
-    grid-template-columns: 1fr !important;
-  }
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-}
