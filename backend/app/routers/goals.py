@@ -50,20 +50,42 @@ def _calc_goal_progress(current_amount: float, target_amount: float) -> float:
     return min(round((current_amount / target_amount) * 100, 2), 100.0)
 
 
-def _goal_to_response(goal: FinancialGoal) -> GoalResponse:
+def _resolve_goal_current(goal: FinancialGoal, db=None) -> tuple:
+    """关联自动进度：linked_asset_id 优先，其次 linked_account；否则用手动值。
+    返回 (current_amount, auto: bool)。关联目标找不到时回退手动值。"""
+    if getattr(goal, "linked_asset_id", None) and db is not None:
+        from ..database import Asset
+
+        asset = db.query(Asset).filter(Asset.id == goal.linked_asset_id).first()
+        if asset:
+            return float(asset.current_value or 0), True
+    if getattr(goal, "linked_account", None) and db is not None:
+        from ..database import Account
+
+        acc = db.query(Account).filter(Account.name == goal.linked_account).first()
+        if acc:
+            return float(acc.balance or 0), True
+    return float(goal.current_amount or 0), False
+
+
+def _goal_to_response(goal: FinancialGoal, db=None) -> GoalResponse:
     """将 ORM 对象转为响应模型"""
+    current, auto = _resolve_goal_current(goal, db)
     return GoalResponse(
         id=goal.id,
         name=goal.name,
         goal_type=goal.goal_type,
         target_amount=goal.target_amount,
-        current_amount=goal.current_amount,
+        current_amount=current,
         currency=goal.currency,
         deadline=goal.deadline.isoformat() if goal.deadline else None,
         priority=goal.priority,
         status=goal.status,
         notes=goal.notes,
-        progress_percent=_calc_goal_progress(goal.current_amount, goal.target_amount),
+        linked_account=getattr(goal, "linked_account", None),
+        linked_asset_id=getattr(goal, "linked_asset_id", None),
+        progress_percent=_calc_goal_progress(current, goal.target_amount),
+        auto_progress=auto,
         created_at=goal.created_at,
         updated_at=goal.updated_at,
     )
@@ -83,8 +105,9 @@ async def get_goals_summary(user: User = Depends(require_user), db: Session = De
     active = [g for g in goals if g.status == "active"]
     completed = [g for g in goals if g.status == "completed"]
 
+    resolved = [(g, _resolve_goal_current(g, db)[0]) for g in goals]
     total_target = sum(g.target_amount for g in active)
-    total_current = sum(g.current_amount for g in active)
+    total_current = sum(cur for g, cur in resolved if g.status == "active")
 
     return GoalSummaryResponse(
         total_goals=len(goals),
@@ -93,7 +116,7 @@ async def get_goals_summary(user: User = Depends(require_user), db: Session = De
         total_target=total_target,
         total_current=total_current,
         overall_progress=_calc_goal_progress(total_current, total_target),
-        goals=[_goal_to_response(g) for g in goals],
+        goals=[_goal_to_response(g, db) for g in goals],
     )
 
 
@@ -120,7 +143,7 @@ async def list_goals(
         FinancialGoal.created_at.desc()
     ).all()
 
-    return [_goal_to_response(g) for g in goals]
+    return [_goal_to_response(g, db) for g in goals]
 
 
 @router.post("/goals", response_model=GoalResponse, status_code=201)
@@ -144,11 +167,13 @@ async def create_goal(goal: GoalCreate, user: User = Depends(require_user), db: 
         priority=goal.priority,
         status=goal.status,
         notes=goal.notes,
+        linked_account=goal.linked_account,
+        linked_asset_id=goal.linked_asset_id,
     )
     db.add(db_goal)
     db.commit()
     db.refresh(db_goal)
-    return _goal_to_response(db_goal)
+    return _goal_to_response(db_goal, db)
 
 
 @router.get("/goals/{goal_id}", response_model=GoalResponse)
@@ -157,7 +182,7 @@ async def get_goal(goal_id: int, user: User = Depends(require_user), db: Session
     goal = db.query(FinancialGoal).filter(FinancialGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="目标不存在")
-    return _goal_to_response(goal)
+    return _goal_to_response(goal, db)
 
 
 @router.put("/goals/{goal_id}", response_model=GoalResponse)
@@ -188,7 +213,7 @@ async def update_goal(goal_id: int, updates: GoalUpdate, user: User = Depends(re
 
     db.commit()
     db.refresh(goal)
-    return _goal_to_response(goal)
+    return _goal_to_response(goal, db)
 
 
 @router.delete("/goals/{goal_id}")
@@ -217,6 +242,8 @@ async def contribute_to_goal(
         raise HTTPException(status_code=404, detail="目标不存在")
     if goal.status != "active":
         raise HTTPException(status_code=400, detail="只能向进行中的目标投入资金")
+    if getattr(goal, "linked_account", None) or getattr(goal, "linked_asset_id", None):
+        raise HTTPException(status_code=400, detail="该目标已关联自动进度（账户/资产），请先解绑再手动投入")
 
     # 记录投入
     db_contribution = GoalContribution(
@@ -235,7 +262,7 @@ async def contribute_to_goal(
 
     db.commit()
     db.refresh(goal)
-    return _goal_to_response(goal)
+    return _goal_to_response(goal, db)
 
 
 @router.get("/goals/{goal_id}/contributions", response_model=List[GoalContributionResponse])

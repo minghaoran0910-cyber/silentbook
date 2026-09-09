@@ -80,8 +80,14 @@ async def get_dashboard_stats(user: User = Depends(require_user), db: Session = 
         Liability.status == "active"
     ).scalar() or 0.0
 
-    # 净资产 = 总资产 - 总负债（交易已体现在资产值中，不应重复计算）
-    net_assets = total_assets - total_liabilities
+    # 账户余额（交易联动的钱袋子，含现金/银行卡/支付宝等）
+    total_account_balance = db.query(func.coalesce(func.sum(Account.balance), 0)).filter(
+        Account.status == "active"
+    ).scalar() or 0.0
+
+    # 净资产 = 账户余额 + 资产 - 负债（与 balance-sheet 的 total_net_worth 同口径；
+    # 同一笔钱不要在账户和资产里各记一次，否则重复计算）
+    net_assets = total_account_balance + total_assets - total_liabilities
 
     # 交易笔数
     transaction_count = db.query(Transaction).count()
@@ -90,6 +96,7 @@ async def get_dashboard_stats(user: User = Depends(require_user), db: Session = 
         net_assets=net_assets,
         total_assets=total_assets,
         total_liabilities=total_liabilities,
+        total_account_balance=total_account_balance,
         monthly_income=monthly_income,
         monthly_expenses=monthly_expenses,
         transaction_count=transaction_count

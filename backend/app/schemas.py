@@ -41,6 +41,7 @@ class TransactionResponse(TransactionBase):
 
     id: int
     parsed_at: datetime
+    balance_updated: Optional[bool] = None  # 账户余额是否联动成功（账户名对不上时为 False）
 
 
 class AnalysisRequest(BaseModel):
@@ -58,6 +59,7 @@ class DashboardStats(BaseModel):
     net_assets: float
     total_assets: float = 0
     total_liabilities: float = 0
+    total_account_balance: float = 0
     monthly_income: float
     monthly_expenses: float
     transaction_count: int
@@ -340,6 +342,8 @@ class GoalBase(BaseModel):
     priority: str = Field("medium", pattern="^(high|medium|low)$")
     status: str = Field("active", pattern="^(active|completed|abandoned|paused)$")
     notes: Optional[str] = Field(None, max_length=500)
+    linked_account: Optional[str] = Field(None, max_length=100, description="关联账户名，进度自动取账户余额")
+    linked_asset_id: Optional[int] = Field(None, description="关联资产ID，进度自动取资产现值")
 
 
 class GoalCreate(GoalBase):
@@ -355,12 +359,15 @@ class GoalUpdate(BaseModel):
     priority: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
+    linked_account: Optional[str] = Field(None, max_length=100)
+    linked_asset_id: Optional[int] = None
 
 
 class GoalResponse(GoalBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     progress_percent: float = 0  # 进度百分比
+    auto_progress: bool = False  # 是否关联自动进度
     created_at: datetime
     updated_at: datetime
 

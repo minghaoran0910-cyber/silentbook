@@ -228,6 +228,8 @@ class FinancialGoal(UserOwnedMixin, Base):
     priority = Column(String(10), default="medium")  # high/medium/low
     status = Column(String(20), default="active", index=True)  # active/completed/abandoned/paused
     notes = Column(Text)
+    linked_account = Column(String(100), nullable=True)  # 关联账户名：进度 = 账户余额/目标
+    linked_asset_id = Column(Integer, nullable=True)  # 关联资产ID：进度 = 资产现值/目标
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

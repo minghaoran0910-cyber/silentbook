@@ -15,6 +15,8 @@ from datetime import datetime, date
 from typing import Optional, Dict, List, Tuple
 from sqlalchemy.orm import Session
 
+from .gold import fetch_gold_quote
+
 logger = logging.getLogger("silentbook.asset_sync")
 
 # ===== 数据源配置 =====
@@ -142,47 +144,20 @@ async def fetch_stock_price(code: str) -> Optional[Dict]:
 # ===== 黄金价格 =====
 async def fetch_gold_price() -> Optional[Dict]:
     """
-    获取黄金实时价格（Au99.99）
-    返回: {"price": 元/克, "change_pct": 涨跌幅}
+    获取黄金参考价（COMEX 换算，元/克）
+    返回: {"price": 元/克, "change_pct": 0, "name": 来源, "unit": "元/克"}
     """
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(GOLD_API_URL, headers=HEADERS)
-            data = resp.json()
-            
-            if "result" in data and len(data["result"]) > 0:
-                item = data["result"][0]
-                return {
-                    "price": float(item.get("currentPrice", 0)),
-                    "change_pct": float(item.get("riseAndFall", 0)),
-                    "name": "Au99.99",
-                    "unit": "元/克",
-                }
+        quote = await fetch_gold_quote()
+        if quote:
+            return {
+                "price": quote["price"],
+                "change_pct": 0,
+                "name": quote["source"],
+                "unit": "元/克",
+            }
     except Exception as e:
         logger.error(f"获取黄金价格失败: {e}")
-    
-    # 备用：尝试另一个 API
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://api.gold-api.com/price/XAU",
-                timeout=10,
-            )
-            data = resp.json()
-            if "price" in data:
-                # 国际金价 USD/oz → 人民币/克（近似换算）
-                usd_price = data["price"]
-                # 1 oz = 31.1035 g, 假设汇率 7.25
-                cny_per_gram = round(usd_price / 31.1035 * 7.25, 2)
-                return {
-                    "price": cny_per_gram,
-                    "change_pct": 0,
-                    "name": "XAU(国际)",
-                    "unit": "元/克(估算)",
-                }
-    except Exception as e:
-        logger.error(f"备用黄金 API 也失败: {e}")
-    
     return None
 
 
@@ -206,7 +181,7 @@ async def sync_all_positions(db: Session) -> Dict:
     stocks = [p for p in positions if p.position_type == "stock" and p.symbol]
     # fund 和 bond 都走天天基金 API
     funds = [p for p in positions if p.position_type in ("fund", "bond") and p.symbol]
-    gold_positions = [p for p in positions if "黄金" in p.name or "gold" in p.name.lower()]
+    gold_positions = [p for p in positions if p.position_type == "gold" or "黄金" in p.name or "gold" in p.name.lower()]
     others = [p for p in positions if p not in stocks + funds + gold_positions]
     
     # 1. 同步股票（批量查询）

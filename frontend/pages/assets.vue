@@ -309,9 +309,17 @@
                 <div class="min-w-0">
                   <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">实时金价</label>
                   <div class="rounded-md px-3 py-2 text-center text-sm font-semibold tabular-nums" style="background: var(--bg-tertiary); color: var(--text-primary)">
-                    <span v-if="goldPrice" class="inline-flex items-center gap-1.5"><AppIcon icon="Coins" :size="15" /> {{ goldPrice }} 元/克</span>
+                    <span v-if="goldPriceState === 'ok' && goldPrice" class="inline-flex items-center gap-1.5"><AppIcon icon="Coins" :size="15" /> {{ goldPrice }} 元/克</span>
+                    <span v-else-if="goldPriceState === 'error'" class="inline-flex items-center gap-1.5">
+                      金价暂不可用，可手动填克价
+                      <UButton size="xs" variant="ghost" @click="fetchGoldPrice">重试</UButton>
+                    </span>
                     <span v-else>加载中...</span>
                   </div>
+                </div>
+                <div v-if="goldPriceState === 'error'" class="min-w-0">
+                  <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-gold-manual">手动克价（金价服务不可用时）</label>
+                  <UInput id="asset-gold-manual" v-model="goldManualPrice" type="number" step="0.01" placeholder="如 1028.50" class="w-full min-w-0 tabular-nums" @input="calcGoldValue" />
                 </div>
                 <div class="min-w-0">
                   <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-gold-grams">克数</label>
@@ -551,6 +559,8 @@ const confirmDelete = async () => {
 }
 
 const goldPrice = ref(0)
+const goldPriceState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
+const goldManualPrice = ref(0)
 const form = ref({
   name: '', asset_type: 'savings', account: '', current_value: 0, initial_value: 0, liquidity: 'medium', notes: ''
 })
@@ -906,8 +916,9 @@ const cancelLiabilityEdit = () => {
 
 
 const calcGoldValue = () => {
-  if (form.value.asset_type === 'gold' && form.value.goldGrams > 0) {
-    form.value.current_value = Math.round(form.value.goldGrams * goldPrice.value * 100) / 100
+  const px = goldManualPrice.value > 0 ? goldManualPrice.value : goldPrice.value
+  if (form.value.asset_type === 'gold' && form.value.goldGrams > 0 && px > 0) {
+    form.value.current_value = Math.round(form.value.goldGrams * px * 100) / 100
     if (form.value.goldCostPerGram > 0) {
       form.value.initial_value = Math.round(form.value.goldGrams * form.value.goldCostPerGram * 100) / 100
     }
@@ -915,14 +926,22 @@ const calcGoldValue = () => {
 }
 
 const fetchGoldPrice = async () => {
+  goldPriceState.value = 'loading'
   try {
-    const resp = await fetch('/api/gold-price')
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 8000)
+    const resp = await fetch('/api/gold-price', { signal: ctrl.signal })
+    clearTimeout(timer)
     if (resp.ok) {
       const data = await resp.json()
       goldPrice.value = data.price
+      goldPriceState.value = 'ok'
+    } else {
+      goldPriceState.value = 'error'
     }
   } catch (e) {
     console.error('获取金价失败:', e)
+    goldPriceState.value = 'error'
   }
 }
 

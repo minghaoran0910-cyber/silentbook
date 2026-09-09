@@ -58,12 +58,13 @@ async def create_transaction(transaction: TransactionCreate, user: User = Depend
     )
     db.add(db_transaction)
     db.flush()  # 获取 ID 但不提交
-    
-    # 联动账户余额
-    _update_account_balance(db, transaction.account, transaction.transaction_type, transaction.amount)
-    
+
+    # 联动账户余额（账户名对不上时返回 None，交易照常记，仅标记未联动）
+    balance_after = _update_account_balance(db, transaction.account, transaction.transaction_type, transaction.amount)
+
     db.commit()
     db.refresh(db_transaction)
+    db_transaction.balance_updated = balance_after is not None
     return db_transaction
 
 
