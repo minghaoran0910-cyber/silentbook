@@ -46,7 +46,7 @@
           block
           :loading="loading"
           :disabled="!account || loading"
-          class="pressable"
+          class="pressable sb-cta"
           :label="loading ? '发送中...' : '发送重置链接'"
         />
         <div class="text-center">
@@ -133,7 +133,7 @@
           block
           :loading="loading"
           :disabled="!canReset || loading"
-          class="pressable"
+          class="pressable sb-cta"
           :label="loading ? '重置中...' : '重置密码'"
         />
       </UForm>
