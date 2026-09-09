@@ -2,7 +2,7 @@
   <div class="mx-auto w-full min-w-0 max-w-5xl px-4 py-6">
     <!-- 页头 -->
     <div class="mb-5 flex min-w-0 flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-semibold" :style="{ color: 'var(--text-primary)' }">交易记录</h1>
+      <h1 class="sb-h text-2xl font-semibold" :style="{ color: 'var(--text-primary)' }">交易记录</h1>
       <div class="flex flex-wrap gap-2">
         <UButton color="primary" @click="showAddModal = true">+ 手动记账</UButton>
         <UButton variant="outline" color="neutral" @click="refresh">刷新</UButton>
@@ -12,8 +12,7 @@
     <!-- 汇总统计（逻辑沿用原 summaryIncome / summaryExpense） -->
     <div
       v-if="!loading && transactions.length > 0"
-      class="mb-4 flex min-w-0 flex-wrap gap-x-8 gap-y-2 rounded-lg border px-4 py-3"
-      :style="{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }"
+      class="mb-4 flex min-w-0 flex-wrap gap-x-8 gap-y-2 px-1 py-1"
     >
       <div class="flex items-center gap-2">
         <span class="text-sm" :style="{ color: 'var(--text-secondary)' }">共</span>
@@ -87,8 +86,8 @@
         @update:model-value="onClientFilterChange"
       />
       <label
-        class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
-        :style="{ background: 'var(--bg-secondary)', borderColor: hideNoise ? 'var(--accent)' : 'var(--border)', color: 'var(--text-primary)' }"
+        class="inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-sm"
+        :style="{ background: hideNoise ? 'var(--accent-soft)' : 'var(--bg-secondary)', color: 'var(--text-primary)' }"
       >
         <USwitch v-model="hideNoise" aria-label="仅显示真实交易" @update:model-value="onServerFilterChange" />
         <span>仅显示真实交易</span>
@@ -99,8 +98,8 @@
     <!-- 筛选（480px 折叠：原生 details，无手势库依赖） -->
     <details class="tx-filters-disclosure mb-4 min-[481px]:hidden">
       <summary
-        class="flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm font-medium"
-        :style="{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }"
+        class="flex cursor-pointer items-center justify-between px-1 py-2 text-sm font-medium"
+        :style="{ color: 'var(--text-primary)' }"
       >
         <span>筛选{{ activeFilterCount > 0 ? `（${activeFilterCount} 项生效中）` : '' }}</span>
         <span aria-hidden="true">▾</span>
@@ -155,8 +154,8 @@
           @update:model-value="onClientFilterChange"
         />
         <label
-          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-          :style="{ background: 'var(--bg-secondary)', borderColor: hideNoise ? 'var(--accent)' : 'var(--border)', color: 'var(--text-primary)' }"
+        class="inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm"
+        :style="{ background: hideNoise ? 'var(--accent-soft)' : 'var(--bg-secondary)', color: 'var(--text-primary)' }"
         >
           <USwitch v-model="hideNoise" aria-label="仅显示真实交易" @update:model-value="onServerFilterChange" />
           <span>仅显示真实交易</span>
@@ -168,8 +167,8 @@
     <!-- 批量栏（全选 + 批量删除确认，至少保留批量意识） -->
     <div
       v-if="!loading && searchedTransactions.length > 0"
-      class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-sm"
-      :style="{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }"
+      class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-sm"
+      :style="{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }"
     >
       <UCheckbox
         :model-value="allFilteredSelected"
@@ -198,8 +197,8 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="flex items-center gap-3 rounded-lg border p-4"
-        :style="{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }"
+        class="flex items-center gap-3 rounded-lg p-4"
+        :style="{ background: 'var(--bg-secondary)' }"
       >
         <USkeleton class="size-10 shrink-0 rounded-lg" />
         <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -226,16 +225,12 @@
     </div>
 
     <!-- 列表：TransitionGroup 进出保留；行点选展开 inline 编辑 -->
-    <TransitionGroup v-else name="tx-list" tag="div" class="flex flex-col gap-2">
+    <TransitionGroup v-else name="tx-list" tag="div" class="sb-rows flex flex-col">
       <div
         v-for="tx in pagedTransactions"
         :key="tx.id"
-        class="tx-item rounded-lg border"
+        class="tx-item"
         :class="{ editing: editingId === tx.id }"
-        :style="{
-          background: 'var(--bg-secondary)',
-          borderColor: editingId === tx.id ? 'var(--accent)' : 'transparent'
-        }"
         @click="startEdit(tx)"
       >
         <div class="flex items-center gap-3 p-4">
@@ -278,8 +273,8 @@
         <!-- inline 编辑：金额 / 分类 / 备注回车即存，Esc 取消 -->
         <div
           v-if="editingId === tx.id"
-          class="tx-editor mx-4 mb-4 rounded-lg border p-3"
-          :style="{ background: 'var(--bg-primary)', borderColor: 'var(--border)' }"
+          class="tx-editor border-t px-4 py-3"
+          :style="{ borderColor: 'var(--border)' }"
           @click.stop
         >
           <div class="grid min-w-0 grid-cols-1 gap-2 min-[480px]:grid-cols-3">
@@ -362,7 +357,7 @@
     <!-- 新增弹窗：UModal -->
     <UModal v-model:open="showAddModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
-        <UCard :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="mb-4 text-base font-semibold" :style="{ color: 'var(--text-primary)' }">新增交易</h3>
           <form @submit.prevent="submitTransaction">
             <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
@@ -425,7 +420,7 @@
     <!-- 删除确认：UModal + 明确后果文案 -->
     <UModal v-model:open="deleteDialogVisible" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
-        <UCard :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">删除交易</h3>
           <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">
             确定要删除这条交易记录吗？删除后无法恢复，此操作不可撤销。
@@ -441,7 +436,7 @@
     <!-- 批量删除确认：UModal + 明确后果文案（含笔数） -->
     <UModal v-model:open="batchDeleteVisible" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
-        <UCard :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">批量删除交易</h3>
           <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">
             将永久删除选中的 {{ selectedIds.length }} 笔交易记录，删除后无法恢复，此操作不可撤销。
@@ -870,11 +865,15 @@ onActivated(init) // 客户端路由导航回来时也重新加载（含首页�
 }
 
 .tx-item {
-  transition: background 0.2s ease, border-color 0.2s ease;
+  border-radius: var(--radius-md);
+  transition: background 0.2s ease;
   cursor: pointer;
 }
 .tx-item:hover {
   background: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
+}
+.tx-item.editing {
+  background: var(--accent-soft);
 }
 
 /* 触屏无 hover：删除按钮常显（swipe 留空位，不做手势库） */

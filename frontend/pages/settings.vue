@@ -1,16 +1,15 @@
 <template>
   <div class="mx-auto min-w-0 w-full max-w-3xl px-4 py-6">
-    <h1 class="mb-6 text-2xl font-semibold" :style="{ color: 'var(--text-primary)' }">
+    <h1 class="sb-h mb-6 text-2xl font-semibold" :style="{ color: 'var(--text-primary)' }">
       设置
     </h1>
 
     <!-- 外观：品牌三选 + 深浅切换（主题切换沿用导航栏，此处为同源快捷入口） -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">外观</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">外观</h2>
       <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">
         三品牌 × 深浅同源，与导航栏同一套状态（调 useBrandTheme）
       </p>
@@ -42,18 +41,16 @@
 
     <!-- 通知源管理 -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">通知源</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">通知源</h2>
       <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">配置要解析的银行/支付平台通知</p>
-      <div class="flex min-w-0 flex-col gap-2">
+      <div class="sb-rows flex min-w-0 flex-col">
         <div
           v-for="source in sources"
           :key="source.id"
-          class="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2"
-          :style="{ background: 'var(--bg-primary)' }"
+          class="flex min-w-0 items-center justify-between gap-3 px-1 py-2.5"
         >
           <div class="flex min-w-0 items-center gap-2">
             <AppIcon :icon="source.icon" :size="20" />
@@ -70,11 +67,10 @@
 
     <!-- AI 分析模式 + 自定义模型 + OpenClaw 绑定 + Agent 开关 -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">AI Agent</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">AI Agent</h2>
       <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">配置分析用的 AI Agent</p>
 
       <div class="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b pb-4" :style="{ borderColor: 'var(--border)' }">
@@ -91,7 +87,7 @@
       </div>
 
       <!-- 自定义模型配置 -->
-      <div class="mt-4 rounded-lg border p-4" :style="{ background: 'var(--bg-primary)', borderColor: 'var(--border)' }">
+      <div class="mt-4 border-t pt-4" :style="{ borderColor: 'var(--border)' }">
         <h3 class="text-sm font-semibold" :style="{ color: 'var(--text-primary)' }">自定义模型配置</h3>
         <p class="mb-3 mt-1 text-xs" :style="{ color: 'var(--text-secondary)' }">填写你自己的 API 参数，分析时将使用此模型</p>
         <div class="flex min-w-0 flex-col gap-3">
@@ -165,11 +161,11 @@
       </div>
 
       <!-- OpenClaw 绑定 -->
-      <div class="mt-4 rounded-lg border p-4" :style="{ background: 'var(--bg-primary)', borderColor: 'var(--border)' }">
+      <div class="mt-4 border-t pt-4" :style="{ borderColor: 'var(--border)' }">
         <h3 class="text-sm font-semibold" :style="{ color: 'var(--text-primary)' }">OpenClaw 绑定</h3>
         <p class="mb-3 mt-1 text-xs" :style="{ color: 'var(--text-secondary)' }">绑定你自己的 OpenClaw Agent（在网关里能看到的 agent id），绑定后分析结果可推送给它</p>
 
-        <div v-if="openclawBinding.bound" class="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2" :style="{ borderColor: 'var(--success)' }">
+        <div v-if="openclawBinding.bound" class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2">
           <span class="flex min-w-0 items-center gap-1 text-sm font-medium" :style="{ color: 'var(--success)' }">
             <AppIcon icon="Check" :size="15" />
             <span class="truncate">已绑定: {{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})</span>
@@ -187,13 +183,12 @@
               {{ fetchingAgents ? '获取中...' : '自动发现（从网关拉取）' }}
             </UButton>
           </div>
-          <div v-if="openclawAgents.length > 0" class="flex min-w-0 flex-col gap-2">
+          <div v-if="openclawAgents.length > 0" class="sb-rows flex min-w-0 flex-col">
             <button
               v-for="a in openclawAgents"
               :key="a.id"
               type="button"
-              class="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left"
-              :style="{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }"
+              class="flex min-w-0 items-center justify-between gap-2 px-1 py-2 text-left"
               @click="bindOpenClaw(a)"
             >
               <span class="truncate text-sm" :style="{ color: 'var(--text-primary)' }">{{ a.label || a.id }}</span>
@@ -229,12 +224,11 @@
       </div>
 
       <!-- 三 Agent 开关 -->
-      <div class="mt-4 flex min-w-0 flex-col gap-2">
+      <div class="sb-rows mt-4 flex min-w-0 flex-col">
         <div
           v-for="agent in agents"
           :key="agent.id"
-          class="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2"
-          :style="{ background: 'var(--bg-primary)' }"
+          class="flex min-w-0 items-center justify-between gap-3 px-1 py-2.5"
         >
           <div class="flex min-w-0 items-center gap-2">
             <AppIcon :icon="agent.icon" :size="20" />
@@ -254,11 +248,10 @@
 
     <!-- 系统：API 地址展示 -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">系统</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">系统</h2>
       <div class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2">
         <span class="text-sm" :style="{ color: 'var(--text-primary)' }">API 地址</span>
         <span class="min-w-0 break-all font-mono text-xs" :style="{ color: 'var(--text-secondary)' }">{{ effectiveApiBase }}</span>
@@ -268,11 +261,10 @@
 
     <!-- 账户安全：改密 -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">账户安全</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">账户安全</h2>
       <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">修改登录密码（需验证旧密码，成功后请重新登录）</p>
       <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
         <div class="min-w-0">
@@ -341,11 +333,10 @@
 
     <!-- 数据管理：导入导出 CSV/PDF + 分类颜色 + 演示数据 -->
     <UCard
-      class="mb-4 min-w-0"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4 min-w-0"
       :ui="{ body: 'p-5' }"
     >
-      <h2 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">数据管理</h2>
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">数据管理</h2>
       <p class="mb-3 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">导入导出数据</p>
 
       <div class="flex min-w-0 flex-wrap gap-2">
@@ -416,7 +407,7 @@
             type="color"
             aria-label="微调颜色"
             class="sb-color-input h-9 w-10 shrink-0 cursor-pointer rounded"
-            :style="{ border: '1px solid var(--border)', background: 'var(--bg-primary)' }"
+            :style="{ background: 'var(--bg-primary)' }"
           />
           <UButton variant="outline" color="neutral" size="sm" :disabled="!colorEdit.name.trim()" @click="saveColorEdit">保存</UButton>
         </div>
@@ -434,12 +425,11 @@
             @click="colorEdit.color = c"
           />
         </div>
-        <div v-if="customColorList.length > 0" class="mt-3 flex min-w-0 flex-col gap-2">
+        <div v-if="customColorList.length > 0" class="sb-rows mt-3 flex min-w-0 flex-col">
           <div
             v-for="item in customColorList"
             :key="item.name"
-            class="flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-sm"
-            :style="{ background: 'var(--bg-primary)', borderColor: 'var(--border)' }"
+            class="flex min-w-0 items-center gap-2 px-1 py-1.5 text-sm"
           >
             <AppIcon :icon="item.style.icon" :color="item.style.color" :size="16" />
             <span class="min-w-0 flex-1 truncate font-medium" :style="{ color: 'var(--text-primary)' }">{{ item.name }}</span>
@@ -482,7 +472,7 @@
     <!-- 危险操作确认：载入演示数据 -->
     <UModal v-model:open="showSeedModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
-        <UCard :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">载入演示数据？</h3>
           <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">将载入 3 个月仿真演示数据，仅空库可用。</p>
           <div class="flex justify-end gap-2">
@@ -496,7 +486,7 @@
     <!-- 危险操作确认：解除 OpenClaw 绑定 -->
     <UModal v-model:open="showUnbindModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
-        <UCard :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">解除 OpenClaw 绑定？</h3>
           <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">
             当前绑定：{{ openclawBinding.agent_label }} ({{ openclawBinding.agent_id }})，解除后分析结果不再推送给它。

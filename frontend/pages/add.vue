@@ -1,7 +1,7 @@
 <template>
   <div class="mx-auto w-full max-w-[600px] px-4 py-6">
     <div class="mb-4">
-      <h1 class="text-2xl font-semibold" style="color: var(--text-primary)">手动记账</h1>
+      <h1 class="sb-h text-2xl font-semibold" style="color: var(--text-primary)">手动记账</h1>
     </div>
 
     <!-- Tab 切换 -->
