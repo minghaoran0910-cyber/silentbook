@@ -3,8 +3,9 @@
     <!-- 页头 -->
     <div class="flex flex-wrap items-center gap-3">
       <div class="mr-auto min-w-0">
-        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">投资持仓</h1>
+        <h1 class="sb-h text-xl font-semibold" style="color: var(--text-primary)">投资持仓</h1>
         <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">放在场内的钱，现在值多少。</p>
+        <p v-if="lastSyncAt" class="mt-0.5 text-xs tabular-nums motion-reduce:transition-none" style="color: var(--text-secondary)">上次同步：{{ lastSyncAt }}</p>
       </div>
       <UButton variant="outline" color="neutral" :loading="syncing" :disabled="syncing" @click="syncPositions">
         <AppIcon v-if="!syncing" icon="ArrowClockwise" :size="15" />
@@ -60,25 +61,32 @@
     </UCard>
 
     <template v-else>
-      <!-- 总览卡片 -->
-      <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
-          <div class="text-xs" style="color: var(--text-secondary)">总市值</div>
-          <div class="mt-1 text-xl font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(summary.total_value) }}</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
-          <div class="text-xs" style="color: var(--text-secondary)">总成本</div>
-          <div class="mt-1 text-xl font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(summary.total_cost) }}</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
-          <div class="text-xs" style="color: var(--text-secondary)">总收益</div>
-          <div class="mt-1 text-xl font-bold tabular-nums" :style="{ color: summary.total_profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ summary.total_profit >= 0 ? '+' : '' }}¥{{ formatNum(summary.total_profit) }}</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 text-center' }">
-          <div class="text-xs" style="color: var(--text-secondary)">收益率</div>
-          <div class="mt-1 text-xl font-bold tabular-nums" :style="{ color: summary.total_profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ summary.total_profit_pct >= 0 ? '+' : '' }}{{ summary.total_profit_pct.toFixed(2) }}%</div>
-        </UCard>
-      </div>
+      <!-- 顶部盈亏卡：先回答“赚没赚” -->
+      <UCard
+        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        :ui="{ body: 'p-4 min-[480px]:p-5' }"
+        class="mt-4"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs" style="color: var(--text-secondary)">总体盈亏</span>
+          <UBadge :color="summary.total_profit_pct >= 0 ? 'success' : 'error'" variant="soft" class="tabular-nums">收益率 {{ summary.total_profit_pct >= 0 ? '+' : '' }}{{ summary.total_profit_pct.toFixed(2) }}%</UBadge>
+          <span class="ml-auto text-xs tabular-nums" style="color: var(--text-secondary)">共 {{ summary.count }} 只持仓 · 最亏置顶</span>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-3 min-[480px]:grid-cols-3">
+          <div class="min-w-0">
+            <div class="text-xs" style="color: var(--text-secondary)">总市值</div>
+            <div class="mt-1 truncate text-2xl font-bold tabular-nums motion-reduce:transition-none" style="color: var(--text-primary)">¥{{ formatNum(summary.total_value) }}</div>
+          </div>
+          <div class="min-w-0">
+            <div class="text-xs" style="color: var(--text-secondary)">总成本</div>
+            <div class="mt-1 truncate text-2xl font-bold tabular-nums motion-reduce:transition-none" style="color: var(--text-primary)">¥{{ formatNum(summary.total_cost) }}</div>
+          </div>
+          <div class="min-w-0">
+            <div class="text-xs" style="color: var(--text-secondary)">总盈亏</div>
+            <div class="mt-1 truncate text-2xl font-bold tabular-nums motion-reduce:transition-none" :style="{ color: summary.total_profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ summary.total_profit >= 0 ? '+' : '' }}¥{{ formatNum(summary.total_profit) }}</div>
+          </div>
+        </div>
+      </UCard>
 
       <!-- 持仓明细 -->
       <UCard
@@ -87,7 +95,7 @@
         :ui="{ body: 'p-4 min-[480px]:p-5' }"
       >
         <div class="mb-3 flex flex-wrap items-center gap-2">
-          <h2 class="mr-auto text-base font-semibold tabular-nums" style="color: var(--text-primary)">持仓明细 ({{ filteredPositions.length }}/{{ positions.length }})</h2>
+          <h2 class="sb-h mr-auto text-base font-semibold tabular-nums" style="color: var(--text-primary)">持仓明细 ({{ filteredPositions.length }}/{{ positions.length }})</h2>
         </div>
 
         <!-- 筛选栏（条件记在客户端 localStorage） -->
@@ -103,14 +111,15 @@
           <AppIcon icon="ChartPieSlice" :size="32" style="color: var(--text-tertiary)" class="mx-auto" />
           <p class="mt-3 text-sm font-medium" style="color: var(--text-primary)">暂无投资持仓</p>
           <p class="mt-1 text-sm" style="color: var(--text-secondary)">点右上角「添加持仓」，把第一笔记下来。</p>
-          <UButton class="mt-4" @click="showAddForm = true">添加持仓</UButton>
+          <UButton class="mt-4 motion-reduce:transition-none" @click="showAddForm = true">添加第一笔持仓</UButton>
         </div>
 
         <!-- 桌面端表格（带排序） -->
         <div v-else class="hidden md:block">
           <UTable v-model:sorting="sorting" :data="sortedPositions" :columns="columns" empty="暂无符合条件的持仓">
             <template #name-cell="{ row }">
-              <div class="flex min-w-0 items-center gap-2">
+              <div class="relative flex min-w-0 items-center gap-2 pl-2">
+                <span v-if="row.original.profit < 0" aria-hidden="true" class="absolute top-1 bottom-1 left-0 w-[2px] rounded-full motion-reduce:transition-none" style="background: var(--danger)" />
                 <UBadge :color="positionTypeColor(row.original.position_type)" variant="soft">{{ typeLabel(row.original.position_type) }}</UBadge>
                 <span class="truncate font-medium" style="color: var(--text-primary)">{{ row.original.name }}</span>
                 <span v-if="row.original.symbol" class="shrink-0 text-xs" style="color: var(--text-secondary)">{{ row.original.symbol }}</span>
@@ -130,12 +139,13 @@
               <span class="font-medium tabular-nums">¥{{ formatNum(row.original.market_value) }}</span>
             </template>
             <template #profit-cell="{ row }">
-              <span class="font-medium tabular-nums" :style="{ color: row.original.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">
+              <span class="font-medium tabular-nums motion-reduce:transition-none" :style="{ color: row.original.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">
                 {{ row.original.profit >= 0 ? '+' : '' }}¥{{ formatNum(row.original.profit) }}
+                <span class="ml-1 text-xs font-normal tabular-nums">({{ row.original.profit_pct >= 0 ? '+' : '' }}{{ row.original.profit_pct.toFixed(2) }}%)</span>
               </span>
             </template>
             <template #profit_pct-cell="{ row }">
-              <span class="font-medium tabular-nums" :style="{ color: row.original.profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">
+              <span class="font-medium tabular-nums motion-reduce:transition-none" :style="{ color: row.original.profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">
                 {{ row.original.profit_pct >= 0 ? '+' : '' }}{{ row.original.profit_pct.toFixed(2) }}%
               </span>
             </template>
@@ -163,8 +173,10 @@
           <div
             v-for="pos in sortedPositions"
             :key="pos.id"
-            class="rounded-lg p-3.5"
-            :style="{ background: 'var(--bg-primary)', border: '1px solid var(--border)', opacity: pos.status === 'closed' ? 0.6 : 1 }"
+            class="rounded-lg p-3.5 motion-reduce:transition-none"
+            :style="pos.profit < 0
+              ? { background: 'var(--bg-primary)', border: '1px solid var(--border)', borderLeft: '2px solid var(--danger)', opacity: pos.status === 'closed' ? 0.6 : 1 }
+              : { background: 'var(--bg-primary)', border: '1px solid var(--border)', opacity: pos.status === 'closed' ? 0.6 : 1 }"
           >
             <div class="flex items-center justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2">
@@ -198,13 +210,9 @@
                 <div class="text-[11px]" style="color: var(--text-secondary)">市值</div>
                 <div class="text-sm font-medium tabular-nums" style="color: var(--text-primary)">¥{{ formatNum(pos.market_value) }}</div>
               </div>
-              <div>
-                <div class="text-[11px]" style="color: var(--text-secondary)">收益</div>
-                <div class="text-sm font-medium tabular-nums" :style="{ color: pos.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ pos.profit >= 0 ? '+' : '' }}¥{{ formatNum(pos.profit) }}</div>
-              </div>
-              <div>
-                <div class="text-[11px]" style="color: var(--text-secondary)">收益率</div>
-                <div class="text-sm font-medium tabular-nums" :style="{ color: pos.profit_pct >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ pos.profit_pct >= 0 ? '+' : '' }}{{ pos.profit_pct.toFixed(2) }}%</div>
+              <div class="col-span-2">
+                <div class="text-[11px]" style="color: var(--text-secondary)">盈亏</div>
+                <div class="text-sm font-medium tabular-nums motion-reduce:transition-none" :style="{ color: pos.profit >= 0 ? 'var(--success)' : 'var(--danger)' }">{{ pos.profit >= 0 ? '+' : '' }}¥{{ formatNum(pos.profit) }} <span class="text-xs font-normal tabular-nums">({{ pos.profit_pct >= 0 ? '+' : '' }}{{ pos.profit_pct.toFixed(2) }}%)</span></div>
               </div>
             </div>
             <div v-if="pos.account || pos.updated_at" class="mt-2 flex items-center justify-between border-t pt-2 text-[11px]" style="border-color: var(--border); color: var(--text-secondary)">
@@ -220,7 +228,7 @@
     <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑持仓' : '添加持仓' }}</h3>
+          <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑持仓' : '添加持仓' }}</h3>
           <form @submit.prevent="handleSubmit">
             <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
               <div class="min-w-0">
@@ -271,7 +279,7 @@
     <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="text-base font-semibold" style="color: var(--text-primary)">关闭持仓</h3>
+          <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">关闭持仓</h3>
           <p class="mt-1 text-sm" style="color: var(--text-secondary)">确认关闭「{{ pendingDelete?.name }}」？</p>
           <div class="mt-4 flex flex-wrap gap-2">
             <UButton color="error" @click="confirmDeletePosition">确认关闭</UButton>
@@ -385,8 +393,8 @@ const filteredPositions = computed(() => {
   })
 })
 
-// 表格排序：点表头切换升/降序
-const sorting = ref<{ id: string; desc: boolean }[]>([])
+// 表格排序：默认按盈亏率升序（最亏置顶），点表头可切换升/降序
+const sorting = ref<{ id: string; desc: boolean }[]>([{ id: 'profit_pct', desc: false }])
 const sortedPositions = computed(() => {
   const list = [...filteredPositions.value]
   const s = sorting.value[0]
@@ -421,6 +429,12 @@ const positionTypeColor = (t: string) => {
 }
 
 const summary = ref({ count: 0, total_value: 0, total_cost: 0, total_profit: 0, total_profit_pct: 0 })
+
+// 页头“上次同步”小字：从持仓最近更新时间派生（纯展示，不碰接口）
+const lastSyncAt = computed(() => {
+  const ts = positions.value.map(p => p.updated_at).filter(Boolean).sort().pop()
+  return ts ? formatTime(ts as string) : ''
+})
 
 const syncing = ref(false)
 const syncResult = ref<any>(null)

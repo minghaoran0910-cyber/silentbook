@@ -1,10 +1,14 @@
 <template>
   <div class="mx-auto min-w-0 w-full max-w-5xl px-4 py-6">
-    <!-- 页头 -->
+    <!-- 页头：标题 + 右上角 ghost 同步 + 时间小字 -->
     <div class="flex flex-wrap items-center gap-3">
-      <h1 class="mr-auto text-xl font-semibold" style="color: var(--accent)">资产管理</h1>
-      <div class="flex flex-wrap gap-2">
-        <UButton variant="outline" color="neutral" :loading="syncing" :disabled="syncing" @click="syncAssets">
+      <div class="mr-auto min-w-0">
+        <h1 class="sb-h text-xl font-semibold" style="color: var(--text-primary)">资产管理</h1>
+        <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">家底多少，还欠多少，一眼看清。</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span v-if="lastSyncInfo" class="text-xs tabular-nums" style="color: var(--text-secondary)">上次同步：{{ lastSyncInfo }}</span>
+        <UButton variant="ghost" color="neutral" :loading="syncing" :disabled="syncing" @click="syncAssets">
           <AppIcon v-if="!syncing" icon="ArrowClockwise" :size="15" />
           {{ syncing ? '同步中...' : '同步持仓' }}
         </UButton>
@@ -14,6 +18,7 @@
         </UButton>
       </div>
     </div>
+    <div v-if="goldPrice" class="mt-1 text-right text-xs tabular-nums" style="color: var(--text-secondary)">金价 ¥{{ goldPrice }}/克</div>
 
     <!-- 同步状态（替代原 .sync-result 色块） -->
     <UAlert
@@ -26,7 +31,6 @@
       close
       @update:open="syncResult = null"
     />
-    <div v-if="lastSyncInfo" class="mt-2 text-xs" style="color: var(--text-secondary)">上次同步：{{ lastSyncInfo }}</div>
 
     <!-- 操作失败提示（替代 alert） -->
     <UAlert v-if="actionError" color="error" variant="soft" :title="actionError" class="mt-4" close @update:open="actionError = ''" />
@@ -53,26 +57,52 @@
     />
 
     <template v-else>
-      <!-- 总览卡片 -->
-      <div class="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
-        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <div class="text-sm" style="color: var(--text-secondary)">总资产</div>
-          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--success)">¥{{ totalAssets.toFixed(2) }}</div>
-        </UCard>
-        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <div class="text-sm" style="color: var(--text-secondary)">总负债</div>
-          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--danger)">¥{{ totalLiabilities.toFixed(2) }}</div>
-        </UCard>
-        <UCard class="text-center" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--accent)' }" :ui="{ body: 'p-5' }">
-          <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
-          <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ (totalAssets - totalLiabilities).toFixed(2) }}</div>
-        </UCard>
-      </div>
+      <!-- ① 顶部家底卡：净资产大数字 + 三行 + 占比条（首页同款） -->
+      <UCard class="mt-4" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
+        <div class="sb-display mt-1 text-5xl font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ netWorth.toFixed(2) }}</div>
+        <div class="mt-3 flex flex-col gap-1 text-sm tabular-nums">
+          <div class="flex items-center justify-between gap-2">
+            <span style="color: var(--text-secondary)">总资产</span>
+            <span class="font-medium" style="color: var(--success)">¥{{ totalAssets.toFixed(2) }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span style="color: var(--text-secondary)">总负债</span>
+            <span class="font-medium" style="color: var(--danger)">¥{{ totalLiabilities.toFixed(2) }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span style="color: var(--text-secondary)">净值</span>
+            <span class="font-medium" style="color: var(--text-primary)">¥{{ netWorth.toFixed(2) }}</span>
+          </div>
+        </div>
+        <div
+          v-if="totalAssets > 0 || totalLiabilities > 0"
+          class="mt-4 flex h-6 w-full gap-0.5 overflow-hidden motion-reduce:transition-none"
+          style="border-radius: var(--radius-md)"
+          role="img"
+          aria-label="资产与负债占比"
+        >
+          <div
+            class="flex h-full items-center justify-center overflow-hidden text-xs font-medium whitespace-nowrap"
+            style="background: var(--success); color: var(--fill-ink)"
+            :style="{ width: (assetShare) + '%' }"
+          >
+            <span v-if="totalAssets > 0" class="px-2 tabular-nums">资产 ¥{{ totalAssets.toFixed(0) }}</span>
+          </div>
+          <div
+            class="flex h-full items-center justify-center overflow-hidden text-xs font-medium whitespace-nowrap"
+            style="background: var(--danger); color: var(--fill-ink)"
+            :style="{ width: (100 - assetShare) + '%' }"
+          >
+            <span v-if="totalLiabilities > 0" class="px-2 tabular-nums">负债 ¥{{ totalLiabilities.toFixed(0) }}</span>
+          </div>
+        </div>
+      </UCard>
 
       <!-- 资产分类饼图 + 资产收益 -->
       <div v-if="assets.length > 0" class="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分类</h3>
+          <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分类</h3>
           <div class="flex flex-wrap items-center gap-4">
             <div ref="assetPieEl" class="h-[180px] w-[180px] shrink-0" role="img" aria-label="资产分类分布图" />
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -86,7 +116,7 @@
           </div>
         </UCard>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产收益</h3>
+          <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产收益</h3>
           <div class="flex flex-col gap-2.5">
             <div v-for="item in pieData" :key="'p-' + item.type" class="flex items-center gap-2">
               <span class="min-w-12 text-sm" style="color: var(--text-primary)">{{ item.label }}</span>
@@ -104,14 +134,14 @@
 
       <!-- 资产变化曲线（真实历史，非模拟） -->
       <UCard v-if="assets.length > 0" class="mt-4" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-        <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产变化趋势</h3>
+        <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产变化趋势</h3>
         <div ref="assetCurveEl" class="h-60 w-full" role="img" aria-label="资产变化趋势图" />
       </UCard>
 
-      <!-- 资产列表 -->
+      <!-- ② 资产列表：按类型分组折叠，组头显示组内合计 -->
       <div class="mt-8">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">资产列表</h2>
+          <h2 class="sb-h text-lg font-semibold" style="color: var(--text-primary)">资产列表</h2>
           <UButton size="sm" variant="outline" color="neutral" @click="toggleAddForm">
             {{ showAddForm ? '取消' : '+ 添加资产' }}
           </UButton>
@@ -134,51 +164,71 @@
         </UCard>
         <div v-else class="flex flex-col gap-3">
           <UCard
-            v-for="asset in filteredAssets"
-            :key="asset.id"
+            v-for="group in groupedAssets"
+            :key="group.type"
             :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
-            :ui="{ body: 'p-4' }"
+            :ui="{ body: 'p-0' }"
           >
-            <div class="flex items-center gap-3">
-              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
-                <AppIcon :icon="getAssetIcon(asset.asset_type).icon" :color="getAssetIcon(asset.asset_type).color" :size="20" />
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="truncate font-semibold" style="color: var(--text-primary)">{{ asset.name }}</div>
-                <div class="mt-1 flex flex-wrap gap-1.5">
-                  <UBadge variant="soft" color="neutral">{{ getAssetIcon(asset.asset_type).label }}</UBadge>
-                  <UBadge v-if="asset.account" variant="soft" color="neutral">{{ asset.account }}</UBadge>
-                  <UBadge variant="soft" color="neutral">{{ liquidityLabels[asset.liquidity] || asset.liquidity }}</UBadge>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-4 py-3 text-left motion-reduce:transition-none"
+              :aria-expanded="!isGroupCollapsed(group.type)"
+              :aria-label="group.label + '分组，合计' + group.total.toFixed(2)"
+              @click="toggleGroup(group.type)"
+            >
+              <span class="min-w-0 flex-1 truncate text-sm font-semibold" style="color: var(--text-primary)">{{ group.label }}（{{ group.items.length }}）</span>
+              <span class="shrink-0 text-sm font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ group.total.toFixed(2) }}</span>
+              <AppIcon :icon="isGroupCollapsed(group.type) ? 'CaretDown' : 'CaretUp'" :size="14" />
+            </button>
+            <div v-show="!isGroupCollapsed(group.type)" class="flex flex-col gap-3 px-4 pb-4">
+              <UCard
+                v-for="asset in group.items"
+                :key="asset.id"
+                :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+                :ui="{ body: 'p-4' }"
+              >
+                <div class="flex items-center gap-3">
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" :style="{ background: getAssetIcon(asset.asset_type).color + '20' }">
+                    <AppIcon :icon="getAssetIcon(asset.asset_type).icon" :color="getAssetIcon(asset.asset_type).color" :size="20" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate font-semibold" style="color: var(--text-primary)">{{ asset.name }}</div>
+                    <div class="mt-1 flex flex-wrap gap-1.5">
+                      <UBadge variant="soft" color="neutral">{{ getAssetIcon(asset.asset_type).label }}</UBadge>
+                      <UBadge v-if="asset.account" variant="soft" color="neutral">{{ asset.account }}</UBadge>
+                      <UBadge variant="soft" color="neutral">{{ liquidityLabels[asset.liquidity] || asset.liquidity }}</UBadge>
+                    </div>
+                  </div>
+                  <div class="shrink-0 text-right">
+                    <div class="text-lg font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ asset.current_value.toFixed(2) }}</div>
+                    <div v-if="asset.initial_value > 0" class="text-xs tabular-nums" style="color: var(--text-secondary)">投入: ¥{{ asset.initial_value.toFixed(2) }}</div>
+                    <div
+                      v-if="asset.initial_value > 0"
+                      class="text-sm font-semibold tabular-nums"
+                      :style="{ color: asset.current_value >= asset.initial_value ? 'var(--success)' : 'var(--danger)' }"
+                    >
+                      {{ asset.current_value >= asset.initial_value ? '+' : '' }}¥{{ (asset.current_value - asset.initial_value).toFixed(2) }}
+                    </div>
+                  </div>
+                  <div class="flex shrink-0 gap-1">
+                    <UButton size="xs" variant="ghost" color="neutral" title="编辑" aria-label="编辑资产" @click="editAsset(asset)">
+                      <AppIcon icon="PencilSimple" :size="16" />
+                    </UButton>
+                    <UButton size="xs" variant="ghost" color="error" title="删除" aria-label="删除资产" @click="requestDeleteAsset(asset)">
+                      <AppIcon icon="Trash" :size="16" />
+                    </UButton>
+                  </div>
                 </div>
-              </div>
-              <div class="shrink-0 text-right">
-                <div class="text-lg font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ asset.current_value.toFixed(2) }}</div>
-                <div v-if="asset.initial_value > 0" class="text-xs tabular-nums" style="color: var(--text-secondary)">投入: ¥{{ asset.initial_value.toFixed(2) }}</div>
-                <div
-                  v-if="asset.initial_value > 0"
-                  class="text-sm font-semibold tabular-nums"
-                  :style="{ color: asset.current_value >= asset.initial_value ? 'var(--success)' : 'var(--danger)' }"
-                >
-                  {{ asset.current_value >= asset.initial_value ? '+' : '' }}¥{{ (asset.current_value - asset.initial_value).toFixed(2) }}
-                </div>
-              </div>
-              <div class="flex shrink-0 gap-1">
-                <UButton size="xs" variant="ghost" color="neutral" title="编辑" aria-label="编辑资产" @click="editAsset(asset)">
-                  <AppIcon icon="PencilSimple" :size="16" />
-                </UButton>
-                <UButton size="xs" variant="ghost" color="error" title="删除" aria-label="删除资产" @click="requestDeleteAsset(asset)">
-                  <AppIcon icon="Trash" :size="16" />
-                </UButton>
-              </div>
+              </UCard>
             </div>
           </UCard>
         </div>
       </div>
 
-      <!-- 负债列表 -->
+      <!-- ③ 负债列表：剩余/总额进度 + 月供小字 -->
       <div class="mt-8">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">负债列表</h2>
+          <h2 class="sb-h text-lg font-semibold" style="color: var(--text-primary)">负债列表</h2>
           <UButton size="sm" variant="outline" color="neutral" @click="showAddLiabilityForm = !showAddLiabilityForm">
             {{ showAddLiabilityForm ? '取消' : '+ 添加负债' }}
           </UButton>
@@ -218,6 +268,8 @@
               <div class="shrink-0 text-right">
                 <div class="text-lg font-semibold tabular-nums" style="color: var(--danger)">¥{{ liab.current_amount.toFixed(2) }}</div>
                 <div class="text-xs tabular-nums" style="color: var(--text-secondary)">总额: ¥{{ liab.total_amount.toFixed(2) }}</div>
+                <div v-if="liab.min_payment > 0" class="mt-0.5 text-xs tabular-nums" style="color: var(--text-secondary)">月供 ¥{{ Number(liab.min_payment).toFixed(2) }}</div>
+                <div v-else-if="liab.interest_rate > 0" class="mt-0.5 text-xs tabular-nums" style="color: var(--text-secondary)">年利率 {{ liab.interest_rate }}%</div>
               </div>
               <div class="flex shrink-0 gap-1">
                 <UButton size="xs" variant="ghost" color="neutral" title="编辑" aria-label="编辑负债" @click="editLiability(liab)">
@@ -237,7 +289,7 @@
     <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑资产' : '添加资产' }}</h3>
+          <h3 class="sb-h mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑资产' : '添加资产' }}</h3>
           <form @submit.prevent="handleSubmit">
             <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
               <div class="min-w-0">
@@ -305,7 +357,7 @@
     <UModal v-model:open="showAddLiabilityForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingLiabilityId ? '编辑负债' : '添加负债' }}</h3>
+          <h3 class="sb-h mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingLiabilityId ? '编辑负债' : '添加负债' }}</h3>
           <form @submit.prevent="handleLiabilitySubmit">
             <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
               <div class="min-w-0">
@@ -366,8 +418,8 @@
     <UModal v-model:open="deleteConfirmOpen" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="text-base font-semibold" style="color: var(--text-primary)">删除{{ pendingDelete?.kind === 'liability' ? '负债' : '资产' }}</h3>
-          <p class="mt-1 text-sm" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」？删除后无法恢复，此操作不可撤销。</p>
+          <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">删除{{ pendingDelete?.kind === 'liability' ? '负债' : '资产' }}</h3>
+          <p class="mt-1 text-sm tabular-nums" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」<span v-if="pendingDelete?.amount">（¥{{ pendingDelete.amount }}）</span>？删除后无法恢复，此操作不可撤销。</p>
           <div class="mt-4 flex flex-wrap justify-end gap-2">
             <UButton variant="outline" color="neutral" @click="pendingDelete = null">取消</UButton>
             <UButton color="error" @click="confirmDelete">确认删除</UButton>
@@ -476,14 +528,14 @@ const bankItems = [
 ]
 const billingDayItems = Array.from({ length: 28 }, (_, i) => ({ label: `${i + 1}号`, value: i + 1 }))
 
-// 删除确认弹窗（替代 confirm）
-const pendingDelete = ref<{ kind: 'asset' | 'liability', id: number, name: string } | null>(null)
+// 删除确认弹窗（替代 confirm，文案点出名称+金额）
+const pendingDelete = ref<{ kind: 'asset' | 'liability', id: number, name: string, amount?: string } | null>(null)
 const deleteConfirmOpen = computed({
   get: () => !!pendingDelete.value,
   set: (v: boolean) => { if (!v) pendingDelete.value = null }
 })
-const requestDeleteAsset = (a) => { pendingDelete.value = { kind: 'asset', id: a.id, name: a.name } }
-const requestDeleteLiability = (l) => { pendingDelete.value = { kind: 'liability', id: l.id, name: l.name } }
+const requestDeleteAsset = (a) => { pendingDelete.value = { kind: 'asset', id: a.id, name: a.name, amount: Number(a.current_value || 0).toFixed(2) } }
+const requestDeleteLiability = (l) => { pendingDelete.value = { kind: 'liability', id: l.id, name: l.name, amount: Number(l.current_amount || 0).toFixed(2) } }
 const confirmDelete = async () => {
   if (!pendingDelete.value) return
   actionError.value = ''
@@ -575,6 +627,48 @@ const updateDueDate = () => {
 
 const totalAssets = computed(() => assets.value.filter(a => a.status === 'active').reduce((s, a) => s + a.current_value, 0))
 const totalLiabilities = computed(() => liabilities.value.filter(l => l.status === 'active').reduce((s, l) => s + l.current_amount, 0))
+// 顶部家底卡：净值 + 首页同款占比条分母
+const netWorth = computed(() => totalAssets.value - totalLiabilities.value)
+const assetShare = computed(() => {
+  const denom = totalAssets.value + totalLiabilities.value
+  if (denom <= 0) return 50
+  return (totalAssets.value / denom) * 100
+})
+
+// 资产按已有 asset_type 字段分组折叠（组头组内合计），折叠状态客户端持久化
+const GROUP_ORDER = ['cash', 'savings', 'fund', 'stock', 'bond', 'pension', 'gold', 'property', 'other']
+const collapsedGroups = ref<string[]>([])
+const GROUPS_KEY = 'sb-assets-groups'
+const restoreGroups = () => {
+  if (!import.meta.client) return
+  try {
+    const raw = JSON.parse(localStorage.getItem(GROUPS_KEY) || '[]')
+    if (Array.isArray(raw)) collapsedGroups.value = raw.filter(v => typeof v === 'string')
+  } catch {}
+}
+watch(collapsedGroups, (v) => {
+  if (!import.meta.client) return
+  try {
+    localStorage.setItem(GROUPS_KEY, JSON.stringify(v))
+  } catch {}
+})
+const isGroupCollapsed = (t: string) => collapsedGroups.value.includes(t)
+const toggleGroup = (t: string) => {
+  const i = collapsedGroups.value.indexOf(t)
+  if (i >= 0) collapsedGroups.value.splice(i, 1)
+  else collapsedGroups.value.push(t)
+}
+const groupedAssets = computed(() => {
+  const map = new Map()
+  filteredAssets.value.forEach((a) => {
+    const t = a.asset_type || 'other'
+    if (!map.has(t)) map.set(t, { type: t, label: typeLabels[t] || t, items: [], total: 0 })
+    const g = map.get(t)
+    g.items.push(a)
+    g.total += a.current_value || 0
+  })
+  return [...map.values()].sort((a, b) => GROUP_ORDER.indexOf(a.type) - GROUP_ORDER.indexOf(b.type) || b.total - a.total)
+})
 
 const pieColors = ['#0F766E', '#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
 const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', gold: '黄金', pension: '养老金', property: '房产', other: '其他' }
@@ -832,6 +926,6 @@ const fetchGoldPrice = async () => {
   }
 }
 
-onMounted(() => { restoreFilters(); loadData(); loadSyncStatus(); fetchGoldPrice() })
+onMounted(() => { restoreFilters(); restoreGroups(); loadData(); loadSyncStatus(); fetchGoldPrice() })
 onActivated(loadData) // 客户端路由导航回来时也重新加载
 </script>
