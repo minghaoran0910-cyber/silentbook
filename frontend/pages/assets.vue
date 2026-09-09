@@ -333,11 +333,11 @@
               </template>
               <div class="min-w-0">
                 <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-current">
-                  当前价值 <span v-if="form.asset_type === 'gold'" class="text-xs font-normal">(自动计算)</span>
+                  {{ form.asset_type === 'cash' || form.asset_type === 'savings' ? '金额' : '当前价值' }} <span v-if="form.asset_type === 'gold'" class="text-xs font-normal">(自动计算)</span>
                 </label>
                 <UInput id="asset-current" v-model="form.current_value" type="number" step="0.01" required placeholder="0.00" :disabled="form.asset_type === 'gold' && form.goldGrams > 0" class="w-full min-w-0 tabular-nums" />
               </div>
-              <div class="min-w-0">
+              <div v-if="form.asset_type !== 'cash' && form.asset_type !== 'savings'" class="min-w-0">
                 <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-initial">
                   初始投入 <span v-if="form.asset_type === 'gold'" class="text-xs font-normal">(自动计算)</span>
                 </label>
