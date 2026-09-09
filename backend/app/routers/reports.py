@@ -36,7 +36,7 @@ from .deps import (
     LEVEL_LABELS, LEVEL_COMPRESSIBILITY, DEFAULT_CATEGORY_LEVELS,
     _update_account_balance, _check_low_balance_alert,
     _webhook_item_hash, _is_duplicate_body, _is_placeholder_analysis,
-    get_alert_level, get_category_level,
+    get_alert_level, get_category_level, INTERNAL_CATEGORIES,
 )
 
 router = APIRouter()
@@ -59,8 +59,8 @@ async def get_monthly_summary(year: int = None, month: int = None, user: User = 
         Transaction.parsed_at < end
     ).all()
 
-    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
-    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income" and (t.category or "") not in INTERNAL_CATEGORIES)
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense" and (t.category or "") not in INTERNAL_CATEGORIES)
     net_balance = total_income - total_expense
     savings_rate = round(net_balance / total_income * 100, 1) if total_income > 0 else 0.0
 
@@ -1161,8 +1161,8 @@ async def get_health_score(year: int = None, month: int = None, user: User = Dep
         Transaction.parsed_at < end
     ).all()
 
-    total_income = sum(t.amount for t in transactions if t.transaction_type == "income")
-    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense")
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "income" and (t.category or "") not in INTERNAL_CATEGORIES)
+    total_expense = sum(t.amount for t in transactions if t.transaction_type == "expense" and (t.category or "") not in INTERNAL_CATEGORIES)
 
     # 应急账户余额
     emergency_accounts = db.query(Account).filter(

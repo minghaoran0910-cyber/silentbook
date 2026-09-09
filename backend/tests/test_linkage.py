@@ -136,3 +136,36 @@ def test_goal_linked_asset_auto_progress(auth):
     })
     assert r.status_code in (200, 201), r.text
     assert r.json()["current_amount"] == 5000
+
+
+def test_internal_transfer_excluded_from_monthly_stats(auth):
+    # 自建：账户 2000 + 资产 5000 - 负债 2000；支出 100（餐饮）+ 划转 500
+    client.post("/accounts", headers=_h(auth), json={
+        "name": "现金钱包", "account_type": "cash", "purpose": "consumption",
+        "balance": 2000,
+    })
+    client.post("/assets", headers=_h(auth), json={
+        "name": "存款", "asset_type": "savings", "current_value": 5000,
+        "initial_value": 5000,
+    })
+    client.post("/liabilities", headers=_h(auth), json={
+        "name": "花呗", "liability_type": "huabei", "total_amount": 2000,
+        "current_amount": 2000,
+    })
+    client.post("/transactions", headers=_h(auth), json={
+        "amount": 100, "category": "餐饮", "account": "现金钱包",
+        "transaction_type": "expense",
+    })
+    r = client.post("/transactions", headers=_h(auth), json={
+        "amount": 500, "category": "自账户划转", "account": "现金钱包",
+        "transaction_type": "expense",
+    })
+    assert r.status_code in (200, 201), r.text
+    assert r.json()["balance_updated"] is True
+    r = client.get("/stats/dashboard", headers=_h(auth))
+    d = r.json()
+    # 本月支出只含餐饮 100，不含划转 500
+    assert d["monthly_expenses"] == 100, d
+    # 但余额扣了 500：1900 - 500 = 1400；净资产 = 1400 + 5000 - 2000 = 4400
+    assert d["total_account_balance"] == 1400, d
+    assert d["net_assets"] == 4400, d

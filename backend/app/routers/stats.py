@@ -36,7 +36,7 @@ from .deps import (
     LEVEL_LABELS, LEVEL_COMPRESSIBILITY, DEFAULT_CATEGORY_LEVELS,
     _update_account_balance, _check_low_balance_alert,
     _webhook_item_hash, _is_duplicate_body, _is_placeholder_analysis,
-    get_alert_level, get_category_level,
+    get_alert_level, get_category_level, INTERNAL_CATEGORIES,
 )
 
 router = APIRouter()
@@ -49,16 +49,18 @@ async def get_dashboard_stats(user: User = Depends(require_user), db: Session = 
     now = datetime.utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # 本月收入（使用聚合查询）
+    # 本月收入（使用聚合查询；内部划转不计收支）
     monthly_income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.transaction_type == "income",
-        Transaction.parsed_at >= month_start
+        Transaction.parsed_at >= month_start,
+        ~Transaction.category.in_(INTERNAL_CATEGORIES),
     ).scalar() or 0.0
 
     # 本月支出
     monthly_expenses = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.transaction_type == "expense",
-        Transaction.parsed_at >= month_start
+        Transaction.parsed_at >= month_start,
+        ~Transaction.category.in_(INTERNAL_CATEGORIES),
     ).scalar() or 0.0
 
     # 总资产（使用聚合查询）

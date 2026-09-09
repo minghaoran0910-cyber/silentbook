@@ -78,6 +78,12 @@ def push(items: list):
 > 的裸 SQL 直写——`transaction_type` 非法会当场报错、
 > `created_at` 为空会自动填 now()。自账户划转请记 `expense`（分类用
 > `自账户划转`/`储蓄`/`投资`），或走 `POST /accounts/transfer` 配对转账。
+>
+> 💰 **余额联动只走 API**：`POST /transactions` 等接口会自动增减 `accounts`
+> 余额；**裸 SQL 直写不触发联动**，写完必须自己按同规则更新
+> `accounts.balance`（支出减、收入加，账户名必须与 `accounts.name` 一字不差，
+> 现有账户：招商银行/招行信用卡/微信/支付宝）。`自账户划转`/`转账`分类不计入
+> 收支统计但影响余额——不要把它当 spending 分析。
 
 ## 5. AI 分析两种模式
 
