@@ -301,13 +301,8 @@ html[data-theme="dark"] {
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Tailwind preflight 自带 margin/padding 重置；此处只保留 box-sizing，
- * 绝不能写 margin/padding（无层样式会覆盖 @layer utilities，导致 mx-auto/space-*/p-* 全灭） */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/* Tailwind preflight 已重置 margin/padding/box-sizing，此处不再写任何通配规则
+ *（lightningcss 解析 `*` 通配选择器会告警，且无层样式会覆盖 utilities） */
 
 html {
   -webkit-text-size-adjust: 100%;
