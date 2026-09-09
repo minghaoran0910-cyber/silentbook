@@ -370,6 +370,16 @@ const fmtMoney = (v) => {
   return `${fxSymbols.value[displayCurrency.value] || ''}${converted.toFixed(digits)}`
 }
 
+// stat 卡紧凑金额：绝对值过万用“万”缩写防截断（仅账户余额卡用）
+const fmtCompactMoney = (v) => {
+  const n = Number(v) || 0
+  if (displayCurrency.value === 'CNY' && Math.abs(n) >= 10000) {
+    const sign = n < 0 ? '-' : ''
+    return `¥${sign}${(Math.abs(n) / 10000).toFixed(2)}万`
+  }
+  return fmtMoney(v)
+}
+
 const loadFx = async () => {
   try {
     if (currencyOptions.value.length <= 1) {
@@ -401,7 +411,7 @@ const totalAssets = useCountUp(() => Number(stats.value.total_assets) || 0, 'mon
 const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) || 0, 'money', (v) => fmtMoney(v))
 const monthlyExpenses = useCountUp(() => Number(stats.value.monthly_expenses) || 0, 'money', (v) => fmtMoney(v))
 const monthlyIncome = useCountUp(() => Number(stats.value.monthly_income) || 0, 'money', (v) => fmtMoney(v))
-const accountBalance = useCountUp(() => Number(stats.value.total_account_balance) || 0, 'money', (v) => fmtMoney(v))
+const accountBalance = useCountUp(() => Number(stats.value.total_account_balance) || 0, 'money', (v) => fmtCompactMoney(v))
 const txCount = useCountUp(() => Number(stats.value.transaction_count) || 0, 'int')
 
 const statCards = computed(() => [
