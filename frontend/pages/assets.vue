@@ -299,6 +299,7 @@
               <div class="min-w-0">
                 <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">类型</label>
                 <USelect v-model="form.asset_type" :items="assetTypeItems" value-key="value" class="w-full min-w-0" />
+                <NuxtLink to="/investments" class="mt-1 block text-xs motion-reduce:transition-none" style="color: var(--text-secondary)">股票/基金/债券/黄金请去投资页添加 →</NuxtLink>
               </div>
               <div class="min-w-0">
                 <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="asset-account">所属机构</label>
@@ -487,8 +488,21 @@ watch([assetSearch, assetTypeFilter, assetStatusFilter], ([s, t, st]) => {
   } catch {}
 })
 
-// 下拉选项（USelect items，value-key="value"）
+// 新建资产类型下拉（仅展示类资产；股票/基金/债券/黄金请去投资页）
 const assetTypeItems = [
+  { label: '现金', value: 'cash' },
+  { label: '存款', value: 'savings' },
+  { label: '养老金', value: 'pension' },
+  { label: '房产', value: 'property' },
+  { label: '其他', value: 'other' },
+]
+const liquidityItems = [
+  { label: '高（随时可取）', value: 'high' },
+  { label: '中', value: 'medium' },
+  { label: '低（锁定期）', value: 'low' },
+]
+const assetTypeFilterItems = [
+  { label: '全部类型', value: '' },
   { label: '现金', value: 'cash' },
   { label: '存款', value: 'savings' },
   { label: '基金', value: 'fund' },
@@ -499,12 +513,6 @@ const assetTypeItems = [
   { label: '房产', value: 'property' },
   { label: '其他', value: 'other' },
 ]
-const liquidityItems = [
-  { label: '高（随时可取）', value: 'high' },
-  { label: '中', value: 'medium' },
-  { label: '低（锁定期）', value: 'low' },
-]
-const assetTypeFilterItems = [{ label: '全部类型', value: '' }, ...assetTypeItems]
 const assetStatusFilterItems = [
   { label: '全部状态', value: '' },
   { label: '活跃', value: 'active' },

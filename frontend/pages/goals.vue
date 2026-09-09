@@ -73,7 +73,8 @@
             </div>
             <div class="min-w-0">
               <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-current">已积累金额</label>
-              <UInput id="goal-current" v-model="form.current_amount" type="number" step="0.01" min="0" placeholder="0" class="w-full" />
+              <UInput id="goal-current" v-model="form.current_amount" type="number" step="0.01" min="0" placeholder="0" class="w-full" :disabled="isLinked" />
+              <p v-if="isLinked" class="mt-1 text-xs" style="color: var(--text-tertiary)">自动取自{{ linkedSourceName }}</p>
             </div>
             <div class="min-w-0">
               <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-deadline">截止日期</label>
@@ -82,6 +83,13 @@
             <div class="min-w-0">
               <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-priority">优先级</label>
               <USelect id="goal-priority" v-model="form.priority" :items="priorityItems" value-key="value" class="w-full" />
+            </div>
+            <div class="min-w-0 min-[480px]:col-span-2">
+              <span class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)">关联（可选，账户与资产互斥）</span>
+              <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+                <USelect v-model="form.linked_account" :items="accountLinkItems" value-key="value" aria-label="关联账户" class="w-full" @update:model-value="onPickAccount" />
+                <USelect v-model="form.linked_asset_id" :items="assetLinkItems" value-key="value" aria-label="关联资产" class="w-full" @update:model-value="onPickAsset" />
+              </div>
             </div>
             <div class="min-w-0 min-[480px]:col-span-2">
               <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="goal-notes">备注</label>
@@ -122,9 +130,10 @@
                   <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
                   <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">{{ goal.name }}</h3>
                   <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
+                  <UBadge v-if="goal.auto_progress || goal.linked_account || goal.linked_asset_id" color="info" variant="soft">自动</UBadge>
                 </div>
                 <div class="flex shrink-0 flex-wrap items-center gap-1.5">
-                  <UButton v-if="goal.status === 'active'" size="sm" @click="openContribute(goal)">投入</UButton>
+                  <UButton v-if="goal.status === 'active' && !goal.auto_progress" size="sm" @click="openContribute(goal)">投入</UButton>
                   <UButton size="xs" variant="outline" color="neutral" @click="startEdit(goal)">编辑</UButton>
                   <UButton size="xs" variant="outline" color="error" @click="pendingDelete = goal">删除</UButton>
                 </div>
@@ -171,6 +180,7 @@
                   <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
                   <h3 class="sb-h text-base font-semibold" style="color: var(--text-secondary)">{{ goal.name }}</h3>
                   <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
+                  <UBadge v-if="goal.auto_progress || goal.linked_account || goal.linked_asset_id" color="info" variant="soft">自动</UBadge>
                   <UBadge color="success" variant="soft">已完成</UBadge>
                 </div>
                 <div class="flex shrink-0 flex-wrap gap-1.5">
@@ -255,7 +265,8 @@
 <script setup>
 import { ref, computed, onMounted, onActivated } from 'vue'
 import {
-  fetchGoalsSummary, createGoal, updateGoal, deleteGoal, contributeToGoal
+  fetchGoalsSummary, createGoal, updateGoal, deleteGoal, contributeToGoal,
+  fetchAccounts, fetchAssets
 } from '~/utils/api'
 
 const summary = ref({
@@ -269,9 +280,45 @@ const actionError = ref('')
 
 const defaultForm = {
   name: '', goal_type: 'savings', target_amount: null, current_amount: 0,
-  deadline: '', priority: 'medium', notes: ''
+  deadline: '', priority: 'medium', notes: '',
+  linked_account: null, linked_asset_id: null
 }
 const form = ref({ ...defaultForm })
+
+// 关联源：账户名列表（GET /accounts）+ 资产 id+name（GET /assets），各取一次
+const accounts = ref([])
+const assetsList = ref([])
+const accountLinkItems = computed(() => [
+  { label: '不关联账户', value: null },
+  ...accounts.value.map((a) => ({ label: a.name, value: a.name })),
+])
+const assetLinkItems = computed(() => [
+  { label: '不关联资产', value: null },
+  ...assetsList.value.map((a) => ({ label: a.name, value: a.id })),
+])
+const isLinked = computed(() => !!(form.value.linked_account || form.value.linked_asset_id))
+const linkedSourceName = computed(() => {
+  if (form.value.linked_asset_id) {
+    return assetsList.value.find((a) => a.id === form.value.linked_asset_id)?.name || '关联资产'
+  }
+  return form.value.linked_account || '关联账户'
+})
+// 两者互斥：选了账户就清空资产，反之亦然
+function onPickAccount(v) {
+  if (v) form.value.linked_asset_id = null
+}
+function onPickAsset(v) {
+  if (v !== null && v !== undefined) form.value.linked_account = null
+}
+async function loadLinkSources() {
+  try {
+    const [accs, asts] = await Promise.all([fetchAccounts(), fetchAssets()])
+    accounts.value = accs || []
+    assetsList.value = (asts || []).filter((a) => a.status === 'active')
+  } catch (e) {
+    console.error('Failed to load link sources:', e)
+  }
+}
 
 const goalTypeItems = [
   { label: '储蓄', value: 'savings' },
@@ -368,6 +415,7 @@ const etaDaysOf = (g) => {
 
 async function loadData() {
   loading.value = true
+  loadLinkSources()
   try {
     summary.value = await fetchGoalsSummary()
     maybeCelebrate()
@@ -383,6 +431,10 @@ async function handleSubmit() {
   try {
     const data = { ...form.value }
     if (!data.deadline) delete data.deadline
+    data.linked_account = data.linked_account || null
+    if (data.linked_asset_id === undefined || data.linked_asset_id === '') data.linked_asset_id = null
+    // 关联后进度取自账户/资产，不提交手动金额
+    if (data.linked_account || data.linked_asset_id) delete data.current_amount
     if (editingId.value) {
       await updateGoal(editingId.value, data)
     } else {
@@ -404,7 +456,9 @@ function startEdit(goal) {
     current_amount: goal.current_amount,
     deadline: goal.deadline || '',
     priority: goal.priority,
-    notes: goal.notes || ''
+    notes: goal.notes || '',
+    linked_account: goal.linked_account || null,
+    linked_asset_id: goal.linked_asset_id ?? null
   }
   showAddForm.value = true
   window.scrollTo({ top: 0, behavior: 'smooth' })

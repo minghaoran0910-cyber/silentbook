@@ -38,6 +38,7 @@
                 总负债 <span class="font-medium" style="color: var(--danger)">{{ totalLiabilities.display.value }}</span>
               </span>
             </div>
+            <p class="mt-1 text-xs" style="color: var(--text-tertiary)">净资产 = 账户余额 + 资产 − 负债，同一笔钱不要两处都记</p>
           </div>
           <UButton to="/assets" variant="ghost" color="neutral">
             管理资产
@@ -68,7 +69,7 @@
       </UCard>
 
       <!-- stat 指标：无框，留白即分隔 -->
-      <div class="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+      <div class="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
         <div
           v-for="(s, i) in statCards"
           :key="s.key"
@@ -323,6 +324,7 @@ const stats = ref({
   net_assets: 0,
   total_assets: 0,
   total_liabilities: 0,
+  total_account_balance: 0,
   monthly_income: 0,
   monthly_expenses: 0,
   transaction_count: 0
@@ -399,11 +401,13 @@ const totalAssets = useCountUp(() => Number(stats.value.total_assets) || 0, 'mon
 const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) || 0, 'money', (v) => fmtMoney(v))
 const monthlyExpenses = useCountUp(() => Number(stats.value.monthly_expenses) || 0, 'money', (v) => fmtMoney(v))
 const monthlyIncome = useCountUp(() => Number(stats.value.monthly_income) || 0, 'money', (v) => fmtMoney(v))
+const accountBalance = useCountUp(() => Number(stats.value.total_account_balance) || 0, 'money', (v) => fmtMoney(v))
 const txCount = useCountUp(() => Number(stats.value.transaction_count) || 0, 'int')
 
 const statCards = computed(() => [
   { key: 'assets', label: '总资产', text: totalAssets.display.value, color: 'var(--success)' },
   { key: 'liab', label: '总负债', text: totalLiabilities.display.value, color: 'var(--danger)' },
+  { key: 'acct', label: '账户余额', text: accountBalance.display.value, color: 'var(--text-primary)' },
   { key: 'exp', label: '本月支出', text: monthlyExpenses.display.value, color: 'var(--danger)' },
   { key: 'inc', label: '本月收入', text: monthlyIncome.display.value, color: 'var(--success)' },
   { key: 'count', label: '交易笔数', text: txCount.display.value, color: 'var(--text-primary)' },

@@ -244,15 +244,15 @@
                 <USelect id="pos-type" v-model="form.position_type" :items="positionTypeItems" value-key="value" class="w-full" />
               </div>
               <div class="min-w-0">
-                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-qty">持有数量</label>
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-qty">{{ form.position_type === 'gold' ? '克数' : '持有数量' }}</label>
                 <UInput id="pos-qty" v-model="form.quantity" type="number" step="0.01" required placeholder="股/份" class="w-full" />
               </div>
               <div class="min-w-0">
-                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-cost">买入均价</label>
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-cost">{{ form.position_type === 'gold' ? '成本克价' : '买入均价' }}</label>
                 <UInput id="pos-cost" v-model="form.avg_cost" type="number" step="0.0001" required placeholder="成本价" class="w-full" />
               </div>
               <div class="min-w-0">
-                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-price">当前价格</label>
+                <label class="mb-1 block text-xs font-medium" style="color: var(--text-secondary)" for="pos-price">{{ form.position_type === 'gold' ? '现价/克' : '当前价格' }}</label>
                 <UInput id="pos-price" v-model="form.current_price" type="number" step="0.0001" placeholder="留空同步后自动更新" class="w-full" />
               </div>
               <div class="min-w-0">
@@ -292,7 +292,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import {
   fetchPositionsData,
   createPositionApi,
@@ -358,6 +358,7 @@ const typeFilterItems = [
   { label: '基金', value: 'fund' },
   { label: '债券', value: 'bond' },
   { label: '银行理财', value: 'wealth_mgmt' },
+  { label: '黄金', value: 'gold' },
   { label: '其他', value: 'other' },
 ]
 const accountFilterItems = computed(() => [
@@ -374,6 +375,7 @@ const positionTypeItems = [
   { label: '基金', value: 'fund' },
   { label: '债券', value: 'bond' },
   { label: '银行理财', value: 'wealth_mgmt' },
+  { label: '黄金', value: 'gold' },
   { label: '其他', value: 'other' },
 ]
 
@@ -425,6 +427,7 @@ const positionTypeColor = (t: string) => {
   if (t === 'fund') return 'info'
   if (t === 'bond') return 'success'
   if (t === 'wealth_mgmt') return 'primary'
+  if (t === 'gold') return 'warning'
   return 'neutral'
 }
 
@@ -473,7 +476,7 @@ function formatTime(iso: string) {
 }
 
 function typeLabel(t: string) {
-  const map: Record<string, string> = { stock: '股票', fund: '基金', bond: '债券', wealth_mgmt: '理财', other: '其他' }
+  const map: Record<string, string> = { stock: '股票', fund: '基金', bond: '债券', wealth_mgmt: '理财', gold: '黄金', other: '其他' }
   return map[t] || t
 }
 
@@ -570,4 +573,5 @@ async function confirmDeletePosition() {
 }
 
 onMounted(loadData)
+onActivated(loadData)
 </script>

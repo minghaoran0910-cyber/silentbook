@@ -711,7 +711,7 @@ const submitTransaction = async () => {
   submitting.value = true
   try {
     onCategoryCreate(form.value.category) // 直接提交的新词同样落盘
-    await createTransaction({
+    const created = await createTransaction({
       amount: form.value.amount,
       category: form.value.category,
       account: form.value.account,
@@ -723,7 +723,7 @@ const submitTransaction = async () => {
     form.value.description = ''
     showAddModal.value = false
     await loadTransactions()
-    toast.add({ title: '记账成功', color: 'success' })
+    toast.add({ title: created?.balance_updated === false ? '记账成功（账户名对不上余额表，未联动余额）' : '记账成功', color: 'success' })
   } catch (error) {
     console.error('创建交易失败:', error)
     toast.add({ title: '保存失败，请重试', color: 'error' })

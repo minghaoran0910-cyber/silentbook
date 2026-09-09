@@ -8,10 +8,14 @@ export interface Transaction {
   raw_text: string | null
   confidence: number
   parsed_at: string
+  balance_updated?: boolean | null
 }
 
 export interface DashboardStats {
   net_assets: number
+  total_assets: number
+  total_liabilities: number
+  total_account_balance: number
   monthly_income: number
   monthly_expenses: number
   transaction_count: number
@@ -294,6 +298,30 @@ export async function deleteLiability(id: number): Promise<void> {
   await request(`/liabilities/${id}`, { method: 'DELETE' })
 }
 
+// ===== 账户（余额表：goals 关联用名列表）=====
+
+export interface Account {
+  id: number
+  name: string
+  account_type: string
+  purpose: string
+  balance: number
+  target_balance: number
+  currency: string
+  status: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchAccounts(params?: { purpose?: string; status?: string }): Promise<Account[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.purpose) searchParams.append('purpose', params.purpose)
+  if (params?.status) searchParams.append('status', params.status)
+  const q = searchParams.toString() ? `?${searchParams.toString()}` : ''
+  return request<Account[]>(`/accounts${q}`)
+}
+
 // ===== 设置 =====
 export async function getSettings(): Promise<Record<string, string>> {
   return request('/settings')
@@ -393,6 +421,9 @@ export interface FinancialGoal {
   status: 'active' | 'completed' | 'abandoned' | 'paused'
   notes: string | null
   progress_percent: number
+  linked_account: string | null
+  linked_asset_id: number | null
+  auto_progress: boolean
   created_at: string
   updated_at: string
 }
