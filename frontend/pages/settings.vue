@@ -246,6 +246,95 @@
       </div>
     </UCard>
 
+    <!-- 账户管理：余额按历史流水回填，可看可调 -->
+    <UCard
+      class="sb-surface mb-4 min-w-0"
+      :ui="{ body: 'p-5' }"
+    >
+      <h2 class="sb-h text-base font-semibold" :style="{ color: 'var(--text-primary)' }">账户管理</h2>
+      <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">余额按历史流水回填，可查看、调整余额、新增或删除账户</p>
+      <div v-if="accountsLoading" class="py-2 text-sm" :style="{ color: 'var(--text-secondary)' }">加载中...</div>
+      <div v-else-if="accounts.length === 0" class="py-2 text-sm" :style="{ color: 'var(--text-secondary)' }">暂无账户，先在下方新建一个吧</div>
+      <div v-else class="sb-rows sb-account-rows flex min-w-0 flex-col">
+        <div
+          v-for="a in accounts"
+          :key="a.id"
+          class="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 py-2.5"
+        >
+          <div class="flex min-w-0 flex-1 flex-col">
+            <span class="truncate text-sm font-medium" :style="{ color: 'var(--text-primary)' }">
+              {{ a.name }}
+              <UBadge color="neutral" variant="soft" class="ml-1 shrink-0">{{ accountTypeLabel(a.account_type) }}</UBadge>
+            </span>
+            <span class="mt-0.5 truncate text-xs" :style="{ color: 'var(--text-secondary)' }">{{ accountPurposeLabel(a.purpose) }}</span>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <span
+              class="text-sm font-semibold tabular-nums"
+              :style="{ color: a.balance >= 0 ? 'var(--success)' : 'var(--danger)' }"
+            >¥{{ Number(a.balance).toFixed(2) }}</span>
+            <UButton variant="outline" color="neutral" size="xs" @click="openAdjust(a)">调整</UButton>
+            <UButton variant="ghost" color="error" size="xs" square title="删除账户" :aria-label="'删除' + a.name" @click="openDelete(a)">
+              <template #leading>
+                <AppIcon icon="X" :size="14" />
+              </template>
+            </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- 新建账户 -->
+      <div class="mt-4 border-t border-dashed pt-4" :style="{ borderColor: 'var(--border)' }">
+        <div class="mb-3 text-sm font-semibold" :style="{ color: 'var(--text-primary)' }">新建账户</div>
+        <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+          <div class="min-w-0">
+            <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-name">名称</label>
+            <UInput id="acct-name" v-model="acctForm.name" type="text" placeholder="如：招行储蓄卡" class="w-full min-w-0" />
+          </div>
+          <div class="min-w-0">
+            <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-balance">期初余额</label>
+            <UInput id="acct-balance" v-model="acctForm.balance" type="number" step="0.01" placeholder="0.00" class="w-full min-w-0 tabular-nums" />
+          </div>
+          <div class="min-w-0">
+            <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-type">类型</label>
+            <USelect
+              id="acct-type"
+              v-model="acctForm.account_type"
+              :items="accountTypeItems"
+              value-key="value"
+              placeholder="选择类型"
+              aria-label="账户类型"
+              class="w-full min-w-0"
+            />
+          </div>
+          <div class="min-w-0">
+            <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-purpose">用途</label>
+            <USelect
+              id="acct-purpose"
+              v-model="acctForm.purpose"
+              :items="accountPurposeItems"
+              value-key="value"
+              placeholder="选择用途"
+              aria-label="账户用途"
+              class="w-full min-w-0"
+            />
+          </div>
+        </div>
+        <div class="mt-3">
+          <UButton color="primary" :loading="creatingAcct" :disabled="creatingAcct || !acctForm.name.trim()" @click="handleCreateAccount">
+            {{ creatingAcct ? '新建中...' : '新建账户' }}
+          </UButton>
+        </div>
+        <UAlert
+          v-if="acctMessage"
+          class="mt-3"
+          :color="acctMessageType === 'success' ? 'success' : 'error'"
+          variant="soft"
+          :title="acctMessage"
+        />
+      </div>
+    </UCard>
+
     <!-- 系统：API 地址展示 -->
     <UCard
       class="sb-surface mb-4 min-w-0"
@@ -469,6 +558,44 @@
       </div>
     </UCard>
 
+    <!-- 余额调整 -->
+    <UModal v-model:open="showAdjustModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
+      <template #content>
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">调整余额：{{ adjustTarget?.name }}</h3>
+          <p class="mb-4 mt-1 text-sm tabular-nums" :style="{ color: 'var(--text-secondary)' }">当前余额 ¥{{ adjustTarget ? Number(adjustTarget.balance).toFixed(2) : '0.00' }}</p>
+          <div class="flex min-w-0 flex-col gap-3">
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-adjust-balance">新余额</label>
+              <UInput id="acct-adjust-balance" v-model="adjustForm.balance" type="number" step="0.01" placeholder="0.00" class="w-full min-w-0 tabular-nums" />
+            </div>
+            <div class="min-w-0">
+              <label class="mb-1 block text-xs font-medium" :style="{ color: 'var(--text-secondary)' }" for="acct-adjust-notes">原因备注</label>
+              <UInput id="acct-adjust-notes" v-model="adjustForm.notes" type="text" placeholder="如：按历史流水对账补录" class="w-full min-w-0" />
+            </div>
+          </div>
+          <div class="mt-4 flex justify-end gap-2">
+            <UButton variant="outline" color="neutral" @click="showAdjustModal = false">取消</UButton>
+            <UButton color="primary" :loading="adjustingAcct" :disabled="adjustingAcct" @click="confirmAdjust">确认调整</UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- 删除账户二次确认 -->
+    <UModal v-model:open="showDeleteModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
+      <template #content>
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
+          <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">删除账户？</h3>
+          <p class="mb-4 mt-1 text-sm" :style="{ color: 'var(--text-secondary)' }">确定删除「{{ deleteTarget?.name }}」？删除后无法恢复，此操作不可撤销。</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="outline" color="neutral" @click="showDeleteModal = false">取消</UButton>
+            <UButton color="error" :loading="deletingAcct" :disabled="deletingAcct" @click="confirmDelete">确认删除</UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <!-- 危险操作确认：载入演示数据 -->
     <UModal v-model:open="showSeedModal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
@@ -503,7 +630,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated } from 'vue'
-import { getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth, fetchDemoStatus, seedDemoData } from '~/utils/api'
+import { fetchAccounts, createAccount, updateAccount, deleteAccount, getSources, updateSources, getAgentConfigs, updateAgentConfig, fetchAiConfig, updateAiConfig, testAiConfigConnection, fetchOpenClawAgents as fetchOpenClawAgentsApi, fetchOpenClawBinding, bindOpenClawAgent, unbindOpenClawAgent, updateSettings as updateSettingsApi, getApiBaseUrl, downloadExportCsv, importCsvContent, importPdfFile, changePassword as changePasswordApi, clearAuth, fetchDemoStatus, seedDemoData } from '~/utils/api'
 import { categoryIcons, getCategoryIcon, loadCustomCategoryStyles, saveCustomCategoryStyle, resetCustomCategoryStyle, CATEGORY_PALETTE, ICON_CHOICES, getAllKnownCategories } from '~/utils/icons'
 import { useBrandTheme } from '~/composables/useBrandTheme'
 import type { Brand } from '~/composables/useBrandTheme'
@@ -612,6 +739,127 @@ const confirmSeedDemo = async () => {
     toast.add({ title: demoMessage.value, color: 'error' })
   } finally {
     seedingDemo.value = false
+  }
+}
+
+// 账户管理：列表可看可调（余额按历史流水回填）
+interface Acct { id: number; name: string; account_type: string; purpose: string; balance: number }
+const accounts = ref<Acct[]>([])
+const accountsLoading = ref(false)
+const acctForm = ref({ name: '', account_type: 'bank', purpose: 'consumption', balance: '' as string })
+const creatingAcct = ref(false)
+const acctMessage = ref('')
+const acctMessageType = ref('')
+const showAdjustModal = ref(false)
+const showDeleteModal = ref(false)
+const adjustTarget = ref<Acct | null>(null)
+const deleteTarget = ref<Acct | null>(null)
+const adjustForm = ref({ balance: '' as string, notes: '' })
+const adjustingAcct = ref(false)
+const deletingAcct = ref(false)
+
+const accountTypeItems = [
+  { label: '银行卡', value: 'bank' },
+  { label: '支付宝', value: 'alipay' },
+  { label: '微信', value: 'wechat' },
+  { label: '现金', value: 'cash' },
+  { label: '其他', value: 'other' }
+]
+const accountPurposeItems = [
+  { label: '日常消费', value: 'consumption' },
+  { label: '应急备用', value: 'emergency' },
+  { label: '投资理财', value: 'investment' },
+  { label: '目标储蓄', value: 'goal' }
+]
+const accountTypeLabel = (v: string) => accountTypeItems.find((i) => i.value === v)?.label || v
+const accountPurposeLabel = (v: string) => accountPurposeItems.find((i) => i.value === v)?.label || v
+
+const loadAccounts = async () => {
+  accountsLoading.value = true
+  try {
+    accounts.value = await fetchAccounts()
+  } catch (e) {
+    console.error('加载账户失败:', e)
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
+const handleCreateAccount = async () => {
+  acctMessage.value = ''
+  if (!acctForm.value.name.trim()) {
+    acctMessage.value = '请填写账户名称'
+    acctMessageType.value = 'error'
+    return
+  }
+  creatingAcct.value = true
+  try {
+    await createAccount({
+      name: acctForm.value.name.trim(),
+      account_type: acctForm.value.account_type,
+      purpose: acctForm.value.purpose,
+      balance: Number(acctForm.value.balance) || 0
+    })
+    acctMessage.value = '账户新建成功'
+    acctMessageType.value = 'success'
+    toast.add({ title: acctMessage.value, color: 'success' })
+    acctForm.value = { name: '', account_type: 'bank', purpose: 'consumption', balance: '' }
+    await loadAccounts()
+  } catch (e) {
+    acctMessage.value = '新建失败: ' + ((e as Error).message || '未知错误')
+    acctMessageType.value = 'error'
+    toast.add({ title: acctMessage.value, color: 'error' })
+  } finally {
+    creatingAcct.value = false
+    setTimeout(() => { acctMessage.value = '' }, 5000)
+  }
+}
+
+const openAdjust = (a: Acct) => {
+  adjustTarget.value = a
+  adjustForm.value = { balance: String(a.balance), notes: '' }
+  showAdjustModal.value = true
+}
+
+const confirmAdjust = async () => {
+  if (!adjustTarget.value) return
+  const next = Number(adjustForm.value.balance)
+  if (Number.isNaN(next)) {
+    toast.add({ title: '请输入有效的新余额', color: 'error' })
+    return
+  }
+  adjustingAcct.value = true
+  try {
+    await updateAccount(adjustTarget.value.id, { balance: next, notes: adjustForm.value.notes.trim() || undefined })
+    showAdjustModal.value = false
+    toast.add({ title: `「${adjustTarget.value.name}」余额已调整为 ¥${next.toFixed(2)}`, color: 'success' })
+    adjustTarget.value = null
+    await loadAccounts()
+  } catch (e) {
+    toast.add({ title: '调整失败: ' + ((e as Error).message || '未知错误'), color: 'error' })
+  } finally {
+    adjustingAcct.value = false
+  }
+}
+
+const openDelete = (a: Acct) => {
+  deleteTarget.value = a
+  showDeleteModal.value = true
+}
+
+const confirmDelete = async () => {
+  if (!deleteTarget.value) return
+  deletingAcct.value = true
+  try {
+    await deleteAccount(deleteTarget.value.id)
+    toast.add({ title: `已删除「${deleteTarget.value.name}」`, color: 'neutral' })
+    showDeleteModal.value = false
+    deleteTarget.value = null
+    await loadAccounts()
+  } catch (e) {
+    toast.add({ title: '删除失败: ' + ((e as Error).message || '未知错误'), color: 'error' })
+  } finally {
+    deletingAcct.value = false
   }
 }
 
@@ -933,6 +1181,8 @@ const loadAll = async () => {
   await loadOpenClawBinding()
   // 演示数据状态
   await loadDemoStatus()
+  // 账户列表
+  await loadAccounts()
   // 自定义分类颜色
   refreshCustomColors()
 }
@@ -957,10 +1207,17 @@ onActivated(loadAll)
   .sb-palette-dot {
     transition: none;
   }
+  .sb-account-rows {
+    transition: none;
+  }
 }
 @media (max-width: 480px) {
   .sb-color-input {
     width: 2.5rem;
+  }
+  .sb-account-rows > div {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

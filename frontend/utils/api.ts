@@ -322,6 +322,26 @@ export async function fetchAccounts(params?: { purpose?: string; status?: string
   return request<Account[]>(`/accounts${q}`)
 }
 
+export async function createAccount(data: { name: string; account_type: string; purpose: string; balance?: number }): Promise<Account> {
+  return request<Account>('/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function updateAccount(id: number, data: Partial<Account>): Promise<Account> {
+  return request<Account>(`/accounts/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+}
+
+export async function deleteAccount(id: number): Promise<void> {
+  await request(`/accounts/${id}`, { method: 'DELETE' })
+}
+
 // ===== 设置 =====
 export async function getSettings(): Promise<Record<string, string>> {
   return request('/settings')
