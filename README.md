@@ -132,6 +132,25 @@ git clone https://github.com/minghaoran0910-cyber/silentbook.git; cd silentbook
 
 脚本会自动检测 Docker、生成安全密钥、创建 `.env`、拉起全部服务。
 
+### 方式二：纯镜像部署（免 clone，amd64/arm64 双架构）
+
+镜像已发布到 Docker Hub（`latest` 跟随主分支，另有日期版本号 tag 可锁定）：
+
+| 镜像 | 说明 |
+|------|------|
+| `dada561/silentbook-frontend` | Web 前端 |
+| `dada561/silentbook-backend` | 核心 API |
+| `dada561/silentbook-agent` | AI 分析引擎 |
+| `dada561/silentbook-parser` | 通知解析 |
+
+```bash
+mkdir silentbook && cd silentbook
+curl -fsSLO https://raw.githubusercontent.com/minghaoran0910-cyber/silentbook/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/minghaoran0910-cyber/silentbook/main/.env.example
+cp .env.example .env   # 按需改端口与密钥（或直接用默认值先跑起来）
+docker compose pull && docker compose up -d
+```
+
 启动后访问：
 
 | 服务 | 地址 |
