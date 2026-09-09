@@ -150,7 +150,7 @@
           />
         </UFormField>
 
-        <UButton type="submit" block class="pressable" :loading="submitting" :disabled="submitting">
+        <UButton type="submit" block class="pressable sb-cta" :loading="submitting" :disabled="submitting">
           {{ submitting ? '保存中...' : '保存' }}
         </UButton>
 

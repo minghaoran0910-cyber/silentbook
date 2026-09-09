@@ -550,3 +550,9 @@ label.field-label {
     transform: none;
   }
 }
+
+/* 主行动按钮文字：永远用 accent-ink，保证在品牌主色上的对比度
+ *（Nuxt UI 默认白字在浅主色如 cozy 橙上会糊掉） */
+a.sb-cta, button.sb-cta { color: var(--accent-ink); }
+a.sb-cta:hover, button.sb-cta:hover { color: var(--accent-ink); }
+a.sb-cta *, button.sb-cta * { color: inherit; }

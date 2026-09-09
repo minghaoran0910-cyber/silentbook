@@ -141,7 +141,7 @@
           block
           :loading="loading"
           :disabled="!canRegister || loading"
-          class="pressable"
+          class="pressable sb-cta"
           :label="loading ? '注册中...' : '注册'"
         />
       </UForm>
@@ -198,7 +198,7 @@
           block
           :loading="loading"
           :disabled="!canLogin || loading"
-          class="pressable"
+          class="pressable sb-cta"
           :label="loading ? '登录中...' : '登录'"
         />
         <div class="text-center">

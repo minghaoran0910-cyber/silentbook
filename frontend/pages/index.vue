@@ -12,7 +12,7 @@
         aria-label="展示币种"
         class="w-36"
       />
-      <UButton to="/add" class="cta-press">
+      <UButton to="/add" class="cta-press sb-cta">
         <AppIcon icon="Plus" :size="16" />
         记一笔
       </UButton>
@@ -191,7 +191,7 @@
             <h2 class="sb-h text-base" style="color: var(--text-primary)">今天，先记一笔</h2>
             <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">花了多少、进了多少，10 秒记下来，账就不会乱。</p>
           </div>
-          <UButton to="/add" class="cta-press">
+          <UButton to="/add" class="cta-press sb-cta">
             <AppIcon icon="Plus" :size="16" />
             记一笔
           </UButton>
