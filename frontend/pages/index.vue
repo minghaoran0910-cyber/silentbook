@@ -313,8 +313,7 @@
 
 <script setup>
 import { ref, onMounted, onActivated, computed, watch } from 'vue'
-import { marked } from 'marked'
-import sanitizeHtml from 'sanitize-html'
+import { renderMarkdown } from '~/composables/useMarkdown'
 import { fetchDashboardStats, fetchLatestAnalysis, runAnalysis, fetchTrend, fetchMonthlyReport, fetchTransactions, fetchAssets, fetchLiabilities, fetchFxRates, fetchFxCurrencies } from '~/utils/api'
 import { getCategoryIcon, getAssetIcon, getLiabilityIcon } from '~/utils/icons'
 import { useECharts, axisCommon, tooltipCommon } from '~/composables/useECharts'
@@ -336,9 +335,9 @@ const analysis = ref({
 })
 
 const renderedAnalysis = computed(() => ({
-  consumption: sanitizeHtml(marked(analysis.value.consumption || '')),
-  investment: sanitizeHtml(marked(analysis.value.investment || '')),
-  suggestion: sanitizeHtml(marked(analysis.value.suggestion || ''))
+  consumption: renderMarkdown(analysis.value.consumption || ''),
+  investment: renderMarkdown(analysis.value.investment || ''),
+  suggestion: renderMarkdown(analysis.value.suggestion || '')
 }))
 
 const analyzing = ref(false)
