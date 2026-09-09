@@ -184,6 +184,64 @@ html[data-brand="cozy"][data-theme="dark"] {
   --font-brand-display: inherit;
 }
 
+/* ============ 品牌体感：形状 / 字 / 疏密（不止颜色） ============ */
+html[data-brand="ink"] {
+  --card-bg: var(--bg-secondary);
+  --card-border: 1px solid var(--border);
+  --card-shadow: none;
+  --section-gap: 3rem;
+  --h-font: var(--font-brand-display);
+  --h-tracking: 0;
+  --h-weight: 600;
+  --label-tracking: 0;
+  --row-divide: 1px solid var(--border);
+}
+html[data-brand="linear"] {
+  --card-bg: var(--bg-secondary);
+  --card-border: 1px solid var(--border);
+  --card-shadow: none;
+  --section-gap: 2rem;
+  --h-font: inherit;
+  --h-tracking: -0.02em;
+  --h-weight: 600;
+  --label-tracking: 0.06em;
+  --row-divide: 1px solid var(--border);
+}
+html[data-brand="cozy"] {
+  --card-bg: var(--bg-secondary);
+  --card-border: 1px solid transparent;
+  --card-shadow: var(--shadow-md);
+  --section-gap: 2.5rem;
+  --h-font: inherit;
+  --h-tracking: 0;
+  --h-weight: 700;
+  --label-tracking: 0;
+  --row-divide: 1px solid var(--border);
+}
+
+/* 全站共享表面与标题：各页直接用，不许自造带边框的盒子 */
+.sb-surface {
+  background: var(--card-bg);
+  border: var(--card-border);
+  box-shadow: var(--card-shadow);
+  border-radius: var(--radius-lg);
+}
+.sb-h {
+  font-family: var(--h-font);
+  letter-spacing: var(--h-tracking);
+  font-weight: var(--h-weight);
+}
+.sb-label {
+  letter-spacing: var(--label-tracking);
+  font-weight: 600;
+}
+.sb-display {
+  font-family: var(--font-brand-display);
+}
+.sb-rows > * + * {
+  border-top: var(--row-divide);
+}
+
 /* 旧双主题块保留为无品牌兜底（首屏闪烁前、旧缓存 HTML），品牌块在上优先级更高 */
 
 /* SilentBook 设计系统 - 日间纸墨
@@ -243,9 +301,11 @@ html[data-theme="dark"] {
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-* {
-  margin: 0;
-  padding: 0;
+/* Tailwind preflight 自带 margin/padding 重置；此处只保留 box-sizing，
+ * 绝不能写 margin/padding（无层样式会覆盖 @layer utilities，导致 mx-auto/space-*/p-* 全灭） */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 

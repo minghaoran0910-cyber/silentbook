@@ -3,7 +3,7 @@
     <!-- 顶栏：标题 + 币种 + 一键记一笔 -->
     <div class="flex flex-wrap items-center gap-3">
       <div class="mr-auto min-w-0">
-        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">总览</h1>
+        <h1 class="sb-h text-xl" style="color: var(--text-primary)">总览</h1>
         <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">钱在哪里，今天发生了什么，下一步做什么。</p>
       </div>
       <USelect
@@ -27,7 +27,7 @@
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
             <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
-            <div class="brand-display mt-1 text-4xl font-semibold tabular-nums" style="color: var(--text-primary)">
+            <div class="sb-display mt-1 text-5xl font-semibold tabular-nums" style="color: var(--text-primary)">
               {{ netAssets.display.value }}
             </div>
             <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums">
@@ -67,25 +67,25 @@
         </div>
       </UCard>
 
-      <!-- stat 卡：stagger 40ms 上浮进入 -->
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <UCard
+      <!-- stat 指标：无框，留白即分隔 -->
+      <div class="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+        <div
           v-for="(s, i) in statCards"
           :key="s.key"
-          :class="['sb-surface', playEnter && 'reveal']"
+          :class="[playEnter && 'reveal']"
           :style="{ '--reveal-delay': `${i * 40}ms` }"
         >
-          <div class="text-xs" style="color: var(--text-secondary)">{{ s.label }}</div>
-          <div class="mt-1 truncate text-xl font-semibold tabular-nums" :style="{ color: s.color }">
+          <div class="sb-label text-xs" style="color: var(--text-secondary)">{{ s.label }}</div>
+          <div class="mt-1 truncate text-2xl font-semibold tabular-nums" :style="{ color: s.color }">
             {{ s.text }}
           </div>
-        </UCard>
+        </div>
       </div>
 
       <!-- 消费趋势面积图 -->
       <UCard class="sb-surface">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-semibold" style="color: var(--text-primary)">近{{ trendDays }}天资金流动</h2>
+          <h2 class="sb-h text-base" style="color: var(--text-primary)">近{{ trendDays }}天资金流动</h2>
           <span class="text-xs tabular-nums" style="color: var(--text-secondary)">
             支出 ¥{{ trend.total_expense.toFixed(2) }} · 收入 ¥{{ trend.total_income.toFixed(2) }}
           </span>
@@ -95,10 +95,10 @@
         <p v-else class="py-12 text-center text-sm" style="color: var(--text-secondary)">暂无交易数据，先记第一笔吧。</p>
       </UCard>
 
-      <!-- 资产分类明细 -->
-      <UCard v-if="mounted && assetBreakdown.length > 0" class="sb-surface">
-        <h2 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分布</h2>
-        <ul class="space-y-2">
+      <!-- 资产分类明细：无框列表 -->
+      <section v-if="mounted && assetBreakdown.length > 0" aria-label="资产分布">
+        <h2 class="sb-h mb-3 text-base" style="color: var(--text-primary)">资产分布</h2>
+        <ul class="space-y-2.5">
           <li v-for="item in assetBreakdown" :key="item.type" class="flex items-center gap-3">
             <AppIcon :icon="getAssetIcon(item.type).icon" :color="getAssetIcon(item.type).color" :size="18" class="shrink-0" />
             <span class="w-12 shrink-0 text-sm" style="color: var(--text-primary)">{{ getAssetIcon(item.type).label }}</span>
@@ -113,14 +113,14 @@
             <span class="w-10 shrink-0 text-right text-xs" style="color: var(--text-secondary)">{{ item.count }}项</span>
           </li>
         </ul>
-      </UCard>
+      </section>
     </section>
 
     <!-- 二、最近发生什么：今日动态 -->
     <section aria-label="最近发生什么" class="grid gap-4 lg:grid-cols-2">
       <UCard class="sb-surface">
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-base font-semibold" style="color: var(--text-primary)">最近交易</h2>
+          <h2 class="sb-h text-base" style="color: var(--text-primary)">最近交易</h2>
           <NuxtLink to="/transactions" class="text-sm font-medium" style="color: var(--accent)">查看全部</NuxtLink>
         </div>
         <ul v-if="mounted && recentTransactions.length > 0" class="-mx-1 space-y-1">
@@ -155,7 +155,7 @@
 
       <UCard class="sb-surface">
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-base font-semibold" style="color: var(--text-primary)">消费分类榜</h2>
+          <h2 class="sb-h text-base" style="color: var(--text-primary)">消费分类榜</h2>
           <NuxtLink to="/analysis" class="text-sm font-medium" style="color: var(--accent)">更多解读</NuxtLink>
         </div>
         <ul v-if="mounted && trend.categories.length > 0" class="space-y-2.5">
@@ -185,10 +185,10 @@
 
     <!-- 三、下一步干什么：CTA + 待办感 -->
     <section aria-label="下一步干什么" class="space-y-4">
-      <UCard class="sb-surface">
+      <div class="px-5 py-4 sm:px-6" style="background: var(--accent-soft); border-radius: var(--radius-lg)">
         <div class="flex flex-wrap items-center gap-3">
           <div class="mr-auto min-w-0">
-            <h2 class="text-base font-semibold" style="color: var(--text-primary)">今天，先记一笔</h2>
+            <h2 class="sb-h text-base" style="color: var(--text-primary)">今天，先记一笔</h2>
             <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">花了多少、进了多少，10 秒记下来，账就不会乱。</p>
           </div>
           <UButton to="/add" class="cta-press">
@@ -220,34 +220,34 @@
             </li>
           </ul>
         </div>
-      </UCard>
+      </div>
 
       <UCard v-if="mounted" class="sb-surface">
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-base font-semibold" style="color: var(--text-primary)">AI 洞察</h2>
+          <h2 class="sb-h text-base" style="color: var(--text-primary)">AI 洞察</h2>
           <UButton :loading="analyzing" variant="soft" color="neutral" class="cta-press" @click="analyze">
             {{ analyzing ? '分析中' : '立即分析' }}
           </UButton>
         </div>
-        <div class="grid gap-3 md:grid-cols-3">
-          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+        <div class="grid gap-6 md:grid-cols-3">
+          <div>
             <div class="mb-1.5 flex items-center gap-1.5">
               <AppIcon icon="ChartLine" :size="18" style="color: var(--accent)" />
-              <span class="text-sm font-medium" style="color: var(--text-primary)">消费分析</span>
+              <span class="sb-h text-sm" style="color: var(--text-primary)">消费分析</span>
             </div>
             <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.consumption"></div>
           </div>
-          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+          <div>
             <div class="mb-1.5 flex items-center gap-1.5">
               <AppIcon icon="TrendUp" :size="18" style="color: var(--accent)" />
-              <span class="text-sm font-medium" style="color: var(--text-primary)">投资分析</span>
+              <span class="sb-h text-sm" style="color: var(--text-primary)">投资分析</span>
             </div>
             <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.investment"></div>
           </div>
-          <div class="p-3" style="border: 1px solid var(--border); border-radius: var(--radius-md)">
+          <div>
             <div class="mb-1.5 flex items-center gap-1.5">
               <AppIcon icon="BookOpen" :size="18" style="color: var(--accent)" />
-              <span class="text-sm font-medium" style="color: var(--text-primary)">建议</span>
+              <span class="sb-h text-sm" style="color: var(--text-primary)">建议</span>
             </div>
             <div class="insight-md text-sm leading-relaxed" style="color: var(--text-secondary)" v-html="renderedAnalysis.suggestion"></div>
           </div>
@@ -256,7 +256,7 @@
 
       <UCard v-if="mounted && monthly" class="sb-surface">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-semibold" style="color: var(--text-primary)">{{ monthly.year }}年{{ monthly.month }}月小结</h2>
+          <h2 class="sb-h text-base" style="color: var(--text-primary)">{{ monthly.year }}年{{ monthly.month }}月小结</h2>
           <UBadge color="neutral" variant="soft">储蓄率 {{ monthly.savings_rate }}%</UBadge>
         </div>
         <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -579,12 +579,6 @@ onActivated(loadAll) // 客户端路由导航回来时也重新加载
 </script>
 
 <style scoped>
-/* 卡片表面跟品牌走：只用 var(--*)，不写死色 */
-.sb-surface {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-}
-
 /* ink 品牌金额标题用衬线展示字体，其他品牌回退继承，不引入新字 */
 .brand-display {
   font-family: var(--font-brand-display);

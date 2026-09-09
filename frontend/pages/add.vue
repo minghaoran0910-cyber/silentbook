@@ -323,12 +323,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 卡片表面跟品牌走：只用 var(--*)，不写死色 */
-.sb-surface {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-}
-
 /* 金额大字等宽：inner input 经 :deep 定死，不受 U* 主题字号覆盖；ink 下衬线展示体 */
 .amount-field :deep(input) {
   font-family: var(--font-brand-display);
