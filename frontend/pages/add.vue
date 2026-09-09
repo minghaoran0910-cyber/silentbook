@@ -71,30 +71,14 @@
       :ui="{ body: 'p-4 sm:p-6' }"
     >
       <form class="flex flex-col gap-5" @submit.prevent="submitTransaction">
-        <UFormField label="类型" name="transaction_type">
-          <div class="grid grid-cols-2 gap-3" role="group" aria-label="记账类型">
-            <UButton
-              type="button"
-              class="pressable"
-              :color="form.transaction_type === 'expense' ? 'error' : 'neutral'"
-              :variant="form.transaction_type === 'expense' ? 'solid' : 'outline'"
-              @click="form.transaction_type = 'expense'"
-            >
-              支出
-            </UButton>
-            <UButton
-              type="button"
-              class="pressable"
-              :color="form.transaction_type === 'income' ? 'success' : 'neutral'"
-              :variant="form.transaction_type === 'income' ? 'solid' : 'outline'"
-              @click="form.transaction_type = 'income'"
-            >
-              收入
-            </UButton>
-          </div>
-        </UFormField>
-
+        <!-- ① 金额最顶：拇指区第一 -->
         <UFormField label="金额" name="amount" :error="amountError || undefined" required>
+          <template #label>
+            <span class="inline-flex items-center gap-2">
+              <span>金额</span>
+              <span class="rounded-full px-2 py-0.5 text-xs font-normal" style="color: var(--text-secondary); background: var(--bg-tertiary)">今天花了</span>
+            </span>
+          </template>
           <UInput
             id="add-amount"
             v-model.number="form.amount"
@@ -109,14 +93,70 @@
           />
         </UFormField>
 
+        <!-- ② 类型大分段：保留 toggle，放大点击区 -->
+        <UFormField label="类型" name="transaction_type">
+          <div class="grid grid-cols-2 gap-3" role="group" aria-label="记账类型">
+            <UButton
+              type="button"
+              class="pressable min-h-[48px] text-base"
+              :color="form.transaction_type === 'expense' ? 'error' : 'neutral'"
+              :variant="form.transaction_type === 'expense' ? 'solid' : 'outline'"
+              @click="form.transaction_type = 'expense'"
+            >
+              支出
+            </UButton>
+            <UButton
+              type="button"
+              class="pressable min-h-[48px] text-base"
+              :color="form.transaction_type === 'income' ? 'success' : 'neutral'"
+              :variant="form.transaction_type === 'income' ? 'solid' : 'outline'"
+              @click="form.transaction_type = 'income'"
+            >
+              收入
+            </UButton>
+          </div>
+        </UFormField>
+
+        <!-- ③ 分类横滑 pill：复用 categoryOptions -->
         <UFormField label="分类" name="category">
+          <div
+            class="pill-scroller -mx-1 flex gap-2 overflow-x-auto px-1 py-1"
+            role="radiogroup"
+            aria-label="分类选择"
+          >
+            <button
+              v-for="item in categoryOptions"
+              :key="item"
+              type="button"
+              role="radio"
+              :aria-checked="form.category === item"
+              class="pressable pill min-h-[44px] shrink-0 snap-start"
+              :class="form.category === item ? 'pill-active' : ''"
+              @click="form.category = item; onCategoryChange(item)"
+            >
+              <AppIcon :icon="categoryStyleOf(item).icon" :color="form.category === item ? undefined : categoryStyleOf(item).color" :size="16" />
+              <span class="inline-block size-2 rounded-full" :style="{ background: form.category === item ? 'currentColor' : categoryStyleOf(item).color }" aria-hidden="true" />
+              <span class="whitespace-nowrap">{{ item }}</span>
+            </button>
+            <button
+              type="button"
+              class="pressable pill min-h-[44px] shrink-0 snap-start"
+              aria-label="新建分类"
+              @click="openCategoryCreator"
+            >
+              <span aria-hidden="true">＋</span>
+              <span class="whitespace-nowrap">新建</span>
+            </button>
+          </div>
           <USelectMenu
+            v-if="showCategoryCreator"
+            id="add-category-search"
             v-model="form.category"
             :items="categoryOptions"
             placeholder="选择或输入新分类"
             search-input
             create-item="always"
-            class="w-full"
+            class="mt-3 w-full"
             @create="onCreateCategory"
             @update:model-value="onCategoryChange"
           >
@@ -131,13 +171,29 @@
           </div>
         </UFormField>
 
+        <!-- ④ 账户分段：常用 4 + 更多 -->
         <UFormField label="账户" name="account" required>
+          <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="常用账户">
+            <UButton
+              v-for="acc in frequentAccounts"
+              :key="acc"
+              type="button"
+              class="pressable min-h-[44px] justify-center"
+              :color="form.account === acc ? 'primary' : 'neutral'"
+              :variant="form.account === acc ? 'solid' : 'outline'"
+              role="radio"
+              :aria-checked="form.account === acc"
+              @click="form.account = acc"
+            >
+              <span class="truncate">{{ acc }}</span>
+            </UButton>
+          </div>
           <USelect
             v-model="form.account"
             :items="accountOptions"
-            placeholder="选择账户"
+            placeholder="更多账户…"
             required
-            class="w-full"
+            class="mt-2 w-full"
           />
         </UFormField>
 
@@ -150,9 +206,23 @@
           />
         </UFormField>
 
-        <UButton type="submit" block class="pressable sb-cta" :loading="submitting" :disabled="submitting">
-          {{ submitting ? '保存中...' : '保存' }}
-        </UButton>
+        <!-- ⑤ 提交粘底：金额>0 才高亮 -->
+        <div
+          class="sticky-cta sticky bottom-0 -mx-4 px-4 pt-3 sm:-mx-6 sm:px-6"
+          style="background: var(--bg-secondary)"
+        >
+          <UButton
+            type="submit"
+            block
+            class="pressable sb-cta min-h-[48px] text-base"
+            :color="hasAmount ? 'primary' : 'neutral'"
+            :variant="hasAmount ? 'solid' : 'soft'"
+            :loading="submitting"
+            :disabled="submitting"
+          >
+            {{ submitting ? '保存中...' : '保存' }}
+          </UButton>
+        </div>
 
         <UAlert
           v-if="messageType === 'success' && message"
@@ -237,6 +307,17 @@ const onCreateCategory = (term) => {
 const categoryStyleOf = (name) => getCategoryIcon((name || '').trim() || '其他')
 const selectedStyle = computed(() => categoryStyleOf(form.value.category))
 
+// 重排新增 UI 状态：均不参与提交 payload，仅驱动展示
+const showCategoryCreator = ref(false)
+const frequentAccounts = computed(() => accountOptions.slice(0, 4))
+const hasAmount = computed(() => Number(form.value.amount) > 0)
+const openCategoryCreator = () => {
+  showCategoryCreator.value = true
+  nextTick(() => focusField('add-category-search'))
+}
+// 账户默认上次：客户端 localStorage 读写
+const LAST_ACCOUNT_KEY = 'silentbook:last-account'
+
 const submitTransaction = async () => {
   if (!form.value.amount || form.value.amount <= 0) {
     amountError.value = '请输入有效金额'
@@ -316,6 +397,15 @@ watch(tab, (v) => {
 })
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
+  try {
+    const last = typeof localStorage !== 'undefined' ? localStorage.getItem(LAST_ACCOUNT_KEY) : null
+    if (!form.value.account && last && accountOptions.includes(last)) form.value.account = last
+  } catch {}
+})
+watch(() => form.value.account, (v) => {
+  try {
+    if (v && typeof localStorage !== 'undefined') localStorage.setItem(LAST_ACCOUNT_KEY, v)
+  } catch {}
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
@@ -326,9 +416,41 @@ onUnmounted(() => {
 /* 金额大字等宽：inner input 经 :deep 定死，不受 U* 主题字号覆盖；ink 下衬线展示体 */
 .amount-field :deep(input) {
   font-family: var(--font-brand-display);
-  font-size: 1.75rem;
+  font-size: 2.25rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* 分类横滑 pill：横向 scroll-snap，一眼选中 */
+.pill-scroller {
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  max-width: 100%;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--text-primary);
+  background: transparent;
+  white-space: nowrap;
+}
+.pill-active {
+  background: var(--text-primary);
+  color: var(--bg-secondary);
+  border-color: transparent;
+}
+
+/* 提交粘底：安全区 padding，随卡片底边吸附 */
+.sticky-cta {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  max-width: 100%;
 }
 
 /* 成功确认感：alert 由触发处展开（180ms）；对勾 0.45s 缩放淡入，不许 confetti */
@@ -377,10 +499,20 @@ button:focus-visible {
   transition: none;
 }
 
-/* 480px 单列：收紧内边距，金额字号略降，类型双钮不断裂 */
+/* 480px 单列：收紧内边距，粘底按钮+横滑不溢出，类型双钮不断裂 */
 @media (max-width: 480px) {
   .amount-field :deep(input) {
-    font-size: 1.5rem;
+    font-size: 2rem;
+  }
+  .pill-scroller {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+  }
+  .sticky-cta {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 }
 

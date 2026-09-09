@@ -3,7 +3,7 @@
     <!-- 页头 -->
     <div class="flex flex-wrap items-center gap-3">
       <div class="mr-auto min-w-0">
-        <h1 class="text-xl font-semibold" style="color: var(--text-primary)">财务目标</h1>
+        <h1 class="sb-h text-xl font-semibold" style="color: var(--text-primary)">财务目标</h1>
         <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">先定一个数，再一笔一笔往里放。</p>
       </div>
       <UButton @click="showAddForm = !showAddForm">
@@ -36,25 +36,18 @@
     </div>
 
     <template v-else>
-      <!-- 总览卡片 -->
-      <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
-          <div class="text-xs" style="color: var(--text-secondary)">进行中</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--text-primary)">{{ summary.active_goals }}</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
-          <div class="text-xs" style="color: var(--text-secondary)">已完成</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--success)">{{ summary.completed_goals }}</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
-          <div class="text-xs" style="color: var(--text-secondary)">总进度</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums" style="color: var(--accent)">{{ summary.overall_progress.toFixed(1) }}%</div>
-        </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4' }">
-          <div class="text-xs" style="color: var(--text-secondary)">已积累 / 总目标</div>
-          <div class="mt-1 truncate text-lg font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatMoney(summary.total_current) }} / ¥{{ formatMoney(summary.total_target) }}</div>
-        </UCard>
-      </div>
+      <!-- 总览：进行中 N / 已完成 M + 已攒 vs 总目标 + 总进度条 -->
+      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 min-[480px]:p-5' }" class="mt-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="sb-h mr-auto text-sm font-semibold" style="color: var(--text-primary)">进行中 {{ summary.active_goals }} / 已完成 {{ summary.completed_goals }}</h2>
+          <span class="text-xs font-semibold tabular-nums" style="color: var(--accent)">{{ summary.overall_progress.toFixed(1) }}%</span>
+        </div>
+        <div class="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span class="text-2xl font-bold tabular-nums" style="color: var(--text-primary)">¥{{ formatMoney(summary.total_current) }}</span>
+          <span class="text-sm tabular-nums" style="color: var(--text-secondary)">/ 总目标 ¥{{ formatMoney(summary.total_target) }}</span>
+        </div>
+        <UProgress :model-value="Math.min(summary.overall_progress, 100)" :max="100" color="primary" size="md" class="mt-3 h-2.5 motion-reduce:transition-none" />
+      </UCard>
 
       <!-- 新建/编辑目标表单 -->
       <UCard
@@ -63,7 +56,7 @@
         :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
         :ui="{ body: 'p-5' }"
       >
-        <h3 class="mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑目标' : '新建目标' }}</h3>
+        <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑目标' : '新建目标' }}</h3>
         <form @submit.prevent="handleSubmit">
           <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
             <div class="min-w-0">
@@ -102,52 +95,105 @@
         </form>
       </UCard>
 
-      <!-- 目标列表 -->
-      <div v-if="summary.goals && summary.goals.length > 0" class="mt-4 space-y-3">
-        <UCard
-          v-for="goal in summary.goals"
-          :key="goal.id"
-          class="relative"
-          :style="{
-            background: 'var(--bg-secondary)',
-            border: goal.status === 'completed' ? '1px solid var(--success)' : '1px solid var(--border)',
-            opacity: goal.status === 'abandoned' ? 0.55 : goal.status === 'completed' ? 0.85 : 1,
-          }"
-          :ui="{ body: 'p-4' }"
-        >
-          <!-- 达成庆祝：100% 只出现一次，450ms 对勾，纯 CSS -->
-          <div v-if="celebratingId === goal.id" class="celebrate" role="status" aria-label="目标达成">
-            <span class="celebrate-ring">
-              <AppIcon icon="Check" :size="26" />
-            </span>
-          </div>
-          <div class="flex flex-wrap items-start justify-between gap-2">
-            <div class="flex min-w-0 flex-wrap items-center gap-2">
-              <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
-              <h3 class="text-base font-semibold" style="color: var(--text-primary)">{{ goal.name }}</h3>
-              <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
-              <UBadge v-if="goal.status === 'completed'" color="success" variant="soft">已完成</UBadge>
-            </div>
-            <div class="flex shrink-0 flex-wrap gap-1.5">
-              <UButton v-if="goal.status === 'active'" size="xs" @click="openContribute(goal)">投入</UButton>
-              <UButton size="xs" variant="outline" color="neutral" @click="startEdit(goal)">编辑</UButton>
-              <UButton size="xs" variant="outline" color="error" @click="pendingDelete = goal">删除</UButton>
-            </div>
-          </div>
+      <!-- 目标列表：进行中在上，已完成沉底 -->
+      <div v-if="summary.goals && summary.goals.length > 0" class="mt-4 space-y-5">
+        <section aria-label="进行中目标">
+          <h2 class="sb-h mb-2 text-sm font-semibold tabular-nums" style="color: var(--text-primary)">进行中（{{ activeGoals.length }}）</h2>
+          <div v-if="activeGoals.length > 0" class="space-y-3">
+            <UCard
+              v-for="goal in activeGoals"
+              :key="goal.id"
+              class="relative"
+              :style="{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                opacity: goal.status === 'abandoned' ? 0.55 : 1,
+              }"
+              :ui="{ body: 'p-4' }"
+            >
+              <!-- 达成庆祝：100% 只出现一次，450ms 对勾，纯 CSS -->
+              <div v-if="celebratingId === goal.id" class="celebrate" role="status" aria-label="目标达成">
+                <span class="celebrate-ring">
+                  <AppIcon icon="Check" :size="26" />
+                </span>
+              </div>
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
+                  <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">{{ goal.name }}</h3>
+                  <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
+                </div>
+                <div class="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <UButton v-if="goal.status === 'active'" size="sm" @click="openContribute(goal)">投入</UButton>
+                  <UButton size="xs" variant="outline" color="neutral" @click="startEdit(goal)">编辑</UButton>
+                  <UButton size="xs" variant="outline" color="error" @click="pendingDelete = goal">删除</UButton>
+                </div>
+              </div>
 
-          <div class="mt-3">
-            <UProgress :model-value="Math.min(goal.progress_percent, 100)" :max="100" :color="goal.progress_percent >= 100 ? 'success' : 'primary'" />
-            <div class="mt-1.5 flex items-center justify-between text-xs tabular-nums">
-              <span style="color: var(--text-secondary)">¥{{ formatMoney(goal.current_amount) }} / ¥{{ formatMoney(goal.target_amount) }}</span>
-              <span class="font-semibold" style="color: var(--accent)">{{ goal.progress_percent.toFixed(1) }}%</span>
-            </div>
-          </div>
+              <div class="mt-3">
+                <UProgress :model-value="Math.min(goal.progress_percent, 100)" :max="100" :color="goal.progress_percent >= 100 ? 'success' : 'primary'" size="md" class="h-2.5 motion-reduce:transition-none" />
+                <div class="mt-1.5 flex items-center justify-between gap-2 text-xs tabular-nums">
+                  <span style="color: var(--text-secondary)">¥{{ formatMoney(goal.current_amount) }} / ¥{{ formatMoney(goal.target_amount) }}</span>
+                  <span class="flex shrink-0 items-center gap-2">
+                    <span style="color: var(--text-secondary)">剩¥{{ formatMoney(remainOf(goal)) }}<span v-if="etaDaysOf(goal) !== null">·预计{{ etaDaysOf(goal) }}天</span></span>
+                    <span class="font-semibold" style="color: var(--accent)">{{ goal.progress_percent.toFixed(1) }}%</span>
+                  </span>
+                </div>
+              </div>
 
-          <div v-if="goal.deadline || goal.notes" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color: var(--text-secondary)">
-            <span v-if="goal.deadline" class="inline-flex items-center gap-1 tabular-nums"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
-            <span v-if="goal.notes">{{ goal.notes }}</span>
+              <div v-if="goal.deadline || goal.notes" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color: var(--text-secondary)">
+                <span v-if="goal.deadline" class="inline-flex items-center gap-1 tabular-nums"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
+                <span v-if="goal.notes">{{ goal.notes }}</span>
+              </div>
+            </UCard>
           </div>
-        </UCard>
+          <p v-else class="text-xs" style="color: var(--text-secondary)">都在下面了，去已完成里看看。</p>
+        </section>
+
+        <section v-if="completedGoals.length > 0" aria-label="已完成目标">
+          <h2 class="sb-h mb-2 flex items-center gap-1.5 text-sm font-semibold tabular-nums" style="color: var(--text-secondary)">
+            <AppIcon icon="Check" :size="14" /> 已完成（{{ completedGoals.length }}）
+          </h2>
+          <div class="space-y-3">
+            <UCard
+              v-for="goal in completedGoals"
+              :key="goal.id"
+              class="relative opacity-70 grayscale"
+              :style="{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+              }"
+              :ui="{ body: 'p-4' }"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <AppIcon icon="Check" :size="15" style="color: var(--success)" />
+                  <UBadge :color="goalTypeColor(goal.goal_type)" variant="soft">{{ typeLabel(goal.goal_type) }}</UBadge>
+                  <h3 class="sb-h text-base font-semibold" style="color: var(--text-secondary)">{{ goal.name }}</h3>
+                  <UBadge :color="priorityColor(goal.priority)" variant="soft">{{ priorityLabel(goal.priority) }}</UBadge>
+                  <UBadge color="success" variant="soft">已完成</UBadge>
+                </div>
+                <div class="flex shrink-0 flex-wrap gap-1.5">
+                  <UButton size="xs" variant="outline" color="neutral" @click="startEdit(goal)">编辑</UButton>
+                  <UButton size="xs" variant="outline" color="error" @click="pendingDelete = goal">删除</UButton>
+                </div>
+              </div>
+
+              <div class="mt-3">
+                <UProgress :model-value="100" :max="100" color="success" size="md" class="h-2.5 motion-reduce:transition-none" />
+                <div class="mt-1.5 flex items-center justify-between gap-2 text-xs tabular-nums">
+                  <span style="color: var(--text-secondary)">¥{{ formatMoney(goal.current_amount) }} / ¥{{ formatMoney(goal.target_amount) }}</span>
+                  <span class="font-semibold" style="color: var(--success)">{{ goal.progress_percent.toFixed(1) }}%</span>
+                </div>
+              </div>
+
+              <div v-if="goal.deadline || goal.notes" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color: var(--text-secondary)">
+                <span v-if="goal.deadline" class="inline-flex items-center gap-1 tabular-nums"><AppIcon icon="CalendarBlank" :size="14" /> {{ goal.deadline }}</span>
+                <span v-if="goal.notes">{{ goal.notes }}</span>
+              </div>
+            </UCard>
+          </div>
+        </section>
       </div>
 
       <!-- 空状态 -->
@@ -168,7 +214,7 @@
     <UModal :open="!!contributeGoal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) contributeGoal = null }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="text-base font-semibold" style="color: var(--text-primary)">投入「{{ contributeGoal?.name }}」</h3>
+          <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">投入「{{ contributeGoal?.name }}」</h3>
           <p class="mb-3 mt-1 text-xs tabular-nums" style="color: var(--text-secondary)">当前进度：{{ contributeGoal?.progress_percent.toFixed(1) }}%</p>
           <form @submit.prevent="handleContribute">
             <div class="space-y-3">
@@ -194,7 +240,7 @@
     <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
       <template #content>
         <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
-          <h3 class="text-base font-semibold" style="color: var(--text-primary)">删除目标</h3>
+          <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">删除目标</h3>
           <p class="mt-1 text-sm" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」？所有投入记录也会被删除。</p>
           <div class="mt-4 flex flex-wrap gap-2">
             <UButton color="error" @click="confirmDelete">确认删除</UButton>
@@ -207,7 +253,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import {
   fetchGoalsSummary, createGoal, updateGoal, deleteGoal, contributeToGoal
 } from '~/utils/api'
@@ -295,6 +341,29 @@ const priorityColor = (p) => {
 const formatMoney = (v) => {
   if (!v && v !== 0) return '0.00'
   return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// 分组：已完成沉底，其余保持后端顺序
+const activeGoals = computed(() => (summary.value.goals || []).filter((g) => g.status !== 'completed'))
+const completedGoals = computed(() => (summary.value.goals || []).filter((g) => g.status === 'completed'))
+
+// 剩余额 / 日均存入 / 预计天数：只用已有字段（target/current/created_at），无日均数据返回 null 不显示天数
+const remainOf = (g) => Math.max(Number(g.target_amount || 0) - Number(g.current_amount || 0), 0)
+const dailyAvgOf = (g) => {
+  const cur = Number(g.current_amount || 0)
+  if (!(cur > 0)) return 0
+  const t = new Date(g.created_at).getTime()
+  if (!t || Number.isNaN(t)) return 0
+  const days = Math.max((Date.now() - t) / 86400000, 1)
+  const avg = cur / days
+  return avg > 0 ? avg : 0
+}
+const etaDaysOf = (g) => {
+  if (g.status === 'completed') return null
+  if (remainOf(g) <= 0) return null
+  const avg = dailyAvgOf(g)
+  if (!(avg > 0)) return null
+  return Math.ceil(remainOf(g) / avg)
 }
 
 async function loadData() {
