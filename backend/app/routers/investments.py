@@ -521,7 +521,7 @@ async def create_position(pos: PositionCreate, user: User = Depends(require_user
     market_value = pos.quantity * pos.current_price
     asset_type_map = {
         "stock": "stock", "fund": "fund", "bond": "bond",
-        "wealth_mgmt": "other", "other": "other",
+        "gold": "gold", "wealth_mgmt": "wealth_mgmt", "other": "other",
     }
     asset = Asset(
         name=f"[持仓] {pos.name}",

@@ -476,7 +476,7 @@ function formatTime(iso: string) {
 }
 
 function typeLabel(t: string) {
-  const map: Record<string, string> = { stock: '股票', fund: '基金', bond: '债券', wealth_mgmt: '理财', gold: '黄金', other: '其他' }
+  const map: Record<string, string> = { stock: '股票', fund: '基金', bond: '债券', wealth_mgmt: '银行理财', gold: '黄金', other: '其他' }
   return map[t] || t
 }
 

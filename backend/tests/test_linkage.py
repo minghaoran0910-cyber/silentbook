@@ -169,3 +169,18 @@ def test_internal_transfer_excluded_from_monthly_stats(auth):
     # 但余额扣了 500：1900 - 500 = 1400；净资产 = 1400 + 5000 - 2000 = 4400
     assert d["total_account_balance"] == 1400, d
     assert d["net_assets"] == 4400, d
+
+
+def test_position_creates_typed_asset(auth):
+    # 银行理财持仓双写资产类型应为 wealth_mgmt（不是 other）；黄金亦然
+    for name, ptype in (("某理财", "wealth_mgmt"), ("金条ETF", "gold")):
+        r = client.post("/positions", headers=_h(auth), json={
+            "name": name, "symbol": "X", "position_type": ptype,
+            "quantity": 10, "avg_cost": 100, "current_price": 110,
+            "account": "证券",
+        })
+        assert r.status_code in (200, 201), r.text
+    r = client.get("/assets", headers=_h(auth))
+    by_name = {a["name"]: a["asset_type"] for a in r.json()}
+    assert by_name.get("[持仓] 某理财") == "wealth_mgmt", by_name
+    assert by_name.get("[持仓] 金条ETF") == "gold", by_name

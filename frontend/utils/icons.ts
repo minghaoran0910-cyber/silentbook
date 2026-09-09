@@ -11,6 +11,7 @@ export const assetTypeIcons: Record<string, { icon: string; label: string; color
   fund:     { icon: 'TrendUp',   label: '基金',   color: '#B45309' },
   stock:    { icon: 'ChartLine', label: '股票',   color: '#EF4444' },
   bond:     { icon: 'Receipt',   label: '债券',   color: '#8B5CF6' },
+  wealth_mgmt: { icon: 'Bank', label: '银行理财', color: '#0284C7' },
   property: { icon: 'House',     label: '房产',   color: '#F59E0B' },
   pension: { icon: 'HandCoins', label: '养老金', color: '#059669' },
   gold:    { icon: 'Coins',     label: '黄金',   color: '#D4AF37' },

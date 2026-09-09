@@ -508,6 +508,7 @@ const assetTypeFilterItems = [
   { label: '基金', value: 'fund' },
   { label: '股票', value: 'stock' },
   { label: '债券', value: 'bond' },
+  { label: '银行理财', value: 'wealth_mgmt' },
   { label: '养老金', value: 'pension' },
   { label: '黄金', value: 'gold' },
   { label: '房产', value: 'property' },
@@ -654,7 +655,7 @@ const assetShare = computed(() => {
 })
 
 // 资产按已有 asset_type 字段分组折叠（组头组内合计），折叠状态客户端持久化
-const GROUP_ORDER = ['cash', 'savings', 'fund', 'stock', 'bond', 'pension', 'gold', 'property', 'other']
+const GROUP_ORDER = ['cash', 'savings', 'fund', 'stock', 'bond', 'wealth_mgmt', 'pension', 'gold', 'property', 'other']
 const collapsedGroups = ref<string[]>([])
 const GROUPS_KEY = 'sb-assets-groups'
 const restoreGroups = () => {
@@ -689,7 +690,7 @@ const groupedAssets = computed(() => {
 })
 
 const pieColors = ['#0F766E', '#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
-const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', gold: '黄金', pension: '养老金', property: '房产', other: '其他' }
+const typeLabels = { cash: '现金', savings: '存款', fund: '基金', stock: '股票', bond: '债券', wealth_mgmt: '银行理财', gold: '黄金', pension: '养老金', property: '房产', other: '其他' }
 
 const pieData = computed(() => {
   const active = assets.value.filter(a => a.status === 'active')
