@@ -73,7 +73,7 @@
         <div
           v-for="(s, i) in statCards"
           :key="s.key"
-          :class="[playEnter && 'reveal']"
+          :class="['sb-metric', playEnter && 'reveal']"
           :style="{ '--reveal-delay': `${i * 40}ms` }"
         >
           <div class="sb-label text-xs" style="color: var(--text-secondary)">{{ s.label }}</div>
@@ -92,7 +92,7 @@
           </span>
         </div>
         <USkeleton v-if="!trendLoaded" class="h-[260px] w-full" />
-        <div v-else-if="trend.daily.length > 0" ref="trendEl" class="h-[260px] w-full"></div>
+        <div v-else-if="trend.daily.length > 0" ref="trendEl" class="sb-plot h-[260px] w-full"></div>
         <p v-else class="py-12 text-center text-sm" style="color: var(--text-secondary)">暂无交易数据，先记第一笔吧。</p>
       </UCard>
 
@@ -103,7 +103,7 @@
           <li v-for="item in assetBreakdown" :key="item.type" class="flex items-center gap-3">
             <AppIcon :icon="getAssetIcon(item.type).icon" :color="getAssetIcon(item.type).color" :size="18" class="shrink-0" />
             <span class="w-12 shrink-0 text-sm" style="color: var(--text-primary)">{{ getAssetIcon(item.type).label }}</span>
-            <div class="h-1.5 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
+            <div class="sb-track h-1.5 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
               <div
                 class="h-full"
                 style="border-radius: var(--radius-sm)"
@@ -124,7 +124,7 @@
           <h2 class="sb-h text-base" style="color: var(--text-primary)">最近交易</h2>
           <NuxtLink to="/transactions" class="text-sm font-medium" style="color: var(--accent)">查看全部</NuxtLink>
         </div>
-        <ul v-if="mounted && recentTransactions.length > 0" class="-mx-1 space-y-1">
+        <ul v-if="mounted && recentTransactions.length > 0" class="-mx-1 space-y-2">
           <li v-for="tx in recentTransactions" :key="tx.id">
             <NuxtLink
               to="/transactions"
@@ -168,7 +168,7 @@
             >
               <AppIcon :icon="getCategoryIcon(cat.name).icon" :color="getCategoryIcon(cat.name).color" :size="18" class="shrink-0" />
               <span class="w-16 shrink-0 truncate text-sm" style="color: var(--text-primary)">{{ cat.name }}</span>
-              <span class="h-2 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
+              <span class="sb-track h-2 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
                 <span
                   class="block h-full"
                   style="border-radius: var(--radius-sm)"

@@ -60,7 +60,7 @@
       >
         <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">消费分类</h3>
         <div class="flex flex-wrap items-center gap-6">
-          <div ref="pieEl" class="h-[220px] w-[220px] min-w-[220px] shrink-0 cursor-pointer" role="img" aria-label="消费分类占比图"></div>
+          <div ref="pieEl" class="sb-plot h-[220px] w-[220px] min-w-[220px] shrink-0 cursor-pointer" role="img" aria-label="消费分类占比图"></div>
           <ul class="min-w-[200px] flex-1 space-y-1.5">
             <li v-for="(cat, i) in categoryStats.slice(0, 8)" :key="cat.name">
               <button
