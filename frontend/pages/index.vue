@@ -77,7 +77,7 @@
           :style="{ '--reveal-delay': `${i * 40}ms` }"
         >
           <div class="sb-label text-xs" style="color: var(--text-secondary)">{{ s.label }}</div>
-          <div class="mt-1 truncate text-2xl font-semibold tabular-nums" :style="{ color: s.color }">
+          <div class="mt-1 truncate text-xl font-semibold tabular-nums" :style="{ color: s.color }">
             {{ s.text }}
           </div>
         </div>
