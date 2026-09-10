@@ -184,6 +184,69 @@ html[data-brand="cozy"][data-theme="dark"] {
   --font-brand-display: inherit;
 }
 
+/* ============ BRAND: neu 新拟物 ============ */
+html[data-brand="neu"][data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #e0e5ec;
+  --bg-secondary: #e0e5ec;
+  --bg-tertiary: #d5dbe3;
+  --border: transparent;
+  --border-strong: transparent;
+  --accent: #4a6fa5;
+  --accent-hover: #3d5d8a;
+  --accent-soft: rgba(74, 111, 165, 0.12);
+  --accent-ink: #f2f5f9;
+  --text-primary: #334155;
+  --text-secondary: #5b6b82;
+  --text-tertiary: #8a97ab;
+  --success: #2f7d4f;
+  --success-soft: rgba(47, 125, 79, 0.12);
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.1);
+  --fill-ink: #e0e5ec;
+  --warning: #92400e;
+  --neu-dark: #b8bec9;
+  --neu-light: #ffffff;
+  --shadow-sm: 4px 4px 8px var(--neu-dark), -4px -4px 8px var(--neu-light);
+  --shadow-md: 8px 8px 16px var(--neu-dark), -8px -8px 16px var(--neu-light);
+  --shadow-inset: inset 4px 4px 8px var(--neu-dark), inset -4px -4px 8px var(--neu-light);
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --font-brand-display: inherit;
+}
+
+html[data-brand="neu"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #2b2f3a;
+  --bg-secondary: #2b2f3a;
+  --bg-tertiary: #23262f;
+  --border: transparent;
+  --border-strong: transparent;
+  --accent: #7fb3d5;
+  --accent-hover: #93c2dd;
+  --accent-soft: rgba(127, 179, 213, 0.14);
+  --accent-ink: #1a2027;
+  --text-primary: #d7dce5;
+  --text-secondary: #a3adc0;
+  --text-tertiary: #6f7a90;
+  --success: #7bc79a;
+  --success-soft: rgba(123, 199, 154, 0.14);
+  --danger: #e07856;
+  --danger-soft: rgba(224, 120, 86, 0.14);
+  --fill-ink: #2b2f3a;
+  --warning: #e3a63d;
+  --neu-dark: #1d2029;
+  --neu-light: #383d4c;
+  --shadow-sm: 4px 4px 8px var(--neu-dark), -4px -4px 8px var(--neu-light);
+  --shadow-md: 8px 8px 16px var(--neu-dark), -8px -8px 16px var(--neu-light);
+  --shadow-inset: inset 4px 4px 8px var(--neu-dark), inset -4px -4px 8px var(--neu-light);
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --font-brand-display: inherit;
+}
+
 /* ============ 品牌体感：形状 / 字 / 疏密（不止颜色） ============ */
 html[data-brand="ink"] {
   --card-bg: var(--bg-secondary);
@@ -218,6 +281,17 @@ html[data-brand="cozy"] {
   --label-tracking: 0;
   --row-divide: 1px solid var(--border);
 }
+html[data-brand="neu"] {
+  --card-bg: var(--bg-secondary);
+  --card-border: 1px solid transparent;
+  --card-shadow: var(--shadow-md);
+  --section-gap: 2.5rem;
+  --h-font: inherit;
+  --h-tracking: 0.01em;
+  --h-weight: 700;
+  --label-tracking: 0.04em;
+  --row-divide: none;
+}
 
 /* 全站共享表面与标题：各页直接用，不许自造带边框的盒子 */
 .sb-surface {
@@ -240,6 +314,75 @@ html[data-brand="cozy"] {
 }
 .sb-rows > * + * {
   border-top: var(--row-divide);
+}
+
+/* ============ BRAND neu：新拟物覆盖（只在 data-brand=neu 下生效） ============ */
+/* 卡片：去 ring/边框，换双影浮雕（.sb-surface 无层，赢过 utilities 层） */
+html[data-brand="neu"] .sb-surface {
+  border-color: transparent;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-md);
+}
+/* 主按钮：浮雕；按下变凹陷（取代缩放，更符合软 UI 物理） */
+html[data-brand="neu"] .sb-cta {
+  box-shadow: var(--shadow-sm);
+  border: 1px solid transparent;
+}
+html[data-brand="neu"] .sb-cta:active {
+  transform: none;
+  box-shadow: var(--shadow-inset);
+}
+html[data-brand="neu"] .cta-press:active {
+  transform: none;
+}
+/* 输入框/下拉触发器：凹陷 */
+html[data-brand="neu"] input[type="text"],
+html[data-brand="neu"] input[type="number"],
+html[data-brand="neu"] input[type="password"],
+html[data-brand="neu"] input[type="email"],
+html[data-brand="neu"] input[type="search"],
+html[data-brand="neu"] textarea,
+html[data-brand="neu"] select,
+html[data-brand="neu"] button[role="combobox"] {
+  background: var(--bg-secondary);
+  border-color: transparent;
+  box-shadow: var(--shadow-inset);
+}
+html[data-brand="neu"] input:focus,
+html[data-brand="neu"] textarea:focus,
+html[data-brand="neu"] select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Tabs 容器：刻进去；激活态浮起 */
+html[data-brand="neu"] [role="tablist"] {
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-inset);
+  border-radius: var(--radius-md);
+}
+html[data-brand="neu"] [role="tab"][data-state="active"],
+html[data-brand="neu"] [role="tab"][aria-selected="true"] {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-sm);
+}
+/* 开关：轨道凹陷，靠 U* 默认滑块即可 */
+html[data-brand="neu"] button[role="switch"] {
+  box-shadow: var(--shadow-inset);
+  background: var(--bg-secondary);
+  border-color: transparent;
+}
+/* 弹窗卡：同卡片 */
+html[data-brand="neu"] [role="dialog"] {
+  background: var(--bg-secondary);
+  border-color: transparent;
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+}
+/* 导航栏：同一块板，不再用底边线切开 */
+html[data-brand="neu"] .navbar {
+  background: var(--bg-primary);
+  border-bottom: none;
+  box-shadow: 0 6px 12px -6px var(--neu-dark);
 }
 
 /* 旧双主题块保留为无品牌兜底（首屏闪烁前、旧缓存 HTML），品牌块在上优先级更高 */

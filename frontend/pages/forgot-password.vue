@@ -4,12 +4,7 @@
     :style="{ background: 'var(--bg-primary)' }"
   >
     <UCard
-      class="auth-enter w-full max-w-md"
-      :style="{
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-      }"
+      class="sb-surface auth-enter w-full max-w-md"
       :ui="{ body: 'p-6 sm:p-10' }"
     >
       <div class="mb-6 text-center">

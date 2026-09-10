@@ -12,8 +12,7 @@
     <!-- 复盘结论：先看省没省，再看趋势明细 -->
     <UCard
       v-if="!loading && !error && reviewLine"
-      class="mb-4"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mb-4"
       :ui="{ body: 'p-4' }"
     >
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -24,7 +23,7 @@
 
     <!-- 加载中：骨架 -->
     <div v-if="loading" class="space-y-4">
-      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+      <UCard class="sb-surface" :ui="{ body: 'p-5' }">
         <USkeleton class="h-6 w-40" />
         <div class="mt-4 grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
           <USkeleton v-for="i in 4" :key="i" class="h-[76px] w-full" />
@@ -47,9 +46,8 @@
     </UAlert>
 
     <!-- 日报 -->
-    <UCard
+    <UCard class="sb-surface"
       v-else-if="activeTab === 'daily'"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
       :ui="{ body: 'p-5' }"
     >
       <h2 class="sb-h mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ dailyReport.date }} 日报</h2>
@@ -90,9 +88,8 @@
     </UCard>
 
     <!-- 周报 -->
-    <UCard
+    <UCard class="sb-surface"
       v-else-if="activeTab === 'weekly'"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
       :ui="{ body: 'p-5' }"
     >
       <h2 class="sb-h mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ weeklyReport.week_start }} ~ {{ weeklyReport.week_end }} 周报</h2>
@@ -145,9 +142,8 @@
     </UCard>
 
     <!-- 月报 -->
-    <UCard
+    <UCard class="sb-surface"
       v-else-if="activeTab === 'monthly'"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
       :ui="{ body: 'p-5' }"
     >
       <h2 class="sb-h mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ monthlyReport.year }}年{{ monthlyReport.month }}月 月报</h2>
@@ -197,9 +193,8 @@
     </UCard>
 
     <!-- 年报 -->
-    <UCard
+    <UCard class="sb-surface"
       v-else-if="activeTab === 'yearly'"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
       :ui="{ body: 'p-5' }"
     >
       <h2 class="sb-h mb-4 text-base font-semibold tabular-nums" style="color: var(--text-primary)">{{ yearlyReport.year }}年 年报</h2>

@@ -52,7 +52,7 @@ export default defineNuxtConfig({
       script: [
         {
           // 首屏前定主题+品牌，防闪烁：已保存 > 跟随系统 > 默认（纸墨浅色）
-          innerHTML: `(function(){try{var b=localStorage.getItem('sb-brand');if(b!=='ink'&&b!=='linear'&&b!=='cozy'){b='ink';}var t=localStorage.getItem('sb-theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}var h=document.documentElement;h.setAttribute('data-brand',b);h.setAttribute('data-theme',t);h.classList.toggle('dark',t==='dark');}catch(e){document.documentElement.setAttribute('data-brand','ink');document.documentElement.setAttribute('data-theme','light');}})();`,
+          innerHTML: `(function(){try{var b=localStorage.getItem('sb-brand');if(b!=='ink'&&b!=='linear'&&b!=='cozy'&&b!=='neu'){b='ink';}var t=localStorage.getItem('sb-theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}var h=document.documentElement;h.setAttribute('data-brand',b);h.setAttribute('data-theme',t);h.classList.toggle('dark',t==='dark');}catch(e){document.documentElement.setAttribute('data-brand','ink');document.documentElement.setAttribute('data-theme','light');}})();`,
         }
       ]
     }

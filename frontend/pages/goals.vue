@@ -28,7 +28,7 @@
       <div class="grid grid-cols-2 gap-3 min-[480px]:grid-cols-4">
         <USkeleton v-for="i in 4" :key="i" class="h-[76px] w-full" />
       </div>
-      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+      <UCard class="sb-surface" :ui="{ body: 'p-5' }">
         <USkeleton class="h-5 w-40" />
         <USkeleton class="mt-3 h-2.5 w-full" />
         <USkeleton class="mt-2 h-4 w-2/3" />
@@ -37,7 +37,7 @@
 
     <template v-else>
       <!-- 总览：进行中 N / 已完成 M + 已攒 vs 总目标 + 总进度条 -->
-      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-4 min-[480px]:p-5' }" class="mt-4">
+      <UCard class="sb-surface mt-4" :ui="{ body: 'p-4 min-[480px]:p-5' }">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="sb-h mr-auto text-sm font-semibold" style="color: var(--text-primary)">进行中 {{ summary.active_goals }} / 已完成 {{ summary.completed_goals }}</h2>
           <span class="text-xs font-semibold tabular-nums" style="color: var(--accent)">{{ summary.overall_progress.toFixed(1) }}%</span>
@@ -52,8 +52,7 @@
       <!-- 新建/编辑目标表单 -->
       <UCard
         v-if="showAddForm"
-        class="mt-4"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        class="sb-surface mt-4"
         :ui="{ body: 'p-5' }"
       >
         <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑目标' : '新建目标' }}</h3>
@@ -111,10 +110,8 @@
             <UCard
               v-for="goal in activeGoals"
               :key="goal.id"
-              class="relative"
+              class="sb-surface relative"
               :style="{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
                 opacity: goal.status === 'abandoned' ? 0.55 : 1,
               }"
               :ui="{ body: 'p-4' }"
@@ -167,11 +164,7 @@
             <UCard
               v-for="goal in completedGoals"
               :key="goal.id"
-              class="relative opacity-70 grayscale"
-              :style="{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-              }"
+              class="sb-surface relative opacity-70 grayscale"
               :ui="{ body: 'p-4' }"
             >
               <div class="flex flex-wrap items-start justify-between gap-2">
@@ -209,8 +202,7 @@
       <!-- 空状态 -->
       <UCard
         v-else
-        class="mt-4 text-center"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        class="sb-surface mt-4 text-center"
         :ui="{ body: 'p-8' }"
       >
         <AppIcon icon="PiggyBank" :size="32" style="color: var(--text-tertiary)" class="mx-auto" />
@@ -223,7 +215,7 @@
     <!-- 投入弹窗 -->
     <UModal :open="!!contributeGoal" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) contributeGoal = null }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">投入「{{ contributeGoal?.name }}」</h3>
           <p class="mb-3 mt-1 text-xs tabular-nums" style="color: var(--text-secondary)">当前进度：{{ contributeGoal?.progress_percent.toFixed(1) }}%</p>
           <form @submit.prevent="handleContribute">
@@ -249,7 +241,7 @@
     <!-- 删除确认（替代 confirm） -->
     <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">删除目标</h3>
           <p class="mt-1 text-sm" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」？所有投入记录也会被删除。</p>
           <div class="mt-4 flex flex-wrap gap-2">

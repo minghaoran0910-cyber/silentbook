@@ -195,6 +195,7 @@ const links = [
 .brand-dot .dot[data-brand-dot="ink"] { background: #b42318; }
 .brand-dot .dot[data-brand-dot="linear"] { background: #4f46e5; }
 .brand-dot .dot[data-brand-dot="cozy"] { background: #c2410c; }
+.brand-dot .dot[data-brand-dot="neu"] { background: linear-gradient(145deg, #ffffff, #b8bec9); }
 
 .brand-dot.active {
   background: var(--bg-secondary);

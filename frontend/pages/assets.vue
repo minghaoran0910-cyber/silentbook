@@ -40,7 +40,7 @@
       <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
         <USkeleton v-for="i in 3" :key="i" class="h-[92px] w-full" />
       </div>
-      <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+      <UCard class="sb-surface" :ui="{ body: 'p-5' }">
         <USkeleton class="h-5 w-40" />
         <USkeleton class="mt-3 h-44 w-full" />
       </UCard>
@@ -58,7 +58,7 @@
 
     <template v-else>
       <!-- ① 顶部家底卡：净资产大数字 + 三行 + 占比条（首页同款） -->
-      <UCard class="mt-4" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+      <UCard class="sb-surface mt-4" " :ui="{ body: 'p-5' }">
         <div class="text-sm" style="color: var(--text-secondary)">净资产</div>
         <div class="sb-display mt-1 text-5xl font-semibold tabular-nums" style="color: var(--text-primary)">¥{{ netWorth.toFixed(2) }}</div>
         <div class="mt-3 flex flex-col gap-1 text-sm tabular-nums">
@@ -101,7 +101,7 @@
 
       <!-- 资产分类饼图 + 资产收益 -->
       <div v-if="assets.length > 0" class="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产分类</h3>
           <div class="flex flex-wrap items-center gap-4">
             <div ref="assetPieEl" class="h-[180px] w-[180px] shrink-0" role="img" aria-label="资产分类分布图" />
@@ -115,7 +115,7 @@
             </div>
           </div>
         </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产收益</h3>
           <div class="flex flex-col gap-2.5">
             <div v-for="item in pieData" :key="'p-' + item.type" class="flex items-center gap-2">
@@ -133,7 +133,7 @@
       </div>
 
       <!-- 资产变化曲线（真实历史，非模拟） -->
-      <UCard v-if="assets.length > 0" class="mt-4" :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+      <UCard v-if="assets.length > 0" class="sb-surface mt-4" " :ui="{ body: 'p-5' }">
         <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">资产变化趋势</h3>
         <div ref="assetCurveEl" class="h-60 w-full" role="img" aria-label="资产变化趋势图" />
       </UCard>
@@ -156,17 +156,15 @@
 
         <UCard
           v-if="filteredAssets.length === 0"
-          class="text-center"
-          :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+          class="sb-surface text-center"
           :ui="{ body: 'p-8' }"
         >
           <p class="text-sm" style="color: var(--text-secondary)">{{ assets.length === 0 ? '暂无资产，点击右上角添加' : '没有匹配的资产' }}</p>
         </UCard>
         <div v-else class="flex flex-col gap-3">
-          <UCard
+          <UCard class="sb-surface"
             v-for="group in groupedAssets"
             :key="group.type"
-            :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
             :ui="{ body: 'p-0' }"
           >
             <button
@@ -181,10 +179,9 @@
               <AppIcon :icon="isGroupCollapsed(group.type) ? 'CaretDown' : 'CaretUp'" :size="14" />
             </button>
             <div v-show="!isGroupCollapsed(group.type)" class="flex flex-col gap-3 px-4 pb-4">
-              <UCard
+              <UCard class="sb-surface"
                 v-for="asset in group.items"
                 :key="asset.id"
-                :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
                 :ui="{ body: 'p-4' }"
               >
                 <div class="flex items-center gap-3">
@@ -236,17 +233,15 @@
 
         <UCard
           v-if="liabilities.length === 0"
-          class="text-center"
-          :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+          class="sb-surface text-center"
           :ui="{ body: 'p-8' }"
         >
           <p class="text-sm" style="color: var(--text-secondary)">暂无负债</p>
         </UCard>
         <div v-else class="flex flex-col gap-3">
-          <UCard
+          <UCard class="sb-surface"
             v-for="liab in liabilities"
             :key="liab.id"
-            :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
             :ui="{ body: 'p-4' }"
           >
             <div class="flex items-center gap-3">
@@ -288,7 +283,7 @@
     <!-- 添加/编辑资产弹窗 -->
     <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑资产' : '添加资产' }}</h3>
           <form @submit.prevent="handleSubmit">
             <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
@@ -365,7 +360,7 @@
     <!-- 添加/编辑负债弹窗 -->
     <UModal v-model:open="showAddLiabilityForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h mb-4 text-base font-semibold" style="color: var(--text-primary)">{{ editingLiabilityId ? '编辑负债' : '添加负债' }}</h3>
           <form @submit.prevent="handleLiabilitySubmit">
             <div class="grid min-w-0 grid-cols-1 gap-3 min-[480px]:grid-cols-2">
@@ -426,7 +421,7 @@
     <!-- 删除确认（替代 confirm） -->
     <UModal v-model:open="deleteConfirmOpen" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">删除{{ pendingDelete?.kind === 'liability' ? '负债' : '资产' }}</h3>
           <p class="mt-1 text-sm tabular-nums" style="color: var(--text-secondary)">确定删除「{{ pendingDelete?.name }}」<span v-if="pendingDelete?.amount">（¥{{ pendingDelete.amount }}）</span>？删除后无法恢复，此操作不可撤销。</p>
           <div class="mt-4 flex flex-wrap justify-end gap-2">

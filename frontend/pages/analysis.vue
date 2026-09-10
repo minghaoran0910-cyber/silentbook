@@ -18,10 +18,9 @@
     <div v-if="analyzing" class="mt-6 space-y-4">
       <p class="text-sm" style="color: var(--text-secondary)">{{ loadingText }}</p>
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <UCard
+        <UCard class="sb-surface"
           v-for="i in 3"
           :key="i"
-          :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
           :ui="{ body: 'p-5' }"
         >
           <USkeleton class="h-5 w-24" />
@@ -36,9 +35,8 @@
     <!-- 分析结果：结论 → 图 → 长文 -->
     <div v-else class="mt-6 space-y-6">
       <!-- ① 顶部结论卡：一句话 + 3 个数字 chips -->
-      <UCard
+      <UCard class="sb-surface"
         v-if="conclusionSentence"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
         :ui="{ body: 'p-5' }"
       >
         <p class="text-sm font-medium leading-relaxed" style="color: var(--text-primary)">{{ conclusionSentence }}</p>
@@ -56,9 +54,8 @@
       </UCard>
 
       <!-- 分类饼图：图例悬停高亮，扇区点击穿透到交易页 -->
-      <UCard
+      <UCard class="sb-surface"
         v-if="categoryStats.length > 0"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
         :ui="{ body: 'p-5' }"
       >
         <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">消费分类</h3>
@@ -85,7 +82,7 @@
 
       <!-- ② 三块解读：UCollapsible 折叠，默认展开第一块 -->
       <div v-if="analysis.consumption || analysis.investment || analysis.suggestion" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <UCollapsible v-model:open="openConsumption">
             <UButton color="neutral" variant="ghost" block class="justify-between">
               <span class="flex items-center gap-2">
@@ -98,7 +95,7 @@
             </template>
           </UCollapsible>
         </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <UCollapsible v-model:open="openInvestment">
             <UButton color="neutral" variant="ghost" block class="justify-between">
               <span class="flex items-center gap-2">
@@ -111,7 +108,7 @@
             </template>
           </UCollapsible>
         </UCard>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <UCollapsible v-model:open="openSuggestion">
             <UButton color="neutral" variant="ghost" block class="justify-between">
               <span class="flex items-center gap-2">
@@ -127,9 +124,8 @@
       </div>
 
       <!-- ④ 历史分析：时间线排布，点击展开全文 -->
-      <UCard
+      <UCard class="sb-surface"
         v-if="history.length > 0"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
         :ui="{ body: 'p-5' }"
       >
         <h2 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">历史分析</h2>
@@ -163,8 +159,7 @@
       <!-- 无数据 -->
       <UCard
         v-if="!analysis.consumption"
-        class="text-center"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        class="sb-surface text-center"
         :ui="{ body: 'p-8' }"
       >
         <AppIcon icon="ChartLine" :size="32" style="color: var(--text-tertiary)" class="mx-auto" />

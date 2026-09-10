@@ -51,8 +51,7 @@
     <!-- 加载失败 -->
     <UCard
       v-else-if="loadError"
-      class="mt-4 text-center"
-      :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      class="sb-surface mt-4 text-center"
       :ui="{ body: 'p-8' }"
     >
       <AppIcon icon="Warning" :size="28" style="color: var(--danger)" class="mx-auto" />
@@ -62,10 +61,8 @@
 
     <template v-else>
       <!-- 顶部盈亏卡：先回答“赚没赚” -->
-      <UCard
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+      <UCard class="sb-surface mt-4"
         :ui="{ body: 'p-4 min-[480px]:p-5' }"
-        class="mt-4"
       >
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs" style="color: var(--text-secondary)">总体盈亏</span>
@@ -90,8 +87,7 @@
 
       <!-- 持仓明细 -->
       <UCard
-        class="mt-4"
-        :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }"
+        class="sb-surface mt-4"
         :ui="{ body: 'p-4 min-[480px]:p-5' }"
       >
         <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -227,7 +223,7 @@
     <!-- 添加/编辑持仓弹窗 -->
     <UModal v-model:open="showAddForm" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-lg' }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h mb-3 text-base font-semibold" style="color: var(--text-primary)">{{ editingId ? '编辑持仓' : '添加持仓' }}</h3>
           <form @submit.prevent="handleSubmit">
             <div class="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
@@ -278,7 +274,7 @@
     <!-- 关闭持仓确认（替代 confirm） -->
     <UModal :open="!!pendingDelete" :ui="{ content: 'w-[calc(100vw-2rem)] max-w-md' }" @update:open="(v) => { if (!v) pendingDelete = null }">
       <template #content>
-        <UCard :style="{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }" :ui="{ body: 'p-5' }">
+        <UCard class="sb-surface" :ui="{ body: 'p-5' }">
           <h3 class="sb-h text-base font-semibold" style="color: var(--text-primary)">关闭持仓</h3>
           <p class="mt-1 text-sm" style="color: var(--text-secondary)">确认关闭「{{ pendingDelete?.name }}」？</p>
           <div class="mt-4 flex flex-wrap gap-2">
