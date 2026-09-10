@@ -118,7 +118,7 @@
     </section>
 
     <!-- 二、最近发生什么：今日动态 -->
-    <section aria-label="最近发生什么" class="grid items-start gap-4 lg:grid-cols-2">
+    <section aria-label="最近发生什么" class="two-col grid items-start gap-4 lg:grid-cols-2">
       <UCard class="sb-surface">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="sb-h text-base" style="color: var(--text-primary)">最近交易</h2>

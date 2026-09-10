@@ -424,6 +424,27 @@ html[data-brand="neu"] .tx-row {
   box-shadow: var(--shadow-sm);
   border: none;
 }
+/* neu 瘦身：行变矮（padding/头像/行距只在 neu 下收紧，不碰别的主题） */
+html[data-brand="neu"] .tx-item > div:first-child {
+  padding: 0.5rem 0.75rem;
+}
+html[data-brand="neu"] .tx-list {
+  gap: 0.5rem;
+}
+html[data-brand="neu"] .tx-icon,
+html[data-brand="neu"] .avatar-chip {
+  width: 2rem;
+  height: 2rem;
+}
+html[data-brand="neu"] .tx-icon svg,
+html[data-brand="neu"] .avatar-chip svg {
+  width: 18px;
+  height: 18px;
+}
+/* neu 两栏改堆叠：软卡纵列最耐看，不再左右比高 */
+html[data-brand="neu"] .two-col {
+  grid-template-columns: 1fr;
+}
 /* neu 导航激活态：按进去 */
 html[data-brand="neu"] .nav-link.active {
   background: var(--bg-secondary);
