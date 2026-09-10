@@ -132,11 +132,11 @@
               style="border-radius: var(--radius-md)"
             >
               <span
-                class="flex h-9 w-9 shrink-0 items-center justify-center"
+                class="avatar-chip flex h-9 w-9 shrink-0 items-center justify-center"
                 style="border-radius: var(--radius-md)"
                 :style="{ background: getCategoryIcon(tx.category).color + '20' }"
               >
-                <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
+                <CatGlyph :category="tx.category" :size="20" />
               </span>
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-medium" style="color: var(--text-primary)">{{ tx.description || tx.category }}</span>
@@ -166,7 +166,7 @@
               class="tx-row flex items-center gap-3 px-2 py-1.5"
               style="border-radius: var(--radius-md)"
             >
-              <AppIcon :icon="getCategoryIcon(cat.name).icon" :color="getCategoryIcon(cat.name).color" :size="18" class="shrink-0" />
+              <CatGlyph :category="cat.name" :size="18" class="shrink-0" />
               <span class="w-16 shrink-0 truncate text-sm" style="color: var(--text-primary)">{{ cat.name }}</span>
               <span class="sb-track h-2 min-w-0 flex-1 overflow-hidden" style="background: var(--bg-tertiary); border-radius: var(--radius-sm)">
                 <span

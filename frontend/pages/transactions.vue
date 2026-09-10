@@ -240,8 +240,8 @@
             @click.stop
             @update:model-value="() => toggleSelect(tx.id)"
           />
-          <div class="tx-icon flex size-10 shrink-0 items-center justify-center rounded-lg" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
-            <AppIcon :icon="getCategoryIcon(tx.category).icon" :color="getCategoryIcon(tx.category).color" :size="20" />
+          <div class="tx-icon avatar-chip flex size-10 shrink-0 items-center justify-center rounded-lg" :style="{ background: getCategoryIcon(tx.category).color + '20' }">
+            <CatGlyph :category="tx.category" :size="20" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="truncate font-medium" :style="{ color: 'var(--text-primary)' }">{{ tx.description || tx.category }}</div>

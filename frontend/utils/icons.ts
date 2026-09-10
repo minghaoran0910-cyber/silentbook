@@ -149,6 +149,19 @@ export function autoCategoryStyle(category: string) {
   }
 }
 
+// 展示字形：能配上图标就用图标；只剩 Tag/DotsThree 这类“不知道” fallback 时
+// 改用分类首字（95555 银行短信这种未分类行不再是一整列灰点点）
+export function categoryGlyph(category: string):
+  | { kind: 'icon'; icon: string; color: string }
+  | { kind: 'text'; char: string; color: string } {
+  const s = getCategoryIcon(category || '其他')
+  if (s.icon === 'Tag' || s.icon === 'DotsThree') {
+    const name = (category || '其他').trim()
+    return { kind: 'text', char: name.charAt(0) || '其', color: s.color }
+  }
+  return { kind: 'icon', icon: s.icon, color: s.color }
+}
+
 // 用户/AI 自建分类首次出现即落盘：同词两次同色，不跳变；SSR 安全（服务端直接返回计算值，不读写 localStorage）
 export function assignAutoStyle(category: string) {
   const name = (category || '').trim()

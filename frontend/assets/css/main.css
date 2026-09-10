@@ -428,6 +428,44 @@ html[data-brand="cozy"] .sb-cta {
   border-radius: 999px;
 }
 
+/* ============ 品牌排印：标题与微标签分家（正文不动保可读） ============ */
+html[data-brand="ink"] h1,
+html[data-brand="ink"] h2,
+html[data-brand="ink"] h3 {
+  font-family: var(--font-brand-display);
+  letter-spacing: 0;
+}
+html[data-brand="linear"] h1,
+html[data-brand="linear"] h2,
+html[data-brand="linear"] h3 {
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+html[data-brand="linear"] .text-xs {
+  letter-spacing: 0.05em;
+}
+html[data-brand="cozy"] h1,
+html[data-brand="cozy"] h2,
+html[data-brand="cozy"] h3 {
+  font-weight: 750;
+  letter-spacing: 0.005em;
+}
+html[data-brand="neu"] h1,
+html[data-brand="neu"] h2,
+html[data-brand="neu"] h3 {
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+html[data-brand="neu"] .text-xs {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+/* neu 图标底座凹进去（行浮起 + 芯凹陷，经典 interplay） */
+html[data-brand="neu"] .avatar-chip,
+html[data-brand="neu"] .tx-icon {
+  box-shadow: var(--shadow-inset);
+}
+
 /* 旧双主题块保留为无品牌兜底（首屏闪烁前、旧缓存 HTML），品牌块在上优先级更高 */
 
 /* SilentBook 设计系统 - 日间纸墨
