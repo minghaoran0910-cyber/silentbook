@@ -56,14 +56,14 @@
             style="background: var(--success); color: var(--fill-ink)"
             :style="{ width: (totalAssetValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }"
           >
-            <span v-if="totalAssetValue > 0" class="px-2">资产 ¥{{ totalAssetValue.toFixed(0) }}</span>
+            <span v-if="totalAssetValue > 0 && totalAssetValue / Math.max(totalAssetValue + totalLiabilityValue, 1) > 0.06" class="px-2">资产 ¥{{ totalAssetValue.toFixed(0) }}</span>
           </div>
           <div
             class="flex h-full items-center justify-center overflow-hidden text-xs font-medium whitespace-nowrap"
             style="background: var(--danger); color: var(--fill-ink)"
             :style="{ width: (totalLiabilityValue / Math.max(totalAssetValue + totalLiabilityValue, 1) * 100) + '%' }"
           >
-            <span v-if="totalLiabilityValue > 0" class="px-2">负债 ¥{{ totalLiabilityValue.toFixed(0) }}</span>
+            <span v-if="totalLiabilityValue > 0 && totalLiabilityValue / Math.max(totalAssetValue + totalLiabilityValue, 1) > 0.06" class="px-2">负债 ¥{{ totalLiabilityValue.toFixed(0) }}</span>
           </div>
         </div>
       </UCard>
@@ -407,8 +407,8 @@ watch(displayCurrency, async (v) => {
 
 // 首页 stat 数字 count-up：金额×5 + 整数×1，reduced-motion 下直接终值
 const netAssets = useCountUp(() => Number(stats.value.net_assets) || 0, 'money', (v) => fmtMoney(v))
-const totalAssets = useCountUp(() => Number(stats.value.total_assets) || 0, 'money', (v) => fmtMoney(v))
-const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) || 0, 'money', (v) => fmtMoney(v))
+const totalAssets = useCountUp(() => Number(stats.value.total_assets) || 0, 'money', (v) => fmtCompactMoney(v))
+const totalLiabilities = useCountUp(() => Number(stats.value.total_liabilities) || 0, 'money', (v) => fmtCompactMoney(v))
 const monthlyExpenses = useCountUp(() => Number(stats.value.monthly_expenses) || 0, 'money', (v) => fmtMoney(v))
 const monthlyIncome = useCountUp(() => Number(stats.value.monthly_income) || 0, 'money', (v) => fmtMoney(v))
 const accountBalance = useCountUp(() => Number(stats.value.total_account_balance) || 0, 'money', (v) => fmtCompactMoney(v))
