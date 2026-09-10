@@ -118,7 +118,7 @@
     </section>
 
     <!-- 二、最近发生什么：今日动态 -->
-    <section aria-label="最近发生什么" class="grid gap-4 lg:grid-cols-2">
+    <section aria-label="最近发生什么" class="grid items-start gap-4 lg:grid-cols-2">
       <UCard class="sb-surface">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="sb-h text-base" style="color: var(--text-primary)">最近交易</h2>
@@ -143,7 +143,7 @@
                 <span class="mt-0.5 block text-xs" style="color: var(--text-secondary)">{{ getAccountName(tx.account) }} · {{ formatTime(tx.parsed_at) }}</span>
               </span>
               <span
-                class="shrink-0 text-sm font-semibold tabular-nums"
+                class="shrink-0 text-base font-semibold tabular-nums"
                 :style="{ color: tx.transaction_type === 'income' ? 'var(--success)' : 'var(--danger)' }"
               >
                 {{ tx.transaction_type === 'income' ? '+' : '-' }}¥{{ tx.amount.toFixed(2) }}

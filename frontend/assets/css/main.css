@@ -335,7 +335,7 @@ html[data-brand="neu"] .sb-cta:active {
 html[data-brand="neu"] .cta-press:active {
   transform: none;
 }
-/* 输入框/下拉触发器：凹陷 */
+/* 输入框/下拉触发器：凹陷（USelectMenu 触发器是 button.bg-default.ring-inset，无 role） */
 html[data-brand="neu"] input[type="text"],
 html[data-brand="neu"] input[type="number"],
 html[data-brand="neu"] input[type="password"],
@@ -343,10 +343,23 @@ html[data-brand="neu"] input[type="email"],
 html[data-brand="neu"] input[type="search"],
 html[data-brand="neu"] textarea,
 html[data-brand="neu"] select,
-html[data-brand="neu"] button[role="combobox"] {
+html[data-brand="neu"] button[role="combobox"],
+html[data-brand="neu"] button.bg-default.ring-inset {
   background: var(--bg-secondary);
   border-color: transparent;
   box-shadow: var(--shadow-inset);
+}
+/* 下拉浮层：软面 + 深影（与页面拉开） */
+html[data-brand="neu"] [role="listbox"],
+html[data-brand="neu"] [role="menu"] {
+  background: var(--bg-secondary);
+  border-color: transparent;
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-md);
+}
+/* neu 列表行距：软卡之间要透气（其他品牌走 hairline，不用 gap） */
+html[data-brand="neu"] .tx-list {
+  gap: 0.75rem;
 }
 html[data-brand="neu"] input:focus,
 html[data-brand="neu"] textarea:focus,

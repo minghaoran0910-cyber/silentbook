@@ -1,7 +1,7 @@
 <template>
-  <div class="mx-auto w-full min-w-0 max-w-5xl px-4 py-6">
+  <div class="mx-auto w-full min-w-0 max-w-5xl space-y-6 px-4 py-6 sm:px-6">
     <!-- 页头 -->
-    <div class="mb-5 flex min-w-0 flex-wrap items-center justify-between gap-3">
+    <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
       <h1 class="sb-h text-2xl font-semibold" :style="{ color: 'var(--text-primary)' }">交易记录</h1>
       <div class="flex flex-wrap gap-2">
         <UButton color="primary" @click="showAddModal = true">+ 手动记账</UButton>
@@ -12,7 +12,7 @@
     <!-- 汇总统计（逻辑沿用原 summaryIncome / summaryExpense） -->
     <div
       v-if="!loading && transactions.length > 0"
-      class="mb-4 flex min-w-0 flex-wrap gap-x-8 gap-y-2 px-1 py-1"
+      class="flex min-w-0 flex-wrap gap-x-8 gap-y-2 px-1 py-1"
     >
       <div class="flex items-center gap-2">
         <span class="text-sm" :style="{ color: 'var(--text-secondary)' }">共</span>
@@ -36,7 +36,7 @@
     </div>
 
     <!-- 筛选（桌面端横排） -->
-    <div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 max-[480px]:hidden">
+    <div class="flex min-w-0 flex-wrap items-center gap-2 max-[480px]:hidden">
       <UInput
         v-model="filterSearch"
         type="text"
@@ -96,7 +96,7 @@
     </div>
 
     <!-- 筛选（480px 折叠：原生 details，无手势库依赖） -->
-    <details class="tx-filters-disclosure mb-4 min-[481px]:hidden">
+    <details class="tx-filters-disclosure min-[481px]:hidden">
       <summary
         class="flex cursor-pointer items-center justify-between px-1 py-2 text-sm font-medium"
         :style="{ color: 'var(--text-primary)' }"
@@ -160,14 +160,14 @@
           <USwitch v-model="hideNoise" aria-label="仅显示真实交易" @update:model-value="onServerFilterChange" />
           <span>仅显示真实交易</span>
         </label>
-        <UButton v-if="hasActiveFilters" variant="ghost" color="neutral" size="sm" @click="clearFilters">清除筛选</UButton>
+      <UButton v-if="hasActiveFilters" variant="ghost" color="neutral" size="sm" class="h-9 px-3" @click="clearFilters">清除筛选</UButton>
       </div>
     </details>
 
     <!-- 批量栏（全选 + 批量删除确认，至少保留批量意识） -->
     <div
       v-if="!loading && searchedTransactions.length > 0"
-      class="mb-2 flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-sm"
+      class="flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2 text-sm"
       :style="{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }"
     >
       <UCheckbox
@@ -197,7 +197,7 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="flex items-center gap-3 rounded-lg p-4"
+        class="flex items-center gap-3 rounded-lg p-3"
         :style="{ background: 'var(--bg-secondary)' }"
       >
         <USkeleton class="size-10 shrink-0 rounded-lg" />
@@ -225,7 +225,7 @@
     </div>
 
     <!-- 列表：TransitionGroup 进出保留；行点选展开 inline 编辑 -->
-    <TransitionGroup v-else name="tx-list" tag="div" class="sb-rows flex flex-col">
+    <TransitionGroup v-else name="tx-list" tag="div" class="sb-rows tx-list flex flex-col">
       <div
         v-for="tx in pagedTransactions"
         :key="tx.id"
@@ -233,7 +233,7 @@
         :class="{ editing: editingId === tx.id }"
         @click="startEdit(tx)"
       >
-        <div class="flex items-center gap-3 p-4">
+        <div class="flex items-center gap-3 p-3">
           <UCheckbox
             :model-value="isSelected(tx.id)"
             :aria-label="'选择交易' + tx.id"
@@ -329,7 +329,7 @@
             </div>
           </div>
           <p class="mt-2 text-xs" :style="{ color: 'var(--text-tertiary)' }">回车保存 · Esc 取消</p>
-          <div class="mt-2 flex justify-end gap-2">
+          <div class="mt-3 flex justify-end gap-2">
             <UButton variant="outline" color="neutral" @click="cancelEdit">取消</UButton>
             <UButton color="primary" :loading="submitting" :disabled="submitting" @click="submitEdit">
               {{ submitting ? '保存中...' : '保存修改' }}
