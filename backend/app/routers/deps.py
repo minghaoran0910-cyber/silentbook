@@ -44,7 +44,7 @@ def normalize_account_name(account_name: str) -> str:
     return PLATFORM_ACCOUNT_MAP.get(account_name, account_name)
 
 # 内部划转分类：不计入收支统计（避免自转虚增支出/收入），但计入资金流动与余额联动
-INTERNAL_CATEGORIES = {"转账", "自账户划转"}
+INTERNAL_CATEGORIES = {"投资", "储蓄", "还款", "转账理财", "借出", "自账户划转", "转账"}
 
 
 def _update_account_balance(db: Session, account_name: str, transaction_type: str, amount: float, reverse: bool = False) -> Optional[float]:

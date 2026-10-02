@@ -200,7 +200,7 @@ async def transfer_between_accounts(transfer: AccountTransfer, user: User = Depe
     # 记录转账交易
     tx_out = Transaction(
         amount=transfer.amount,
-        category="转账",
+        category="转账理财",
         account=from_acc.name,
         description=f"转出至 {to_acc.name}" + (f": {transfer.description}" if transfer.description else ""),
         transaction_type="expense",
@@ -209,7 +209,7 @@ async def transfer_between_accounts(transfer: AccountTransfer, user: User = Depe
     )
     tx_in = Transaction(
         amount=transfer.amount,
-        category="转账",
+        category="转账理财",
         account=to_acc.name,
         description=f"从 {from_acc.name} 转入" + (f": {transfer.description}" if transfer.description else ""),
         transaction_type="income",
